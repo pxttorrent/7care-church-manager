@@ -6,8 +6,16 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Login } from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Calendar from "./pages/Calendar";
+import Menu from "./pages/Menu";
+import MeuCadastro from "./pages/MeuCadastro";
+import Meetings from "./pages/Meetings";
+import VideoCall from "./pages/VideoCall";
+import Users from "./pages/Users";
+import Interested from "./pages/Interested";
+import Messages from "./pages/Messages";
+import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
-import { DashboardLayout } from "./components/layout/DashboardLayout";
+import { MobileLayout } from "./components/layout/MobileLayout";
 
 const queryClient = new QueryClient();
 
@@ -19,17 +27,17 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Login />} />
-          <Route path="/dashboard" element={
-            <DashboardLayout>
-              <Dashboard />
-            </DashboardLayout>
-          } />
-          <Route path="/calendar" element={
-            <DashboardLayout>
-              <Calendar />
-            </DashboardLayout>
-          } />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/dashboard" element={<MobileLayout><Dashboard /></MobileLayout>} />
+          <Route path="/calendar" element={<MobileLayout><Calendar /></MobileLayout>} />
+          <Route path="/menu" element={<Menu />} />
+          <Route path="/meu-cadastro" element={<MeuCadastro />} />
+          <Route path="/meetings" element={<Meetings />} />
+          <Route path="/video-calls" element={<VideoCall />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/interested" element={<Interested />} />
+          <Route path="/my-interested" element={<Interested />} />
+          <Route path="/messages" element={<Messages />} />
+          <Route path="/chat" element={<Chat />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
