@@ -15,8 +15,8 @@ const mockInterested = [
     phone: "(11) 99999-1111",
     address: "Rua das Flores, 123",
     status: "new",
-    assignedTo: null,
-    lastContact: null,
+    assignedTo: "",
+    lastContact: "",
     source: "site"
   },
   {
