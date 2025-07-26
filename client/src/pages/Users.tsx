@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { User, Search, Filter, UserPlus, Shield, CheckCircle, XCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -152,12 +153,18 @@ const mockUsers = [
 export default function Users() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [showUserModal, setShowUserModal] = useState(false);
-  const [users, setUsers] = useState(mockUsers);
+
+  // Fetch users from API
+  const { data: users = [], isLoading, error } = useQuery({
+    queryKey: ['/api/users'],
+    queryFn: () => fetch('/api/users').then(res => res.json())
+  });
 
   const filteredUsers = users.filter(u => {
     const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -168,25 +175,37 @@ export default function Users() {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
+  const approveUserMutation = useMutation({
+    mutationFn: (userId: number) => 
+      fetch(`/api/users/${userId}/approve`, { method: 'POST' }).then(res => res.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({
+        title: "Usuário aprovado",
+        description: "O usuário foi aprovado com sucesso.",
+      });
+    }
+  });
+
+  const rejectUserMutation = useMutation({
+    mutationFn: (userId: number) => 
+      fetch(`/api/users/${userId}/reject`, { method: 'POST' }).then(res => res.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({
+        title: "Usuário rejeitado",
+        description: "O usuário foi rejeitado.",
+        variant: "destructive"
+      });
+    }
+  });
+
   const handleApproveUser = (userId: number) => {
-    setUsers(prev => prev.map(u => 
-      u.id === userId ? { ...u, status: 'approved' } : u
-    ));
-    toast({
-      title: "Usuário aprovado",
-      description: "O usuário foi aprovado com sucesso.",
-    });
+    approveUserMutation.mutate(userId);
   };
 
   const handleRejectUser = (userId: number) => {
-    setUsers(prev => prev.map(u => 
-      u.id === userId ? { ...u, status: 'rejected' } : u
-    ));
-    toast({
-      title: "Usuário rejeitado",
-      description: "O usuário foi rejeitado.",
-      variant: "destructive"
-    });
+    rejectUserMutation.mutate(userId);
   };
 
   const handleUserClick = (clickedUser: any) => {
@@ -194,18 +213,63 @@ export default function Users() {
     setShowUserModal(true);
   };
 
+  const updateUserMutation = useMutation({
+    mutationFn: ({ userId, data }: { userId: number, data: any }) => 
+      fetch(`/api/users/${userId}`, { 
+        method: 'PUT', 
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' }
+      }).then(res => res.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({
+        title: "Usuário atualizado",
+        description: "As informações do usuário foram atualizadas com sucesso.",
+      });
+    }
+  });
+
   const handleUpdateUser = (userId: number, data: any) => {
-    setUsers(prev => prev.map(u => 
-      u.id === userId ? { ...u, ...data } : u
-    ));
+    updateUserMutation.mutate({ userId, data });
     setSelectedUser((prev: any) => prev ? { ...prev, ...data } : null);
-    toast({
-      title: "Usuário atualizado",
-      description: "As informações do usuário foram atualizadas com sucesso.",
-    });
   };
 
   const pendingCount = users.filter(u => u.status === 'pending').length;
+
+  if (isLoading) {
+    return (
+      <MobileLayout>
+        <div className="p-4 space-y-4">
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Carregando usuários...</p>
+            </div>
+          </div>
+        </div>
+      </MobileLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <MobileLayout>
+        <div className="p-4 space-y-4">
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <p className="text-destructive">Erro ao carregar usuários</p>
+              <Button 
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/users'] })}
+                className="mt-2"
+              >
+                Tentar novamente
+              </Button>
+            </div>
+          </div>
+        </div>
+      </MobileLayout>
+    );
+  }
 
   return (
     <MobileLayout>
