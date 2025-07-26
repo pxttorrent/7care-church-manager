@@ -358,18 +358,79 @@ export default function Settings() {
           return name && name.toString().trim() !== ''; // Only skip if no name at all
         })
         .map(row => ({
-          name: row.nome || row.Nome || row.name || 'Usuário Importado',
-          email: row.email || row.Email || `${(row.nome || row.Nome || 'usuario').toLowerCase().replace(/\s+/g, '.')}@igreja.com`,
+          name: row.Nome || row.nome || row.name || 'Usuário Importado',
+          email: row.Email || row.email || `${(row.Nome || row.nome || 'usuario').toLowerCase().replace(/\s+/g, '.')}@igreja.com`,
           password: '123456', // Default password
-          role: getRole(row.tipo || row.Tipo || row.role),
-          church: row.igreja || row.Igreja || row.church || 'Igreja Principal',
-          phone: row.celular || row.Celular || row.telefone || row.Telefone || row.phone,
-          address: row.endereco || row.Endereco || row.address,
-          birthDate: row.nascimento || row.Nascimento || row.birthDate || null,
-          baptismDate: row.batismo || row.Batismo || row.baptismDate || null,
-          civilStatus: row.civil || row.estadoCivil || row.civilStatus,
-          occupation: row.profissao || row.Profissao || row.occupation,
-          observations: row.observacoes || row.Observacoes || row.observations
+          role: getRole(row.Tipo || row.tipo || row.role),
+          church: row.Igreja || row.igreja || row.church || 'Igreja Principal',
+          churchCode: row.Código || row.codigo || row.code,
+          phone: row.Celular || row.celular || row.telefone || row.phone,
+          cpf: row.CPF || row.cpf,
+          address: row.Endereço || row.endereco || row.address,
+          birthDate: parseDate(row.Nascimento || row.nascimento || row.birthDate),
+          baptismDate: parseDate(row.Batismo || row.batismo || row.baptismDate),
+          civilStatus: row['Estado civil'] || row.estadoCivil || row.civilStatus,
+          occupation: row.Ocupação || row.ocupacao || row.profissao || row.occupation,
+          education: row['Grau de educação'] || row.educacao || row.education,
+          isDonor: parseBooleanField(row.Dizimista || row.dizimista),
+          isOffering: parseBooleanField(row.Ofertante || row.ofertante),
+          isEnrolledES: parseBooleanField(row['Matriculado na ES'] || row.matriculadoES),
+          hasLesson: parseBooleanField(row['Tem lição'] || row.temLicao),
+          esPeriod: row['Período ES'] || row.periodoES,
+          previousReligion: row['Religião anterior'] || row.religiaoAnterior,
+          biblicalInstructor: row['Instrutor bíblico'] || row.instrutorBiblico,
+          departments: row['Departamentos e cargos'] || row.departamentos,
+          extraData: JSON.stringify({
+            sexo: row.Sexo || row.sexo,
+            idade: row.Idade || row.idade,
+            codigo: row.Código || row.codigo,
+            engajamento: row.Engajamento || row.engajamento,
+            classificacao: row.Classificação || row.classificacao,
+            dizimos12m: row['Dízimos - 12m'] || row.dizimos12m,
+            ultimoDizimo: row['Último dízimo - 12m'] || row.ultimoDizimo,
+            valorDizimo: row['Valor dízimo - 12m'] || row.valorDizimo,
+            ofertas12m: row['Ofertas - 12m'] || row.ofertas12m,
+            ultimaOferta: row['Última oferta - 12m'] || row.ultimaOferta,
+            valorOferta: row['Valor oferta - 12m'] || row.valorOferta,
+            ultimoMovimento: row['Último movimento'] || row.ultimoMovimento,
+            dataUltimoMovimento: row['Data do último movimento'] || row.dataUltimoMovimento,
+            tipoEntrada: row['Tipo de entrada'] || row.tipoEntrada,
+            localidadeBatismo: row['Localidade do batismo'] || row.localidadeBatismo,
+            batizadoPor: row['Batizado por'] || row.batizadoPor,
+            idadeBatismo: row['Idade no Batismo'] || row.idadeBatismo,
+            comoConheceu: row['Como conheceu a IASD'] || row.comoConheceu,
+            fatorDecisivo: row['Fator decisivo'] || row.fatorDecisivo,
+            comoEstudou: row['Como estudou a Bíblia'] || row.comoEstudou,
+            instrutorBiblico2: row['Instrutor bíblico 2'] || row.instrutorBiblico2,
+            temCargo: row['Tem cargo'] || row.temCargo,
+            nomeMae: row['Nome da mãe'] || row.nomeMae,
+            nomePai: row['Nome do pai'] || row.nomePai,
+            bairro: row.Bairro || row.bairro,
+            cidadeEstado: row['Cidade e Estado'] || row.cidadeEstado,
+            cidadeNascimento: row['Cidade de nascimento'] || row.cidadeNascimento,
+            estadoNascimento: row['Estado de nascimento'] || row.estadoNascimento,
+            nomeUnidade: row['Nome da unidade'] || row.nomeUnidade,
+            comunhao: row.Comunhão || row.comunhao,
+            missao: row.Missão || row.missao,
+            estudoBiblico: row['Estudo bíblico'] || row.estudoBiblico,
+            batizouAlguem: row['Batizou alguém'] || row.batizouAlguem,
+            presencaTotal: row['Total presença no cartão'] || row.presencaTotal,
+            presencaQuizLocal: row['Presença no quiz local'] || row.presencaQuizLocal,
+            presencaQuizOnline: row['Presença no quiz online'] || row.presencaQuizOnline,
+            teveParticipacao: row['Teve participação'] || row.teveParticipacao,
+            campoColaborador: row['Campo - colaborador'] || row.campoColaborador,
+            areaColaborador: row['Área - colaborador'] || row.areaColaborador,
+            funcaoColaborador: row['Função - colaborador'] || row.funcaoColaborador,
+            camposVazios: row['Campos vazios/inválidos'] || row.camposVazios,
+            cpfValido: row['CPF válido'] || row.cpfValido,
+            alunoEducacao: row['Aluno educação Adv.'] || row.alunoEducacao,
+            parentesco: row['Parentesco p/ c/ aluno'] || row.parentesco
+          }),
+          observations: [
+            row['Como estudou a Bíblia'] && `Como estudou: ${row['Como estudou a Bíblia']}`,
+            row['Teve participação'] && `Participação: ${row['Teve participação']}`,
+            row['Campos vazios/inválidos'] && `Campos vazios: ${row['Campos vazios/inválidos']}`
+          ].filter(Boolean).join(' | ') || null
         }));
 
       const response = await fetch('/api/users/bulk-import', {
@@ -418,6 +479,27 @@ export default function Settings() {
     if (tipoLower.includes('mission') || tipoLower.includes('diácon')) return 'missionary';
     if (tipoLower.includes('interest') || tipoLower.includes('visit')) return 'interested';
     return 'member';
+  };
+
+  const parseDate = (dateValue: any): Date | null => {
+    if (!dateValue) return null;
+    try {
+      const dateStr = dateValue.toString();
+      if (dateStr.includes('/')) {
+        const [day, month, year] = dateStr.split('/');
+        return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      }
+      const date = new Date(dateValue);
+      return isNaN(date.getTime()) ? null : date;
+    } catch {
+      return null;
+    }
+  };
+
+  const parseBooleanField = (value: any): boolean => {
+    if (!value) return false;
+    const str = value.toString().toLowerCase();
+    return str === 'sim' || str === 'true' || str === '1' || str === 'yes';
   };
 
   return (
@@ -1014,9 +1096,9 @@ export default function Settings() {
                 <Alert>
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
-                    <strong>Colunas esperadas:</strong> Igreja, Nome, Código, Tipo, Sexo, Idade, Nascimento, Engajamento, Classificação, Dizimista, Email, Celular, etc.
+                    <strong>Colunas reconhecidas:</strong> Igreja, Nome, Código, Tipo, Sexo, Idade, Nascimento, Engajamento, Classificação, Dizimista, Ofertante, Email, Celular, CPF, Estado civil, Ocupação, Grau de educação, Batismo, Religião anterior, Instrutor bíblico, Departamentos e cargos, Nome da mãe/pai, Bairro, Endereço, Matriculado na ES, Tem lição, e muitos outros campos específicos da IASD.
                     <br />
-                    <strong>Formatos de dados:</strong> Telefone (+5511999999999), Email (válido), Data (DD/MM/AAAA)
+                    <strong>Formatos aceitos:</strong> Telefone (qualquer formato), Email (com @), Datas (DD/MM/AAAA ou outros formatos), Valores Sim/Não para campos booleanos
                   </AlertDescription>
                 </Alert>
               </div>
@@ -1037,24 +1119,26 @@ export default function Settings() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Nome</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Telefone</TableHead>
-                        <TableHead>Tipo</TableHead>
                         <TableHead>Igreja</TableHead>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Celular</TableHead>
                         <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {importData.slice(0, 5).map((row, index) => (
                         <TableRow key={index}>
-                          <TableCell>{row.nome || 'N/A'}</TableCell>
-                          <TableCell>{row.email || 'N/A'}</TableCell>
-                          <TableCell>{row.celular || 'N/A'}</TableCell>
-                          <TableCell>{row.tipo || 'N/A'}</TableCell>
-                          <TableCell>{row.igreja || 'N/A'}</TableCell>
+                          <TableCell>{row.Nome || row.nome || 'N/A'}</TableCell>
+                          <TableCell>{row.Igreja || row.igreja || 'N/A'}</TableCell>
+                          <TableCell>{row.Código || row.codigo || 'N/A'}</TableCell>
+                          <TableCell>{row.Tipo || row.tipo || 'N/A'}</TableCell>
+                          <TableCell>{row.Email || row.email || 'N/A'}</TableCell>
+                          <TableCell>{row.Celular || row.celular || 'N/A'}</TableCell>
                           <TableCell>
-                            <Badge variant={row.valid ? 'secondary' : 'destructive'}>
-                              {row.valid ? 'Válido' : 'Erro'}
+                            <Badge variant={row.valid !== false ? 'secondary' : 'destructive'}>
+                              {row.valid !== false ? 'Válido' : 'Erro'}
                             </Badge>
                           </TableCell>
                         </TableRow>
