@@ -23,7 +23,7 @@ interface CalendarEvent {
   time: string;
   duration: number;
   location?: string;
-  type: 'culto' | 'escola-sabatina' | 'jovens' | 'deaconato' | 'reuniao' | 'estudo' | 'outro';
+  type: 'estudos' | 'reunioes' | 'visitas' | 'oracao' | 'chamadas' | 'cultos' | 'igreja-local' | 'asr-geral' | 'asr-administrativo' | 'regional-distrital';
   attendees?: number;
   maxAttendees?: number;
   status: 'scheduled' | 'confirmed' | 'cancelled';
@@ -40,7 +40,7 @@ const mockEvents: CalendarEvent[] = [
     time: "09:00",
     duration: 120,
     location: "Igreja Central - Auditório Principal",
-    type: "culto",
+    type: "cultos",
     attendees: 85,
     maxAttendees: 120,
     status: "confirmed",
@@ -49,13 +49,13 @@ const mockEvents: CalendarEvent[] = [
   },
   {
     id: 2,
-    title: "Escola Sabatina",
+    title: "Estudo Bíblico",
     description: "Estudo da lição",
     date: "2025-01-26",
     time: "08:00",
     duration: 60,
     location: "Igreja Central - Sala 1",
-    type: "escola-sabatina",
+    type: "estudos",
     attendees: 45,
     maxAttendees: 60,
     status: "confirmed",
@@ -64,105 +64,108 @@ const mockEvents: CalendarEvent[] = [
   },
   {
     id: 3,
-    title: "Reunião de Jovens",
+    title: "Reunião da Diretoria",
     date: "2025-01-27",
     time: "19:00",
     duration: 90,
-    location: "Igreja Central - Sala dos Jovens",
-    type: "jovens",
-    attendees: 25,
-    maxAttendees: 40,
+    location: "Igreja Central - Sala de Reuniões",
+    type: "reunioes",
+    attendees: 8,
+    maxAttendees: 12,
     status: "scheduled",
     organizer: "Carlos Oliveira"
   },
   {
     id: 4,
-    title: "Estudo Bíblico",
+    title: "Visita Missionária",
     date: "2025-01-28",
-    time: "19:30",
+    time: "14:30",
     duration: 60,
-    location: "Casa da Família Silva",
-    type: "estudo",
-    attendees: 8,
-    maxAttendees: 12,
+    location: "Residência da Família Silva",
+    type: "visitas",
+    attendees: 3,
+    maxAttendees: 5,
     status: "confirmed",
     organizer: "Ana Costa"
   },
   {
     id: 5,
-    title: "Reunião do Deaconato",
+    title: "Círculo de Oração",
     date: "2025-01-29",
     time: "20:00",
-    duration: 90,
-    location: "Igreja Central - Sala de Reuniões",
-    type: "deaconato",
-    attendees: 6,
-    maxAttendees: 8,
+    duration: 60,
+    location: "Igreja Central - Capela",
+    type: "oracao",
+    attendees: 15,
+    maxAttendees: 20,
     status: "scheduled",
     organizer: "Pedro Almeida"
   },
   {
     id: 6,
-    title: "Culto da Manhã",
-    date: "2025-02-02",
-    time: "09:00",
-    duration: 120,
-    location: "Igreja Central - Auditório Principal",
-    type: "culto",
-    attendees: 90,
-    maxAttendees: 120,
+    title: "ASR Geral",
+    date: "2025-02-01",
+    time: "10:00",
+    duration: 180,
+    location: "Igreja Central - Auditório",
+    type: "asr-geral",
+    attendees: 120,
+    maxAttendees: 150,
     status: "confirmed",
-    isRecurring: true,
-    organizer: "Pastor João Silva"
-  },
-  {
-    id: 7,
-    title: "Escola Sabatina",
-    date: "2025-02-02",
-    time: "08:00",
-    duration: 60,
-    location: "Igreja Central - Sala 1",
-    type: "escola-sabatina",
-    attendees: 50,
-    maxAttendees: 60,
-    status: "confirmed",
-    isRecurring: true,
-    organizer: "Maria Santos"
+    organizer: "Administração Regional"
   }
 ];
 
 const eventTypeColors = {
-  culto: "bg-purple-100 text-purple-800 border-purple-200",
-  "escola-sabatina": "bg-blue-100 text-blue-800 border-blue-200",
-  jovens: "bg-green-100 text-green-800 border-green-200",
-  deaconato: "bg-orange-100 text-orange-800 border-orange-200",
-  reuniao: "bg-gray-100 text-gray-800 border-gray-200",
-  estudo: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  outro: "bg-pink-100 text-pink-800 border-pink-200"
+  estudos: "bg-blue-100 text-blue-800 border-blue-200",
+  reunioes: "bg-green-100 text-green-800 border-green-200",
+  visitas: "bg-purple-100 text-purple-800 border-purple-200",
+  oracao: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  chamadas: "bg-pink-100 text-pink-800 border-pink-200",
+  cultos: "bg-indigo-100 text-indigo-800 border-indigo-200",
+  "igreja-local": "bg-red-100 text-red-800 border-red-200",
+  "asr-geral": "bg-orange-100 text-orange-800 border-orange-200",
+  "asr-administrativo": "bg-teal-100 text-teal-800 border-teal-200",
+  "regional-distrital": "bg-gray-100 text-gray-800 border-gray-200"
 };
 
 const eventTypeLabels = {
-  culto: "Culto",
-  "escola-sabatina": "Escola Sabatina",
-  jovens: "Jovens",
-  deaconato: "Deaconato",
-  reuniao: "Reunião",
-  estudo: "Estudo Bíblico",
-  outro: "Outro"
+  estudos: "Estudos",
+  reunioes: "Reuniões",
+  visitas: "Visitas",
+  oracao: "Oração",
+  chamadas: "Chamadas",
+  cultos: "Cultos",
+  "igreja-local": "Igreja Local",
+  "asr-geral": "ASR Geral",
+  "asr-administrativo": "ASR Administrativo",
+  "regional-distrital": "Regional/Distrital"
 };
 
 interface MonthlyCalendarViewProps {
   onEventClick?: (event: CalendarEvent) => void;
   onNewEvent?: () => void;
   onDateClick?: (date: string) => void;
+  activeFilters?: string[];
+  eventTypes?: Array<{ id: string; label: string; color: string }>;
 }
 
-export function MonthlyCalendarView({ onEventClick, onNewEvent, onDateClick }: MonthlyCalendarViewProps) {
+export function MonthlyCalendarView({ 
+  onEventClick, 
+  onNewEvent, 
+  onDateClick, 
+  activeFilters = [],
+  eventTypes = [] 
+}: MonthlyCalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const filteredEvents = mockEvents.filter(event => {
+    // Use activeFilters from props if provided, otherwise fall back to selectedFilter
+    if (activeFilters.length > 0) {
+      return activeFilters.includes(event.type);
+    }
     if (selectedFilter === 'all') return true;
     return event.type === selectedFilter;
   });

@@ -26,7 +26,7 @@ interface CalendarEvent {
   time: string;
   duration: number;
   location?: string;
-  type: 'culto' | 'escola-sabatina' | 'jovens' | 'deaconato' | 'reuniao' | 'estudo' | 'outro';
+  type: 'estudos' | 'reunioes' | 'visitas' | 'oracao' | 'chamadas' | 'cultos' | 'igreja-local' | 'asr-geral' | 'asr-administrativo' | 'regional-distrital';
   attendees?: number;
   maxAttendees?: number;
   status: 'scheduled' | 'confirmed' | 'cancelled';
@@ -41,16 +41,20 @@ interface EventModalProps {
   onSave: (eventData: Partial<CalendarEvent>) => void;
   onDelete?: (eventId: number) => void;
   isEditing?: boolean;
+  eventTypes?: Array<{ id: string; label: string; color: string }>;
 }
 
-const eventTypes = [
-  { value: 'culto', label: 'Culto' },
-  { value: 'escola-sabatina', label: 'Escola Sabatina' },
-  { value: 'jovens', label: 'Jovens' },
-  { value: 'deaconato', label: 'Deaconato' },
-  { value: 'reuniao', label: 'Reunião' },
-  { value: 'estudo', label: 'Estudo Bíblico' },
-  { value: 'outro', label: 'Outro' }
+const defaultEventTypes = [
+  { value: 'estudos', label: 'Estudos' },
+  { value: 'reunioes', label: 'Reuniões' },
+  { value: 'visitas', label: 'Visitas' },
+  { value: 'oracao', label: 'Oração' },
+  { value: 'chamadas', label: 'Chamadas' },
+  { value: 'cultos', label: 'Cultos' },
+  { value: 'igreja-local', label: 'Igreja Local' },
+  { value: 'asr-geral', label: 'ASR Geral' },
+  { value: 'asr-administrativo', label: 'ASR Administrativo' },
+  { value: 'regional-distrital', label: 'Regional/Distrital' }
 ];
 
 const statusOptions = [
@@ -65,8 +69,12 @@ export const EventModal = ({
   onClose, 
   onSave, 
   onDelete, 
-  isEditing: initialEditing = false 
+  isEditing: initialEditing = false,
+  eventTypes: propEventTypes
 }: EventModalProps) => {
+  const eventTypeOptions = propEventTypes ? 
+    propEventTypes.map(t => ({ value: t.id, label: t.label })) : 
+    defaultEventTypes;
   const [isEditing, setIsEditing] = useState(initialEditing || !event);
   const [formData, setFormData] = useState<Partial<CalendarEvent>>(event || {
     title: '',
