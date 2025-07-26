@@ -125,44 +125,25 @@ export default function Settings() {
   const [lastImportDate, setLastImportDate] = useState<string | null>('2025-01-20T14:30:00Z');
 
   // Church management states
-  const [showChurchModal, setShowChurchModal] = useState(false);
-  const [selectedChurch, setSelectedChurch] = useState<any | null>(null);
+  const [editingChurch, setEditingChurch] = useState<number | null>(null);
   const [churchesList, setChurchesList] = useState([
     {
       id: 1,
       name: 'Igreja Adventista Central',
       address: 'Rua das Flores, 123 - Centro',
-      phone: '(11) 3333-4444',
-      email: 'contato@igrejacentral.org',
-      website: 'www.igrejacentral.org',
-      memberCount: 245,
-      active: true,
-      pastor: 'Pastor João Silva',
-      meetingDays: ['saturday', 'wednesday']
+      active: true
     },
     {
       id: 2,
       name: 'Igreja Adventista Norte',
       address: 'Av. Brasil, 456 - Zona Norte',
-      phone: '(11) 2222-3333',
-      email: 'contato@igrejanorte.org',
-      website: 'www.igrejanorte.org',
-      memberCount: 180,
-      active: true,
-      pastor: 'Pastor Carlos Santos',
-      meetingDays: ['saturday', 'wednesday']
+      active: true
     },
     {
       id: 3,
       name: 'Igreja Adventista Sul',
       address: 'Rua da Paz, 789 - Zona Sul',
-      phone: '(11) 1111-2222',
-      email: 'contato@igrejasul.org',
-      website: 'www.igrejasul.org',
-      memberCount: 95,
-      active: false,
-      pastor: 'Pastor Ana Costa',
-      meetingDays: ['saturday']
+      active: false
     }
   ]);
 
@@ -219,35 +200,27 @@ export default function Settings() {
     });
   };
 
-  const handleChurchSave = (churchData: any) => {
-    if (selectedChurch) {
-      // Edit existing church
-      setChurchesList(prev => prev.map(church => 
-        church.id === selectedChurch.id 
-          ? { ...church, ...churchData }
-          : church
-      ));
-      toast({
-        title: "Igreja atualizada",
-        description: "As informações da igreja foram atualizadas com sucesso.",
-      });
-    } else {
-      // Add new church
-      const newChurch = {
-        id: Date.now(),
-        ...churchData,
-        memberCount: 0,
-        active: true
-      };
-      setChurchesList(prev => [...prev, newChurch]);
-      toast({
-        title: "Igreja adicionada",
-        description: "Nova igreja foi cadastrada com sucesso.",
-      });
-    }
-    
-    setShowChurchModal(false);
-    setSelectedChurch(null);
+  const addNewChurch = () => {
+    const newChurch = {
+      id: Date.now(),
+      name: 'Nova Igreja',
+      address: 'Endereço da igreja',
+      active: true
+    };
+    setChurchesList(prev => [...prev, newChurch]);
+    setEditingChurch(newChurch.id);
+    toast({
+      title: "Igreja adicionada",
+      description: "Nova igreja foi criada. Clique nos campos para editar.",
+    });
+  };
+
+  const updateChurchField = (churchId: number, field: string, value: string) => {
+    setChurchesList(prev => prev.map(church => 
+      church.id === churchId 
+        ? { ...church, [field]: value }
+        : church
+    ));
   };
 
   const deleteChurch = (churchId: number, churchName: string) => {
@@ -552,130 +525,144 @@ export default function Settings() {
             <TabsContent value="church" className="space-y-4">
               <Card>
                 <CardHeader>
-                  <div className="space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <div>
-                        <CardTitle className="flex items-center gap-2">
-                          <Globe className="h-5 w-5" />
-                          Gestão de Igrejas
-                        </CardTitle>
-                        <CardDescription>
-                          Gerencie todas as igrejas do sistema
-                        </CardDescription>
-                      </div>
-                      <Button
-                        onClick={() => setShowChurchModal(true)}
-                        data-testid="add-church-button"
-                        className="w-full sm:w-auto"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Nova Igreja
-                      </Button>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Globe className="h-5 w-5" />
+                        Gestão de Igrejas
+                      </CardTitle>
+                      <CardDescription>
+                        Clique nos campos para editar diretamente
+                      </CardDescription>
                     </div>
+                    <Button
+                      onClick={addNewChurch}
+                      data-testid="add-church-button"
+                      className="w-full sm:w-auto"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Nova Igreja
+                    </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Lista de Igrejas */}
-                  <div className="space-y-3">
+                <CardContent>
+                  {/* Tabela Responsiva */}
+                  <div className="space-y-2">
+                    {/* Header da Tabela - Apenas em Desktop */}
+                    <div className="hidden sm:grid sm:grid-cols-12 gap-2 px-3 py-2 bg-muted/50 rounded-lg text-sm font-medium">
+                      <div className="col-span-4">Nome da Igreja</div>
+                      <div className="col-span-5">Endereço</div>
+                      <div className="col-span-1 text-center">Status</div>
+                      <div className="col-span-2 text-center">Ações</div>
+                    </div>
+
+                    {/* Lista de Igrejas */}
                     {churchesList.map((church) => (
-                      <Card key={church.id} className={`p-4 ${!church.active ? 'opacity-60' : ''}`}>
-                        <div className="space-y-3">
-                          {/* Header da Igreja */}
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h3 className="font-semibold text-lg truncate">{church.name}</h3>
-                                <Badge variant={church.active ? 'secondary' : 'destructive'} className="shrink-0">
-                                  {church.active ? 'Ativa' : 'Inativa'}
-                                </Badge>
-                              </div>
-                              <p className="text-sm text-muted-foreground line-clamp-1">{church.address}</p>
+                      <div key={church.id} className="border rounded-lg p-3 hover:bg-muted/20 transition-colors">
+                        {/* Layout Mobile */}
+                        <div className="sm:hidden space-y-3">
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="text-sm font-medium text-muted-foreground">Nome:</label>
+                              <Badge variant={church.active ? 'secondary' : 'destructive'}>
+                                {church.active ? 'Ativa' : 'Inativa'}
+                              </Badge>
                             </div>
+                            <EditableField
+                              value={church.name}
+                              onSave={(value) => updateChurchField(church.id, 'name', value)}
+                              className="font-medium"
+                              data-testid={`church-name-${church.id}`}
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-muted-foreground">Endereço:</label>
+                            <EditableField
+                              value={church.address}
+                              onSave={(value) => updateChurchField(church.id, 'address', value)}
+                              className="text-sm"
+                              data-testid={`church-address-${church.id}`}
+                            />
                           </div>
 
-                          {/* Informações de Contato */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Phone className="h-3 w-3 shrink-0" />
-                              <span className="truncate">{church.phone}</span>
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Mail className="h-3 w-3 shrink-0" />
-                              <span className="truncate">{church.email}</span>
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <User className="h-3 w-3 shrink-0" />
-                              <span>{church.memberCount} membros</span>
-                            </span>
-                          </div>
-
-                          {/* Botões de Ação */}
-                          <div className="flex flex-wrap gap-2 pt-2 border-t">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedChurch(church);
-                                setShowChurchModal(true);
-                              }}
-                              data-testid={`edit-church-${church.id}`}
-                              className="flex-1 sm:flex-none"
-                            >
-                              <SettingsIcon className="h-4 w-4 mr-2" />
-                              Editar
-                            </Button>
-                            
+                          <div className="flex gap-2 pt-2">
                             <Button
                               variant={church.active ? 'secondary' : 'default'}
                               size="sm"
                               onClick={() => toggleChurchStatus(church.id)}
+                              className="flex-1"
                               data-testid={`toggle-church-${church.id}`}
-                              className="flex-1 sm:flex-none"
                             >
-                              {church.active ? (
-                                <>
-                                  <EyeOff className="h-4 w-4 mr-2" />
-                                  Desativar
-                                </>
-                              ) : (
-                                <>
-                                  <Eye className="h-4 w-4 mr-2" />
-                                  Ativar
-                                </>
-                              )}
+                              {church.active ? 'Desativar' : 'Ativar'}
                             </Button>
-
                             <Button
                               variant="destructive"
                               size="sm"
                               onClick={() => deleteChurch(church.id, church.name)}
                               data-testid={`delete-church-${church.id}`}
-                              className="sm:w-auto"
                             >
-                              <Trash2 className="h-4 w-4 sm:mr-2" />
-                              <span className="hidden sm:inline">Excluir</span>
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </div>
-                      </Card>
-                    ))}
-                  </div>
 
-                  {churchesList.length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Globe className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p className="text-lg font-medium">Nenhuma igreja cadastrada</p>
-                      <p className="text-sm">Adicione a primeira igreja do sistema</p>
-                      <Button
-                        className="mt-4"
-                        onClick={() => setShowChurchModal(true)}
-                        data-testid="add-first-church"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Cadastrar Igreja
-                      </Button>
-                    </div>
-                  )}
+                        {/* Layout Desktop */}
+                        <div className="hidden sm:grid sm:grid-cols-12 gap-2 items-center">
+                          <div className="col-span-4">
+                            <EditableField
+                              value={church.name}
+                              onSave={(value) => updateChurchField(church.id, 'name', value)}
+                              className="font-medium"
+                              data-testid={`church-name-${church.id}`}
+                            />
+                          </div>
+                          
+                          <div className="col-span-5">
+                            <EditableField
+                              value={church.address}
+                              onSave={(value) => updateChurchField(church.id, 'address', value)}
+                              className="text-sm"
+                              data-testid={`church-address-${church.id}`}
+                            />
+                          </div>
+                          
+                          <div className="col-span-1 flex justify-center">
+                            <Badge variant={church.active ? 'secondary' : 'destructive'}>
+                              {church.active ? 'Ativa' : 'Inativa'}
+                            </Badge>
+                          </div>
+                          
+                          <div className="col-span-2 flex gap-1 justify-center">
+                            <Button
+                              variant={church.active ? 'secondary' : 'default'}
+                              size="sm"
+                              onClick={() => toggleChurchStatus(church.id)}
+                              data-testid={`toggle-church-${church.id}`}
+                            >
+                              {church.active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => deleteChurch(church.id, church.name)}
+                              data-testid={`delete-church-${church.id}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {churchesList.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Globe className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg font-medium">Nenhuma igreja cadastrada</p>
+                        <p className="text-sm">Adicione a primeira igreja do sistema</p>
+                      </div>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -1111,171 +1098,68 @@ export default function Settings() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Gestão de Igreja */}
-      <Dialog open={showChurchModal} onOpenChange={setShowChurchModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Globe className="h-5 w-5" />
-              {selectedChurch ? 'Editar Igreja' : 'Nova Igreja'}
-            </DialogTitle>
-            <DialogDescription>
-              {selectedChurch ? 'Atualize as informações da igreja' : 'Cadastre uma nova igreja no sistema'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <ChurchForm 
-            church={selectedChurch}
-            onSave={handleChurchSave}
-            onCancel={() => {
-              setShowChurchModal(false);
-              setSelectedChurch(null);
-            }}
-          />
-        </DialogContent>
-      </Dialog>
     </MobileLayout>
   );
 
-  // Church Form Component
-  function ChurchForm({ church, onSave, onCancel }: { 
-    church: any; 
-    onSave: (data: any) => void; 
-    onCancel: () => void;
+  // Componente de Campo Editável Inline
+  function EditableField({ 
+    value, 
+    onSave, 
+    className = "", 
+    ...props 
+  }: { 
+    value: string; 
+    onSave: (value: string) => void; 
+    className?: string;
+    [key: string]: any;
   }) {
-    const [formData, setFormData] = useState({
-      name: church?.name || '',
-      address: church?.address || '',
-      phone: church?.phone || '',
-      email: church?.email || '',
-      website: church?.website || '',
-      pastor: church?.pastor || '',
-      meetingDays: church?.meetingDays || ['saturday']
-    });
+    const [isEditing, setIsEditing] = useState(false);
+    const [editValue, setEditValue] = useState(value);
 
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      onSave(formData);
+    const handleSave = () => {
+      if (editValue.trim() !== value) {
+        onSave(editValue.trim());
+      }
+      setIsEditing(false);
     };
 
-    const updateFormData = (field: string, value: any) => {
-      setFormData(prev => ({ ...prev, [field]: value }));
+    const handleCancel = () => {
+      setEditValue(value);
+      setIsEditing(false);
     };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        handleSave();
+      } else if (e.key === 'Escape') {
+        handleCancel();
+      }
+    };
+
+    if (isEditing) {
+      return (
+        <div className="flex gap-1">
+          <Input
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={handleSave}
+            autoFocus
+            className="h-8 text-sm"
+            {...props}
+          />
+        </div>
+      );
+    }
 
     return (
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="church-name">Nome da Igreja *</Label>
-            <Input
-              id="church-name"
-              value={formData.name}
-              onChange={(e) => updateFormData('name', e.target.value)}
-              required
-              data-testid="input-church-name"
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="church-pastor">Pastor Responsável</Label>
-            <Input
-              id="church-pastor"
-              value={formData.pastor}
-              onChange={(e) => updateFormData('pastor', e.target.value)}
-              data-testid="input-church-pastor"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="church-address">Endereço Completo *</Label>
-          <Input
-            id="church-address"
-            value={formData.address}
-            onChange={(e) => updateFormData('address', e.target.value)}
-            required
-            data-testid="input-church-address"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="church-phone">Telefone *</Label>
-            <Input
-              id="church-phone"
-              value={formData.phone}
-              onChange={(e) => updateFormData('phone', e.target.value)}
-              placeholder="(11) 99999-9999"
-              required
-              data-testid="input-church-phone"
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="church-email">Email *</Label>
-            <Input
-              id="church-email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => updateFormData('email', e.target.value)}
-              required
-              data-testid="input-church-email"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="church-website">Website</Label>
-          <Input
-            id="church-website"
-            value={formData.website}
-            onChange={(e) => updateFormData('website', e.target.value)}
-            placeholder="www.igrejaxyz.org"
-            data-testid="input-church-website"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label>Dias de Reunião</Label>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { value: 'sunday', label: 'Domingo' },
-              { value: 'monday', label: 'Segunda' },
-              { value: 'tuesday', label: 'Terça' },
-              { value: 'wednesday', label: 'Quarta' },
-              { value: 'thursday', label: 'Quinta' },
-              { value: 'friday', label: 'Sexta' },
-              { value: 'saturday', label: 'Sábado' }
-            ].map((day) => (
-              <Button
-                key={day.value}
-                type="button"
-                variant={formData.meetingDays.includes(day.value) ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  const newDays = formData.meetingDays.includes(day.value)
-                    ? formData.meetingDays.filter(d => d !== day.value)
-                    : [...formData.meetingDays, day.value];
-                  updateFormData('meetingDays', newDays);
-                }}
-                data-testid={`day-${day.value}`}
-              >
-                {day.label}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-2 pt-4">
-          <Button type="submit" className="flex-1" data-testid="save-church">
-            <Save className="h-4 w-4 mr-2" />
-            {church ? 'Atualizar Igreja' : 'Cadastrar Igreja'}
-          </Button>
-          <Button type="button" variant="outline" onClick={onCancel} data-testid="cancel-church" className="sm:w-auto">
-            Cancelar
-          </Button>
-        </div>
-      </form>
+      <div
+        onClick={() => setIsEditing(true)}
+        className={`p-1 rounded cursor-text hover:bg-muted/50 transition-colors min-h-[32px] flex items-center ${className}`}
+        {...props}
+      >
+        {value || 'Clique para editar'}
+      </div>
     );
   }
 
