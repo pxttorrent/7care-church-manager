@@ -15,6 +15,10 @@ export interface IStorage {
   getUsersByRole(role: string): Promise<User[]>;
   approveUser(id: number): Promise<User | null>;
   bulkCreateUsers(users: InsertUser[]): Promise<User[]>;
+  
+  // Churches
+  getOrCreateChurch(name: string): Promise<{ id: number; name: string }>;
+  getAllChurches(): Promise<Array<{ id: number; name: string; address?: string; isActive: boolean }>>;
 
   // Relationships (Missionary-Interested)
   createRelationship(data: InsertRelationship): Promise<Relationship>;
@@ -90,6 +94,10 @@ class MemoryStorage implements IStorage {
   private nextNotificationId = 1;
   private nextPointActivityId = 1;
   private nextAchievementId = 1;
+  
+  // Churches storage
+  private churches: Array<{ id: number; name: string; address?: string; isActive: boolean }> = [];
+  private nextChurchId = 1;
 
   constructor() {
     this.initializeDefaultData();
@@ -129,6 +137,14 @@ class MemoryStorage implements IStorage {
       { id: 4, name: "Missionário Ativo", description: "Realizou 20 visitas pastorais", icon: "Users", requiredPoints: 500, requiredConditions: null, badgeColor: "#8b5cf6", isActive: true }
     ];
     this.nextAchievementId = 5;
+    
+    // Initialize default churches
+    this.churches = [
+      { id: 1, name: "Igreja Central", address: "Rua Principal, 123", isActive: true },
+      { id: 2, name: "Igreja Norte", address: "Av. Norte, 456", isActive: true },
+      { id: 3, name: "Igreja Sul", address: "Rua Sul, 789", isActive: true }
+    ];
+    this.nextChurchId = 4;
   }
 
   // Users
@@ -230,6 +246,37 @@ class MemoryStorage implements IStorage {
     }
     
     return createdUsers;
+  }
+  
+  async getOrCreateChurch(name: string): Promise<{ id: number; name: string }> {
+    if (!name || name.trim() === '') {
+      throw new Error('Nome da igreja é obrigatório');
+    }
+    
+    // Try to find existing church (case insensitive)
+    const existingChurch = this.churches.find(
+      church => church.name.toLowerCase().trim() === name.toLowerCase().trim()
+    );
+    
+    if (existingChurch) {
+      return { id: existingChurch.id, name: existingChurch.name };
+    }
+    
+    // Create new church if not found
+    const newChurch = {
+      id: this.nextChurchId++,
+      name: name.trim(),
+      address: null,
+      isActive: true
+    };
+    
+    this.churches.push(newChurch);
+    console.log(`Nova igreja criada automaticamente: ${newChurch.name} (ID: ${newChurch.id})`);
+    return { id: newChurch.id, name: newChurch.name };
+  }
+  
+  async getAllChurches(): Promise<Array<{ id: number; name: string; address?: string; isActive: boolean }>> {
+    return [...this.churches];
   }
 
   // Relationships

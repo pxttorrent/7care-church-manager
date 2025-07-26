@@ -18,13 +18,16 @@ Preferred communication style: Simple, everyday language.
 - Analytics dashboard with metrics, charts, insights, and performance tracking
 - Video calling interface with participant management, controls, and meeting features
 - First access tutorial system integrated with login flow
+- Sistema de importação robusto com cadastro automático de igrejas
+- Processamento em lotes de arquivos grandes (50MB) com mapeamento IASD completo
 
 ### → Current Status
-- Core functionality approximately 80-85% complete
+- Core functionality approximately 90-95% complete
 - All major systems implemented and functional
 - UI/UX polished with shadcn/ui components
 - Mobile-first responsive design maintained
 - Data integrity maintained with proper validation
+- Cadastro automático de igrejas durante importação implementado
 
 ## System Architecture
 

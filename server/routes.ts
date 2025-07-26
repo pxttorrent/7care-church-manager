@@ -262,6 +262,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (userData.phone) {
             userData.phone = userData.phone.toString().replace(/[^0-9+]/g, '');
           }
+          
+          // Auto-create churches if they don't exist
+          if (userData.church && userData.church.trim() !== '') {
+            try {
+              const churchResult = await storage.getOrCreateChurch(userData.church);
+              userData.church = churchResult.name;
+              console.log(`Igreja processada: ${churchResult.name}`);
+            } catch (error) {
+              console.error(`Erro ao processar igreja "${userData.church}":`, error);
+              // Continue with original church name if error
+            }
+          }
 
           // Parse dates safely
           if (userData.birthDate && typeof userData.birthDate === 'string') {
@@ -321,6 +333,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(meetingTypes);
     } catch (error) {
       console.error("Get meeting types error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Churches endpoints
+  app.get("/api/churches", async (req, res) => {
+    try {
+      const churches = await storage.getAllChurches();
+      res.json(churches);
+    } catch (error) {
+      console.error("Get churches error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
