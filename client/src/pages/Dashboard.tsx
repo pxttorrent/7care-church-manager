@@ -27,12 +27,18 @@ const Dashboard = () => {
     member: {
       nextEvents: 3,
       unreadMessages: 2,
-      completedActivities: 7
+      completedActivities: 7,
+      points: 450,
+      level: 3,
+      nextLevelPoints: 500
     },
     interested: {
       nextStudy: "Quarta-feira, 19h",
       completedLessons: 3,
-      nextMeeting: "Amanhã"
+      nextMeeting: "Amanhã",
+      points: 85,
+      level: 1,
+      nextLevelPoints: 100
     }
   };
 
@@ -151,63 +157,159 @@ const Dashboard = () => {
   );
 
   const renderMemberDashboard = () => (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <Card className="shadow-divine">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Próximos Eventos</CardTitle>
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{dashboardData.member.nextEvents}</div>
-          <p className="text-xs text-muted-foreground">Esta semana</p>
-        </CardContent>
-      </Card>
-      
-      <Card className="shadow-divine">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Mensagens</CardTitle>
-          <MessageSquare className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{dashboardData.member.unreadMessages}</div>
-          <p className="text-xs text-muted-foreground">Não lidas</p>
+    <div className="space-y-6">
+      {/* Points Progress Card */}
+      <Card className="shadow-divine bg-gradient-to-r from-primary/10 to-primary/5">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center">
+                <span className="text-white font-bold text-lg">
+                  {dashboardData.member.level}
+                </span>
+              </div>
+              <div>
+                <div className="font-semibold text-lg">Nível {dashboardData.member.level}</div>
+                <div className="text-sm text-muted-foreground">
+                  {dashboardData.member.points} pontos totais
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm text-muted-foreground">Próximo nível</div>
+              <div className="text-lg font-semibold text-primary">
+                {dashboardData.member.nextLevelPoints} pts
+              </div>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Progresso do Nível</span>
+              <span>{dashboardData.member.points}/{dashboardData.member.nextLevelPoints}</span>
+            </div>
+            <div className="bg-muted rounded-full h-3">
+              <div 
+                className="bg-primary h-3 rounded-full transition-all duration-500"
+                style={{ 
+                  width: `${(dashboardData.member.points / dashboardData.member.nextLevelPoints) * 100}%` 
+                }}
+              />
+            </div>
+            <div className="text-xs text-muted-foreground text-center">
+              Faltam {dashboardData.member.nextLevelPoints - dashboardData.member.points} pontos para o próximo nível
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      <Card className="shadow-divine">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Atividades</CardTitle>
-          <BarChart3 className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{dashboardData.member.completedActivities}</div>
-          <p className="text-xs text-muted-foreground">Concluídas este mês</p>
-        </CardContent>
-      </Card>
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="shadow-divine">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Próximos Eventos</CardTitle>
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{dashboardData.member.nextEvents}</div>
+            <p className="text-xs text-muted-foreground">Esta semana</p>
+          </CardContent>
+        </Card>
+        
+        <Card className="shadow-divine">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Mensagens</CardTitle>
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{dashboardData.member.unreadMessages}</div>
+            <p className="text-xs text-muted-foreground">Não lidas</p>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-divine">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Atividades</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{dashboardData.member.completedActivities}</div>
+            <p className="text-xs text-muted-foreground">Concluídas este mês</p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 
   const renderInterestedDashboard = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <Card className="shadow-divine">
-        <CardHeader>
-          <CardTitle className="text-lg">Próximo Estudo</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-xl font-semibold text-primary">{dashboardData.interested.nextStudy}</div>
-          <p className="text-sm text-muted-foreground mt-2">Estudo bíblico em grupo</p>
+    <div className="space-y-6">
+      {/* Points Progress Card */}
+      <Card className="shadow-divine bg-gradient-to-r from-primary/10 to-primary/5">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center">
+                <span className="text-white font-bold text-lg">
+                  {dashboardData.interested.level}
+                </span>
+              </div>
+              <div>
+                <div className="font-semibold text-lg">Nível {dashboardData.interested.level}</div>
+                <div className="text-sm text-muted-foreground">
+                  {dashboardData.interested.points} pontos totais
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm text-muted-foreground">Próximo nível</div>
+              <div className="text-lg font-semibold text-primary">
+                {dashboardData.interested.nextLevelPoints} pts
+              </div>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Progresso do Nível</span>
+              <span>{dashboardData.interested.points}/{dashboardData.interested.nextLevelPoints}</span>
+            </div>
+            <div className="bg-muted rounded-full h-3">
+              <div 
+                className="bg-primary h-3 rounded-full transition-all duration-500"
+                style={{ 
+                  width: `${(dashboardData.interested.points / dashboardData.interested.nextLevelPoints) * 100}%` 
+                }}
+              />
+            </div>
+            <div className="text-xs text-muted-foreground text-center">
+              Faltam {dashboardData.interested.nextLevelPoints - dashboardData.interested.points} pontos para o próximo nível
+            </div>
+          </div>
         </CardContent>
       </Card>
-      
-      <Card className="shadow-divine">
-        <CardHeader>
-          <CardTitle className="text-lg">Progresso</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-xl font-semibold">{dashboardData.interested.completedLessons} lições</div>
-          <p className="text-sm text-muted-foreground mt-2">Completadas com sucesso</p>
-        </CardContent>
-      </Card>
+
+      {/* Content Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="shadow-divine">
+          <CardHeader>
+            <CardTitle className="text-lg">Próximo Estudo</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-semibold text-primary">{dashboardData.interested.nextStudy}</div>
+            <p className="text-sm text-muted-foreground mt-2">Estudo bíblico em grupo</p>
+          </CardContent>
+        </Card>
+        
+        <Card className="shadow-divine">
+          <CardHeader>
+            <CardTitle className="text-lg">Progresso</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-semibold">{dashboardData.interested.completedLessons} lições</div>
+            <p className="text-sm text-muted-foreground mt-2">Completadas com sucesso</p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 

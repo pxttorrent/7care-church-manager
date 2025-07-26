@@ -14,6 +14,10 @@ import Users from "./pages/Users";
 import Interested from "./pages/Interested";
 import Messages from "./pages/Messages";
 import Chat from "./pages/Chat";
+import Settings from "./pages/Settings";
+import Reports from "./pages/Reports";
+import VideoCallRoom from "./pages/VideoCallRoom";
+import MyInterested from "./pages/MyInterested";
 import NotFound from "./pages/NotFound";
 import { MobileLayout } from "./components/layout/MobileLayout";
 import { FirstAccessWelcome } from "./components/auth/FirstAccessWelcome";
@@ -37,9 +41,12 @@ const App = () => (
           <Route path="/video-calls" element={<VideoCall />} />
           <Route path="/users" element={<Users />} />
           <Route path="/interested" element={<Interested />} />
-          <Route path="/my-interested" element={<Interested />} />
+          <Route path="/my-interested" element={<MyInterested />} />
           <Route path="/messages" element={<Messages />} />
           <Route path="/chat" element={<Chat />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/video-call/:meetingId" element={<VideoCallRoom />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
