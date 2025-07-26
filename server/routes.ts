@@ -292,8 +292,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 userData.phone = cleanPhone;
               }
             } else {
-              // Keep original if too short
-              userData.phone = cleanPhone;
+              // Phone too short - ignore and mark user with warning
+              userData.phone = null;
+              if (!userData.extraData) {
+                userData.extraData = {};
+              }
+              if (typeof userData.extraData === 'string') {
+                userData.extraData = JSON.parse(userData.extraData);
+              }
+              userData.extraData.phoneWarning = true;
+              userData.extraData.originalPhone = cleanPhone;
+              userData.extraData = JSON.stringify(userData.extraData);
             }
           }
           

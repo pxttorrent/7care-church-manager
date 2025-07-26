@@ -24,7 +24,8 @@ import {
   ChevronRight,
   Edit2,
   Save,
-  X
+  X,
+  AlertTriangle
 } from "lucide-react";
 
 interface UserDetailModalProps {
@@ -48,6 +49,22 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
   const handleCancel = () => {
     setEditData(user);
     setIsEditing(false);
+  };
+
+  // Check if user has phone warning
+  const getPhoneWarning = () => {
+    try {
+      if (user.extraData && typeof user.extraData === 'string') {
+        const extraData = JSON.parse(user.extraData);
+        return extraData.phoneWarning ? {
+          hasWarning: true,
+          originalPhone: extraData.originalPhone
+        } : { hasWarning: false };
+      }
+      return { hasWarning: false };
+    } catch {
+      return { hasWarning: false };
+    }
   };
 
   const getRoleColor = (role: string) => {
@@ -332,7 +349,12 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="phone">Telefone</Label>
+                    <Label htmlFor="phone" className="flex items-center gap-2">
+                      Telefone
+                      {getPhoneWarning().hasWarning && (
+                        <AlertTriangle className="h-4 w-4 text-yellow-500" title="Telefone inválido durante importação" />
+                      )}
+                    </Label>
                     {isEditing ? (
                       <Input
                         id="phone"
@@ -341,7 +363,19 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                         data-testid="input-phone"
                       />
                     ) : (
-                      <p className="text-sm text-muted-foreground mt-1">{user.phone || 'Não informado'}</p>
+                      <div>
+                        <p className="text-sm text-muted-foreground mt-1">{user.phone || 'Não informado'}</p>
+                        {getPhoneWarning().hasWarning && (
+                          <div className="flex items-center gap-2 mt-1 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-md">
+                            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                            <div className="text-xs text-yellow-700 dark:text-yellow-300">
+                              <strong>Telefone original:</strong> {getPhoneWarning().originalPhone}
+                              <br />
+                              <span className="text-muted-foreground">Telefone muito curto durante a importação</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

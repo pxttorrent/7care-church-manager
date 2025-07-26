@@ -11,7 +11,8 @@ import {
   MoreVertical,
   CheckCircle,
   Clock,
-  XCircle
+  XCircle,
+  AlertTriangle
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -72,6 +73,19 @@ export const UserCard = ({ user, onClick, onApprove, onReject, onEdit, showActio
     }
   };
 
+  // Check if user has phone warning
+  const hasPhoneWarning = () => {
+    try {
+      if (user.extraData && typeof user.extraData === 'string') {
+        const extraData = JSON.parse(user.extraData);
+        return extraData.phoneWarning === true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
   return (
     <Card 
       className="cursor-pointer hover:shadow-md transition-shadow"
@@ -81,12 +95,19 @@ export const UserCard = ({ user, onClick, onApprove, onReject, onEdit, showActio
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
           <div className="flex items-start space-x-3 flex-1">
-            <Avatar className="h-12 w-12">
-              <AvatarImage src={user.profilePhoto} />
-              <AvatarFallback className="bg-primary text-primary-foreground">
-                {user.name?.charAt(0) || 'U'}
-              </AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className="h-12 w-12">
+                <AvatarImage src={user.profilePhoto} />
+                <AvatarFallback className="bg-primary text-primary-foreground">
+                  {user.name?.charAt(0) || 'U'}
+                </AvatarFallback>
+              </Avatar>
+              {hasPhoneWarning() && (
+                <div className="absolute -top-1 -right-1 bg-yellow-500 rounded-full p-1" title="Telefone inválido durante importação">
+                  <AlertTriangle className="h-3 w-3 text-white" />
+                </div>
+              )}
+            </div>
             
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">

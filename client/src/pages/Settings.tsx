@@ -365,35 +365,44 @@ export default function Settings() {
       for (let i = 0; i < validRows.length; i += batchSize) {
         const batch = validRows.slice(i, i + batchSize);
         
-        const usersToImport = batch.map(row => ({
-          name: row.Nome || row.nome || row.name || 'Usuário Importado',
-          email: row.Email || row.email || `${(row.Nome || row.nome || 'usuario').toLowerCase().replace(/\s+/g, '.')}@igreja.com`,
-          password: '123456', // Default password
-          role: getRole(row.Tipo || row.tipo || row.role),
-          church: row.Igreja || row.igreja || row.church || 'Igreja Principal',
-          churchCode: row.Código || row.codigo || row.code,
-          phone: formatPhoneNumber(row.Celular || row.celular || row.telefone || row.Telefone || row.phone),
-          cpf: row.CPF || row.cpf,
-          address: row.Endereço || row.endereco || row.address,
-          birthDate: parseDate(row.Nascimento || row.nascimento || row.birthDate),
-          baptismDate: parseDate(row.Batismo || row.batismo || row.baptismDate),
-          civilStatus: row['Estado civil'] || row.estadoCivil || row.civilStatus,
-          occupation: row.Ocupação || row.ocupacao || row.profissao || row.occupation,
-          education: row['Grau de educação'] || row.educacao || row.education,
-          isDonor: parseBooleanField(row.Dizimista || row.dizimista),
-          isOffering: parseBooleanField(row.Ofertante || row.ofertante),
-          isEnrolledES: parseBooleanField(row['Matriculado na ES'] || row.matriculadoES),
-          hasLesson: parseBooleanField(row['Tem lição'] || row.temLicao),
-          esPeriod: row['Período ES'] || row.periodoES,
-          previousReligion: row['Religião anterior'] || row.religiaoAnterior,
-          biblicalInstructor: row['Instrutor bíblico'] || row.instrutorBiblico,
-          departments: row['Departamentos e cargos'] || row.departamentos,
-          extraData: JSON.stringify({
-            sexo: row.Sexo || row.sexo,
-            idade: row.Idade || row.idade,
-            codigo: row.Código || row.codigo,
-            engajamento: row.Engajamento || row.engajamento,
-            classificacao: row.Classificação || row.classificacao,
+        const usersToImport = batch.map(row => {
+          const originalPhone = row.Celular || row.celular || row.telefone || row.Telefone || row.phone;
+          const formattedPhone = formatPhoneNumber(originalPhone);
+          
+          // Check if phone was too short
+          const phoneWarning = originalPhone && !formattedPhone;
+          
+          return {
+            name: row.Nome || row.nome || row.name || 'Usuário Importado',
+            email: row.Email || row.email || `${(row.Nome || row.nome || 'usuario').toLowerCase().replace(/\s+/g, '.')}@igreja.com`,
+            password: '123456', // Default password
+            role: getRole(row.Tipo || row.tipo || row.role),
+            church: row.Igreja || row.igreja || row.church || 'Igreja Principal',
+            churchCode: row.Código || row.codigo || row.code,
+            phone: formattedPhone,
+            cpf: row.CPF || row.cpf,
+            address: row.Endereço || row.endereco || row.address,
+            birthDate: parseDate(row.Nascimento || row.nascimento || row.birthDate),
+            baptismDate: parseDate(row.Batismo || row.batismo || row.baptismDate),
+            civilStatus: row['Estado civil'] || row.estadoCivil || row.civilStatus,
+            occupation: row.Ocupação || row.ocupacao || row.profissao || row.occupation,
+            education: row['Grau de educação'] || row.educacao || row.education,
+            isDonor: parseBooleanField(row.Dizimista || row.dizimista),
+            isOffering: parseBooleanField(row.Ofertante || row.ofertante),
+            isEnrolledES: parseBooleanField(row['Matriculado na ES'] || row.matriculadoES),
+            hasLesson: parseBooleanField(row['Tem lição'] || row.temLicao),
+            esPeriod: row['Período ES'] || row.periodoES,
+            previousReligion: row['Religião anterior'] || row.religiaoAnterior,
+            biblicalInstructor: row['Instrutor bíblico'] || row.instrutorBiblico,
+            departments: row['Departamentos e cargos'] || row.departamentos,
+            extraData: JSON.stringify({
+              sexo: row.Sexo || row.sexo,
+              idade: row.Idade || row.idade,
+              codigo: row.Código || row.codigo,
+              engajamento: row.Engajamento || row.engajamento,
+              classificacao: row.Classificação || row.classificacao,
+              phoneWarning: phoneWarning,
+              originalPhone: phoneWarning ? originalPhone : null,
             dizimos12m: row['Dízimos - 12m'] || row.dizimos12m,
             ultimoDizimo: row['Último dízimo - 12m'] || row.ultimoDizimo,
             valorDizimo: row['Valor dízimo - 12m'] || row.valorDizimo,
@@ -433,13 +442,14 @@ export default function Settings() {
             cpfValido: row['CPF válido'] || row.cpfValido,
             alunoEducacao: row['Aluno educação Adv.'] || row.alunoEducacao,
             parentesco: row['Parentesco p/ c/ aluno'] || row.parentesco
-          }),
-          observations: [
+            }),
+            observations: [
             row['Como estudou a Bíblia'] && `Como estudou: ${row['Como estudou a Bíblia']}`,
             row['Teve participação'] && `Participação: ${row['Teve participação']}`,
             row['Campos vazios/inválidos'] && `Campos vazios: ${row['Campos vazios/inválidos']}`
-          ].filter(Boolean).join(' | ') || null
-        }));
+            ].filter(Boolean).join(' | ') || null
+          };
+        });
 
         const response = await fetch('/api/users/bulk-import', {
           method: 'POST',
@@ -523,7 +533,7 @@ export default function Settings() {
     const cleanPhone = phone.toString().replace(/[^0-9]/g, '');
     
     if (cleanPhone.length < 10) {
-      return cleanPhone; // Keep original if too short
+      return null; // Return null for short phones - will be ignored
     }
     
     let formattedPhone = '';
