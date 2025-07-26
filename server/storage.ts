@@ -1,7 +1,8 @@
 import { 
   User, InsertUser, Relationship, InsertRelationship, Meeting, InsertMeeting, 
   Event, InsertEvent, Message, InsertMessage, Conversation, VideoCallSession,
-  MeetingType, Notification, InsertNotification, Achievement, PointActivity
+  MeetingType, Notification, InsertNotification, Achievement, PointActivity,
+  Church, InsertChurch, churches
 } from "@shared/schema";
 
 export interface IStorage {
@@ -18,7 +19,8 @@ export interface IStorage {
   
   // Churches
   getOrCreateChurch(name: string): Promise<{ id: number; name: string }>;
-  getAllChurches(): Promise<Array<{ id: number; name: string; address?: string; isActive: boolean }>>;
+  getAllChurches(): Promise<Church[]>;
+  updateChurch?(id: number, data: Partial<InsertChurch>): Promise<Church | null>;
 
   // Relationships (Missionary-Interested)
   createRelationship(data: InsertRelationship): Promise<Relationship>;
@@ -720,16 +722,43 @@ export class DatabaseStorage implements IStorage {
     return await db.insert(users).values(usersWithDefaults).returning();
   }
 
-  // Churches (simplified implementation for now)
+  // Churches implementation
   async getOrCreateChurch(name: string): Promise<{ id: number; name: string }> {
-    // Simplified implementation - just log and return mock data
-    console.log(`Igreja processada: ${name} (${name.includes('(g)') ? 'g' : 'i'})`);
-    return { id: 1, name };
+    if (!name || name.trim() === '') {
+      throw new Error('Nome da igreja é obrigatório');
+    }
+    
+    const cleanName = name.trim();
+    console.log(`Igreja processada: ${cleanName}`);
+    
+    // Check if church already exists
+    const existingChurch = await db.select().from(churches).where(eq(churches.name, cleanName)).limit(1);
+    
+    if (existingChurch.length > 0) {
+      return { id: existingChurch[0].id, name: existingChurch[0].name };
+    }
+    
+    // Create new church
+    const [newChurch] = await db.insert(churches).values({
+      name: cleanName,
+      isActive: true
+    }).returning();
+    
+    console.log(`Nova igreja criada: ${newChurch.name} (ID: ${newChurch.id})`);
+    return { id: newChurch.id, name: newChurch.name };
   }
 
-  async getAllChurches(): Promise<Array<{ id: number; name: string; address?: string; isActive: boolean }>> {
-    // Simplified implementation 
-    return [];
+  async getAllChurches(): Promise<Church[]> {
+    return await db.select().from(churches).orderBy(churches.name);
+  }
+
+  async updateChurch(id: number, data: Partial<InsertChurch>): Promise<Church | null> {
+    const [church] = await db
+      .update(churches)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(churches.id, id))
+      .returning();
+    return church || null;
   }
 
   // Relationships (keeping existing implementation for compatibility)

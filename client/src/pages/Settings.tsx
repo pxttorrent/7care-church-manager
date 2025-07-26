@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -126,26 +126,32 @@ export default function Settings() {
 
   // Church management states
   const [editingChurch, setEditingChurch] = useState<number | null>(null);
-  const [churchesList, setChurchesList] = useState([
-    {
-      id: 1,
-      name: 'Igreja Adventista Central',
-      address: 'Rua das Flores, 123 - Centro',
-      active: true
-    },
-    {
-      id: 2,
-      name: 'Igreja Adventista Norte',
-      address: 'Av. Brasil, 456 - Zona Norte',
-      active: true
-    },
-    {
-      id: 3,
-      name: 'Igreja Adventista Sul',
-      address: 'Rua da Paz, 789 - Zona Sul',
-      active: false
+  const [churchesList, setChurchesList] = useState([]);
+
+  // Load churches from backend
+  const loadChurches = async () => {
+    try {
+      const response = await fetch('/api/churches');
+      if (response.ok) {
+        const churches = await response.json();
+        const formattedChurches = churches.map(church => ({
+          id: church.id,
+          name: church.name,
+          address: church.address || 'Endereço não informado',
+          active: church.isActive !== false
+        }));
+        setChurchesList(formattedChurches);
+      }
+    } catch (error) {
+      console.error('Error loading churches:', error);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      loadChurches();
+    }
+  }, [user]);
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -237,41 +243,91 @@ export default function Settings() {
     }
   };
 
-  const toggleChurchStatus = (churchId: number) => {
-    setChurchesList(prev => prev.map(church => 
-      church.id === churchId 
-        ? { ...church, active: !church.active }
-        : church
-    ));
-    
+  const toggleChurchStatus = async (churchId: number) => {
     const church = churchesList.find(c => c.id === churchId);
-    toast({
-      title: church?.active ? "Igreja desativada" : "Igreja ativada",
-      description: `${church?.name} foi ${church?.active ? 'desativada' : 'ativada'} com sucesso.`,
-    });
+    if (!church) return;
+    
+    try {
+      const response = await fetch(`/api/churches/${churchId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !church.active })
+      });
+      
+      if (response.ok) {
+        setChurchesList(prev => prev.map(c => 
+          c.id === churchId 
+            ? { ...c, active: !c.active }
+            : c
+        ));
+        
+        toast({
+          title: "Igreja atualizada",
+          description: `${church.name} foi ${!church.active ? 'ativada' : 'desativada'} com sucesso.`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível atualizar o status da igreja.",
+        variant: "destructive"
+      });
+    }
   };
 
-  const addNewChurch = () => {
-    const newChurch = {
-      id: Date.now(),
-      name: 'Nova Igreja',
-      address: 'Endereço da igreja',
-      active: true
-    };
-    setChurchesList(prev => [...prev, newChurch]);
-    setEditingChurch(newChurch.id);
-    toast({
-      title: "Igreja adicionada",
-      description: "Nova igreja foi criada. Clique nos campos para editar.",
-    });
+  const addNewChurch = async () => {
+    try {
+      const response = await fetch('/api/churches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name: 'Nova Igreja',
+          address: 'Endereço da igreja'
+        })
+      });
+      
+      if (response.ok) {
+        await loadChurches(); // Reload churches
+        toast({
+          title: "Igreja adicionada",
+          description: "Nova igreja foi criada. Clique nos campos para editar.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível criar a igreja.",
+        variant: "destructive"
+      });
+    }
   };
 
-  const updateChurchField = (churchId: number, field: string, value: string) => {
-    setChurchesList(prev => prev.map(church => 
-      church.id === churchId 
-        ? { ...church, [field]: value }
-        : church
-    ));
+  const updateChurchField = async (churchId: number, field: string, value: string) => {
+    try {
+      const response = await fetch(`/api/churches/${churchId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value })
+      });
+      
+      if (response.ok) {
+        setChurchesList(prev => prev.map(church => 
+          church.id === churchId 
+            ? { ...church, [field]: value }
+            : church
+        ));
+        toast({
+          title: "Igreja atualizada",
+          description: "As informações da igreja foram salvas.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível atualizar a igreja.",
+        variant: "destructive"
+      });
+    }
   };
 
   const deleteChurch = (churchId: number, churchName: string) => {

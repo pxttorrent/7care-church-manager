@@ -589,6 +589,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/churches", async (req, res) => {
+    try {
+      const { name, address } = req.body;
+      
+      if (!name || name.trim() === '') {
+        res.status(400).json({ error: "Nome da igreja é obrigatório" });
+        return;
+      }
+      
+      const church = await storage.getOrCreateChurch(name.trim());
+      
+      // If address provided, update it
+      if (address && storage.updateChurch) {
+        await storage.updateChurch(church.id, { address: address.trim() });
+      }
+      
+      res.json(church);
+    } catch (error) {
+      console.error("Create church error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/churches/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = req.body;
+      
+      if (storage.updateChurch) {
+        const updatedChurch = await storage.updateChurch(id, updates);
+        if (updatedChurch) {
+          res.json(updatedChurch);
+        } else {
+          res.status(404).json({ error: "Igreja não encontrada" });
+        }
+      } else {
+        res.status(501).json({ error: "Update não implementado" });
+      }
+    } catch (error) {
+      console.error("Update church error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Dashboard statistics endpoint
   app.get("/api/dashboard/stats", async (req, res) => {
     try {

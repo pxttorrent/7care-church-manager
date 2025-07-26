@@ -52,6 +52,18 @@ export const users = pgTable("users", {
   firstAccess: boolean("first_access").default(true),
 });
 
+// Churches table
+export const churches = pgTable("churches", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  address: text("address"),
+  phone: text("phone"),
+  email: text("email"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Relationships between missionaries and interested people
 export const relationships = pgTable("relationships", {
   id: serial("id").primaryKey(),
@@ -301,3 +313,12 @@ export type UserPointsHistory = typeof userPointsHistory.$inferSelect;
 export type Achievement = typeof achievements.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+
+// Church schemas
+export const insertChurchSchema = createInsertSchema(churches).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type Church = typeof churches.$inferSelect;
+export type InsertChurch = z.infer<typeof insertChurchSchema>;
