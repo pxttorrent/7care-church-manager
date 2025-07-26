@@ -153,8 +153,8 @@ export default function Users() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [users, setUsers] = useState(mockUsers);
@@ -162,8 +162,8 @@ export default function Users() {
   const filteredUsers = users.filter(u => {
     const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          u.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = !roleFilter || u.role === roleFilter;
-    const matchesStatus = !statusFilter || u.status === statusFilter;
+    const matchesRole = !roleFilter || roleFilter === 'all' || u.role === roleFilter;
+    const matchesStatus = !statusFilter || statusFilter === 'all' || u.status === statusFilter;
     
     return matchesSearch && matchesRole && matchesStatus;
   });
@@ -285,7 +285,7 @@ export default function Users() {
                   <SelectValue placeholder="Todos os papéis" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os papéis</SelectItem>
+                  <SelectItem value="all">Todos os papéis</SelectItem>
                   <SelectItem value="admin">Administrador</SelectItem>
                   <SelectItem value="missionary">Missionário</SelectItem>
                   <SelectItem value="member">Membro</SelectItem>
@@ -299,7 +299,7 @@ export default function Users() {
                   <SelectValue placeholder="Todos os status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os status</SelectItem>
+                  <SelectItem value="all">Todos os status</SelectItem>
                   <SelectItem value="approved">Aprovado</SelectItem>
                   <SelectItem value="pending">Pendente</SelectItem>
                   <SelectItem value="rejected">Rejeitado</SelectItem>
