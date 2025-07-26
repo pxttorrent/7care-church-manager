@@ -258,6 +258,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
             userData.role = 'member';
           }
 
+          // Map all possible import columns to schema fields
+          // Basic fields (already handled above: name, email, password, role)
+          
+          // Contact fields
+          if (userData.celular && !userData.phone) {
+            userData.phone = userData.celular;
+          }
+          if (userData.telefone && !userData.phone) {
+            userData.phone = userData.telefone;
+          }
+          
+          // Church fields
+          if (userData.igreja && !userData.church) {
+            userData.church = userData.igreja;
+          }
+          if (userData.codigo && !userData.churchCode) {
+            userData.churchCode = userData.codigo;
+          }
+          if (userData.codigoIgreja && !userData.churchCode) {
+            userData.churchCode = userData.codigoIgreja;
+          }
+          
+          // Personal fields
+          if (userData.nascimento && !userData.birthDate) {
+            userData.birthDate = userData.nascimento;
+          }
+          if (userData.dataNascimento && !userData.birthDate) {
+            userData.birthDate = userData.dataNascimento;
+          }
+          if (userData.estadoCivil && !userData.civilStatus) {
+            userData.civilStatus = userData.estadoCivil;
+          }
+          if (userData.profissao && !userData.occupation) {
+            userData.occupation = userData.profissao;
+          }
+          if (userData.ocupacao && !userData.occupation) {
+            userData.occupation = userData.ocupacao;
+          }
+          if (userData.educacao && !userData.education) {
+            userData.education = userData.educacao;
+          }
+          if (userData.escolaridade && !userData.education) {
+            userData.education = userData.escolaridade;
+          }
+          if (userData.endereco && !userData.address) {
+            userData.address = userData.endereco;
+          }
+          
+          // Spiritual fields
+          if (userData.batismo && !userData.baptismDate) {
+            userData.baptismDate = userData.batismo;
+          }
+          if (userData.dataBatismo && !userData.baptismDate) {
+            userData.baptismDate = userData.dataBatismo;
+          }
+          if (userData.religiaoAnterior && !userData.previousReligion) {
+            userData.previousReligion = userData.religiaoAnterior;
+          }
+          if (userData.instrutorBiblico && !userData.biblicalInstructor) {
+            userData.biblicalInstructor = userData.instrutorBiblico;
+          }
+          
+          // Department fields
+          if (userData.departamentos && !userData.departments) {
+            userData.departments = userData.departamentos;
+          }
+          if (userData.cargos && !userData.departments) {
+            userData.departments = userData.cargos;
+          }
+          if (userData.departamentosECargos && !userData.departments) {
+            userData.departments = userData.departamentosECargos;
+          }
+          
+          // Financial fields
+          if (userData.dizimista !== undefined && userData.isDonor === undefined) {
+            userData.isDonor = userData.dizimista === 'Sim' || userData.dizimista === true || userData.dizimista === 1;
+          }
+          if (userData.ofertante !== undefined && userData.isOffering === undefined) {
+            userData.isOffering = userData.ofertante === 'Sim' || userData.ofertante === true || userData.ofertante === 1;
+          }
+          
+          // School fields
+          if (userData.matriculadoES !== undefined && userData.isEnrolledES === undefined) {
+            userData.isEnrolledES = userData.matriculadoES === 'Sim' || userData.matriculadoES === true || userData.matriculadoES === 1;
+          }
+          if (userData.temLicao !== undefined && userData.hasLesson === undefined) {
+            userData.hasLesson = userData.temLicao === 'Sim' || userData.temLicao === true || userData.temLicao === 1;
+          }
+          if (userData.periodoES && !userData.esPeriod) {
+            userData.esPeriod = userData.periodoES;
+          }
+          
+          // Engagement fields
+          if (userData.presenca && !userData.attendance) {
+            userData.attendance = parseInt(userData.presenca.toString()) || 0;
+          }
+          if (userData.totalPresenca && !userData.attendance) {
+            userData.attendance = parseInt(userData.totalPresenca.toString()) || 0;
+          }
+          if (userData.pontos && !userData.points) {
+            userData.points = parseInt(userData.pontos.toString()) || 0;
+          }
+          if (userData.nivel && !userData.level) {
+            userData.level = userData.nivel;
+          }
+          if (userData.classificacao && !userData.level) {
+            userData.level = userData.classificacao;
+          }
+          
+          // Set default values for required fields
+          if (userData.isDonor === undefined) userData.isDonor = false;
+          if (userData.isOffering === undefined) userData.isOffering = false;
+          if (userData.isEnrolledES === undefined) userData.isEnrolledES = false;
+          if (userData.hasLesson === undefined) userData.hasLesson = false;
+          if (userData.points === undefined) userData.points = 0;
+          if (userData.level === undefined) userData.level = 'Iniciante';
+          if (userData.attendance === undefined) userData.attendance = 0;
+          
           // Format phone number to WhatsApp standard: +55(DDD)99999-9999
           if (userData.phone) {
             const cleanPhone = userData.phone.toString().replace(/[^0-9]/g, '');
