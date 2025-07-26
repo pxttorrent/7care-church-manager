@@ -250,6 +250,17 @@ export default function Settings() {
     setSelectedChurch(null);
   };
 
+  const deleteChurch = (churchId: number, churchName: string) => {
+    if (window.confirm(`Tem certeza que deseja excluir a igreja "${churchName}"? Esta ação não pode ser desfeita.`)) {
+      setChurchesList(prev => prev.filter(church => church.id !== churchId));
+      toast({
+        title: "Igreja excluída",
+        description: `${churchName} foi removida do sistema.`,
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <MobileLayout>
       <div className="container mx-auto p-4 space-y-6">
@@ -623,6 +634,15 @@ export default function Settings() {
                                   Ativar
                                 </>
                               )}
+                            </Button>
+
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => deleteChurch(church.id, church.name)}
+                              data-testid={`delete-church-${church.id}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </div>
