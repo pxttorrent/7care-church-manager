@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Calendar as CalendarIcon, Plus, Filter } from 'lucide-react';
-import { CalendarView } from '@/components/calendar/CalendarView';
+import { MonthlyCalendarView } from '@/components/calendar/MonthlyCalendarView';
 import { EventModal } from '@/components/calendar/EventModal';
 import { useToast } from '@/hooks/use-toast';
 
@@ -76,14 +76,14 @@ export default function Calendar() {
       </div>
 
       {/* Calendar Component */}
-      <CalendarView 
+      <MonthlyCalendarView 
         onEventClick={handleEventClick}
         onNewEvent={handleNewEvent}
       />
 
       {/* Event Modal */}
       <EventModal
-        event={selectedEvent}
+        event={selectedEvent || undefined}
         isOpen={showEventModal}
         onClose={() => setShowEventModal(false)}
         onSave={handleSaveEvent}
