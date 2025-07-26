@@ -20,7 +20,7 @@ export const users = pgTable("users", {
   // Church info
   church: text("church"),
   churchCode: text("church_code"),
-  departments: text("departments").array(),
+  departments: text("departments"),
   // Personal info
   birthDate: timestamp("birth_date"),
   civilStatus: text("civil_status"), // single, married, divorced, widowed
@@ -86,8 +86,8 @@ export const meetings = pgTable("meetings", {
   priority: text("priority").default("medium"), // low, medium, high
   isUrgent: boolean("is_urgent").default(false),
   status: text("status").default("pending"), // pending, approved, rejected, completed, cancelled
-  materials: text("materials").array(),
-  tags: text("tags").array(),
+  materials: text("materials"),
+  tags: text("tags"),
   notes: text("notes"),
   pastoralNotes: text("pastoral_notes"),
   createdAt: timestamp("created_at").defaultNow(),

@@ -582,20 +582,80 @@ import {
 
 export class DatabaseStorage implements IStorage {
   async createUser(data: InsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values({
-        ...data,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        firstAccess: true,
-        isApproved: data.isApproved ?? false,
-        status: data.status ?? 'pending',
-        points: data.points ?? 0,
-        level: data.level ?? 'Iniciante',
-        attendance: data.attendance ?? 0,
-      })
-      .returning();
+    // Clean and validate array fields to prevent database errors
+    const cleanedData = { ...data };
+    
+    // Clean and validate the incoming data
+    
+    // Ensure departments is an array or null
+    if (cleanedData.departments) {
+      if (typeof cleanedData.departments === 'string') {
+        try {
+          cleanedData.departments = cleanedData.departments.startsWith('[') 
+            ? JSON.parse(cleanedData.departments)
+            : cleanedData.departments.split(',').map(d => d.trim()).filter(d => d);
+        } catch {
+          cleanedData.departments = [];
+        }
+      }
+      if (!Array.isArray(cleanedData.departments)) {
+        cleanedData.departments = [];
+      }
+    } else {
+      cleanedData.departments = [];
+    }
+
+    // Ensure extraData is valid JSON or null
+    if (cleanedData.extraData && typeof cleanedData.extraData === 'string') {
+      try {
+        cleanedData.extraData = JSON.parse(cleanedData.extraData);
+      } catch {
+        cleanedData.extraData = null;
+      }
+    }
+
+    // Remove any fields that are not in the schema or could cause issues
+    const validFields = {
+      email: cleanedData.email,
+      password: cleanedData.password,
+      name: cleanedData.name,
+      phone: cleanedData.phone || null,
+      cpf: cleanedData.cpf || null,
+      profilePhoto: cleanedData.profilePhoto || null,
+      role: cleanedData.role || 'interested',
+      status: cleanedData.status || 'pending',
+      isApproved: cleanedData.isApproved ?? false,
+      church: cleanedData.church || null,
+      churchCode: cleanedData.churchCode || null,
+      departments: Array.isArray(cleanedData.departments) 
+        ? cleanedData.departments.join(',') 
+        : (cleanedData.departments || null),
+      birthDate: cleanedData.birthDate || null,
+      civilStatus: cleanedData.civilStatus || null,
+      occupation: cleanedData.occupation || null,
+      education: cleanedData.education || null,
+      address: cleanedData.address || null,
+      baptismDate: cleanedData.baptismDate || null,
+      previousReligion: cleanedData.previousReligion || null,
+      biblicalInstructor: cleanedData.biblicalInstructor || null,
+      isDonor: cleanedData.isDonor ?? false,
+      isOffering: cleanedData.isOffering ?? false,
+      isEnrolledES: cleanedData.isEnrolledES ?? false,
+      hasLesson: cleanedData.hasLesson ?? false,
+      esPeriod: cleanedData.esPeriod || null,
+      points: cleanedData.points ?? 0,
+      level: cleanedData.level || 'Iniciante',
+      attendance: cleanedData.attendance ?? 0,
+      extraData: cleanedData.extraData || null,
+      observations: cleanedData.observations || null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      firstAccess: true,
+    };
+
+    // Create user with cleaned and validated data
+
+    const [user] = await db.insert(users).values(validFields).returning();
     return user;
   }
 
