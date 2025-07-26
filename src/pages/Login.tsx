@@ -4,11 +4,25 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { RegisterForm } from '@/components/auth/RegisterForm';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
+import { usePWAInstall } from '@/hooks/usePWAInstall';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { X, Download, Smartphone } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
 export const Login = () => {
   const [isRegistering, setIsRegistering] = useState(false);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(true);
   const { isAuthenticated, isLoading } = useAuth();
+  const { isInstallable, isInstalled, installApp, getInstallInstructions } = usePWAInstall();
+  
+  const installInstructions = getInstallInstructions();
+
+  const handleInstall = async () => {
+    const success = await installApp();
+    if (success) {
+      setShowInstallPrompt(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -26,7 +40,49 @@ export const Login = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4 relative">
+      {/* PWA Install Notification */}
+      {!isInstalled && showInstallPrompt && (
+        <div className="fixed top-4 left-4 right-4 z-50 max-w-md mx-auto">
+          <Alert className="bg-white/95 backdrop-blur-sm border-primary/20 shadow-lg">
+            <Smartphone className="h-4 w-4" />
+            <AlertDescription className="pr-8">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="font-medium text-primary mb-2">
+                    📱 Instale o 7Care Plus no seu celular!
+                  </p>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p className="font-medium">Como instalar ({installInstructions.platform}):</p>
+                    {installInstructions.steps.map((step, index) => (
+                      <p key={index} className="text-xs">{step}</p>
+                    ))}
+                  </div>
+                  {isInstallable && (
+                    <Button 
+                      onClick={handleInstall}
+                      size="sm" 
+                      className="mt-2 bg-primary hover:bg-primary-dark text-white"
+                    >
+                      <Download className="w-3 h-3 mr-1" />
+                      Instalar App
+                    </Button>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 hover:bg-primary/10"
+                  onClick={() => setShowInstallPrompt(false)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+      
       <div className="w-full max-w-md space-y-8">
         {/* Logo and Title */}
         <div className="text-center space-y-6">
