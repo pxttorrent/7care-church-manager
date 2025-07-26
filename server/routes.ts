@@ -214,6 +214,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk import users endpoint
+  app.post("/api/users/bulk-import", async (req, res) => {
+    try {
+      const { users } = req.body;
+      
+      if (!Array.isArray(users) || users.length === 0) {
+        res.status(400).json({ error: "Invalid users data" });
+        return;
+      }
+
+      // Validate and process each user
+      const processedUsers = users.map((userData: any) => {
+        // Generate email if not provided
+        if (!userData.email) {
+          const namePart = userData.name?.toLowerCase().replace(/\s+/g, '.') || 'usuario';
+          userData.email = `${namePart}@igreja.com`;
+        }
+        
+        // Generate password if not provided
+        if (!userData.password) {
+          userData.password = '123456'; // Default password
+        }
+
+        // Set default role if not provided
+        if (!userData.role) {
+          userData.role = 'member';
+        }
+
+        // Parse dates if they are strings
+        if (userData.birthDate && typeof userData.birthDate === 'string') {
+          userData.birthDate = new Date(userData.birthDate);
+        }
+        if (userData.baptismDate && typeof userData.baptismDate === 'string') {
+          userData.baptismDate = new Date(userData.baptismDate);
+        }
+
+        return userData;
+      });
+
+      const createdUsers = await storage.bulkCreateUsers(processedUsers);
+      
+      res.json({ 
+        success: true, 
+        message: `${createdUsers.length} usuários importados com sucesso`,
+        imported: createdUsers.length,
+        total: users.length
+      });
+    } catch (error) {
+      console.error('Bulk import error:', error);
+      res.status(500).json({ error: "Failed to import users" });
+    }
+  });
+
   // Meeting types endpoints
   app.get("/api/meeting-types", async (req, res) => {
     try {

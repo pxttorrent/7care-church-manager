@@ -186,6 +186,57 @@ export default function Settings() {
     }));
   };
 
+  const processRealFile = async (file: File) => {
+    try {
+      setImportProgress(20);
+      setImportStep('preview');
+      
+      const arrayBuffer = await file.arrayBuffer();
+      
+      if (file.name.endsWith('.xlsx')) {
+        // Process Excel file
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        
+        setImportData(jsonData);
+      } else if (file.name.endsWith('.csv')) {
+        // Process CSV file
+        const text = new TextDecoder().decode(arrayBuffer);
+        const lines = text.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim());
+        
+        const jsonData = lines.slice(1)
+          .filter(line => line.trim())
+          .map(line => {
+            const values = line.split(',').map(v => v.trim());
+            const obj: any = {};
+            headers.forEach((header, index) => {
+              obj[header] = values[index] || '';
+            });
+            return obj;
+          });
+        
+        setImportData(jsonData);
+      }
+      
+      setTimeout(() => {
+        setImportProgress(40);
+        setImportStep('mapping');
+      }, 500);
+      
+    } catch (error) {
+      console.error('Error processing file:', error);
+      toast({
+        title: "Erro no arquivo",
+        description: "Não foi possível processar o arquivo. Verifique o formato.",
+        variant: "destructive"
+      });
+    }
+  };
+
   const toggleChurchStatus = (churchId: number) => {
     setChurchesList(prev => prev.map(church => 
       church.id === churchId 
@@ -232,6 +283,88 @@ export default function Settings() {
         variant: "destructive"
       });
     }
+  };
+
+  const validateImportData = () => {
+    const errors: string[] = [];
+    const validatedData = importData.map((row, index) => {
+      const validatedRow = { ...row, valid: true, errors: [] };
+      
+      // Check required fields
+      if (!row.nome && !row.Nome && !row.name) {
+        errors.push(`Linha ${index + 1}: Nome é obrigatório`);
+        validatedRow.valid = false;
+      }
+      
+      return validatedRow;
+    });
+    
+    setImportData(validatedData);
+    setImportErrors(errors);
+  };
+
+  const performImport = async () => {
+    try {
+      setImportStep('importing');
+      setImportProgress(85);
+      
+      // Transform import data to user format
+      const usersToImport = importData
+        .filter(row => row.valid !== false)
+        .map(row => ({
+          name: row.nome || row.Nome || row.name || 'Usuário Importado',
+          email: row.email || row.Email || `${(row.nome || row.Nome || 'usuario').toLowerCase().replace(/\s+/g, '.')}@igreja.com`,
+          password: '123456', // Default password
+          role: getRole(row.tipo || row.Tipo || row.role),
+          church: row.igreja || row.Igreja || row.church || 'Igreja Principal',
+          phone: row.celular || row.Celular || row.telefone || row.Telefone || row.phone,
+          address: row.endereco || row.Endereco || row.address,
+          birthDate: row.nascimento || row.Nascimento || row.birthDate || null,
+          baptismDate: row.batismo || row.Batismo || row.baptismDate || null,
+          civilStatus: row.civil || row.estadoCivil || row.civilStatus,
+          occupation: row.profissao || row.Profissao || row.occupation,
+          observations: row.observacoes || row.Observacoes || row.observations
+        }));
+
+      const response = await fetch('/api/users/bulk-import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ users: usersToImport })
+      });
+
+      const result = await response.json();
+      
+      if (response.ok) {
+        setImportProgress(100);
+        setImportStep('complete');
+        toast({
+          title: "Importação concluída!",
+          description: `${result.imported} usuários importados com sucesso.`
+        });
+      } else {
+        throw new Error(result.error || 'Erro na importação');
+      }
+      
+    } catch (error) {
+      console.error('Import error:', error);
+      toast({
+        title: "Erro na importação",
+        description: "Ocorreu um erro durante a importação. Tente novamente.",
+        variant: "destructive"
+      });
+      setImportStep('validation');
+    }
+  };
+
+  const getRole = (tipo: string): string => {
+    if (!tipo) return 'member';
+    const tipoLower = tipo.toLowerCase();
+    if (tipoLower.includes('admin') || tipoLower.includes('pastor')) return 'admin';
+    if (tipoLower.includes('mission') || tipoLower.includes('diácon')) return 'missionary';
+    if (tipoLower.includes('interest') || tipoLower.includes('visit')) return 'interested';
+    return 'member';
   };
 
   return (
@@ -817,7 +950,7 @@ export default function Settings() {
                       const file = e.target.files?.[0];
                       if (file) {
                         setImportFile(file);
-                        simulateFileProcessing();
+                        processRealFile(file);
                       }
                     }}
                     className="mt-4"
@@ -1032,11 +1165,7 @@ export default function Settings() {
 
                 <div className="flex gap-2">
                   <Button
-                    onClick={() => {
-                      setImportStep('importing');
-                      setImportProgress(90);
-                      performImport();
-                    }}
+                    onClick={performImport}
                     disabled={importErrors.length > 0}
                     data-testid="start-import"
                   >
@@ -1163,69 +1292,4 @@ export default function Settings() {
     );
   }
 
-  // Import helper functions
-  function simulateFileProcessing() {
-    setImportStep('preview');
-    setImportProgress(25);
-    
-    // Simulate parsing Excel/CSV data
-    const mockData = [
-      {
-        nome: 'João Silva',
-        email: 'joao@email.com',
-        celular: '+5511999999999',
-        tipo: 'member',
-        igreja: 'Igreja Central',
-        nascimento: '15/03/1985',
-        valid: true
-      },
-      {
-        nome: 'Maria Santos',
-        email: 'maria@email.com',
-        celular: '+5511888888888',
-        tipo: 'missionary',
-        igreja: 'Igreja Central',
-        nascimento: '22/07/1990',
-        valid: true
-      },
-      {
-        nome: 'Pedro Costa',
-        email: 'pedro-invalid-email',
-        celular: '11999999999',
-        tipo: 'member',
-        igreja: 'Igreja Norte',
-        nascimento: '10/12/1978',
-        valid: false
-      }
-    ];
-    
-    setImportData(mockData);
-  }
-
-  function validateImportData() {
-    const errors: string[] = [];
-    const duplicates: any[] = [];
-    
-    importData.forEach((row, index) => {
-      if (!row.nome) errors.push(`Linha ${index + 1}: Nome é obrigatório`);
-      if (!row.email || !row.email.includes('@')) errors.push(`Linha ${index + 1}: Email inválido`);
-      if (!row.celular || !row.celular.startsWith('+55')) errors.push(`Linha ${index + 1}: Telefone deve estar no formato +5511999999999`);
-    });
-    
-    setImportErrors(errors);
-    setImportDuplicates(duplicates);
-  }
-
-  function performImport() {
-    // Simulate import process
-    setTimeout(() => {
-      setImportStep('complete');
-      setImportProgress(100);
-      
-      toast({
-        title: "Importação concluída",
-        description: `${importData.filter(r => r.valid).length} usuários importados com sucesso.`,
-      });
-    }, 2000);
-  }
 }

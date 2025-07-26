@@ -14,6 +14,7 @@ export interface IStorage {
   deleteUser(id: number): Promise<boolean>;
   getUsersByRole(role: string): Promise<User[]>;
   approveUser(id: number): Promise<User | null>;
+  bulkCreateUsers(users: InsertUser[]): Promise<User[]>;
 
   // Relationships (Missionary-Interested)
   createRelationship(data: InsertRelationship): Promise<Relationship>;
@@ -212,6 +213,23 @@ class MemoryStorage implements IStorage {
 
     this.users.splice(userIndex, 1);
     return true;
+  }
+
+  async bulkCreateUsers(users: InsertUser[]): Promise<User[]> {
+    const createdUsers: User[] = [];
+    
+    for (const userData of users) {
+      // Check if user already exists by email
+      const existingUser = this.users.find(u => u.email === userData.email);
+      if (existingUser) {
+        continue; // Skip duplicates
+      }
+      
+      const newUser = await this.createUser(userData);
+      createdUsers.push(newUser);
+    }
+    
+    return createdUsers;
   }
 
   // Relationships
