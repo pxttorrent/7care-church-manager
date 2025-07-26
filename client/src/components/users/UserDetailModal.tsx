@@ -326,11 +326,23 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                   <div className="md:col-span-2">
                     <Label>Departamentos</Label>
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {user.departments?.map((dept: string, index: number) => (
-                        <Badge key={index} variant="secondary" data-testid={`badge-department-${index}`}>
-                          {dept}
-                        </Badge>
-                      )) || <span className="text-sm text-muted-foreground">Nenhum departamento</span>}
+                      {user.departments ? (
+                        typeof user.departments === 'string' 
+                          ? user.departments.split(',').map((dept: string, index: number) => (
+                              <Badge key={index} variant="secondary" data-testid={`badge-department-${index}`}>
+                                {dept.trim()}
+                              </Badge>
+                            ))
+                          : Array.isArray(user.departments) 
+                            ? user.departments.map((dept: string, index: number) => (
+                                <Badge key={index} variant="secondary" data-testid={`badge-department-${index}`}>
+                                  {dept}
+                                </Badge>
+                              ))
+                            : <span className="text-sm text-muted-foreground">Nenhum departamento</span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Nenhum departamento</span>
+                      )}
                     </div>
                   </div>
                 </div>
