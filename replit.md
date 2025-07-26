@@ -20,6 +20,7 @@ Preferred communication style: Simple, everyday language.
 - First access tutorial system integrated with login flow
 - Sistema de importação robusto com cadastro automático de igrejas
 - Processamento em lotes de arquivos grandes (50MB) com mapeamento IASD completo
+- Formatação automática de telefones para padrão WhatsApp +55(DDD)99999-9999
 
 ### → Current Status
 - Core functionality approximately 90-95% complete

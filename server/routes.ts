@@ -258,9 +258,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
             userData.role = 'member';
           }
 
-          // Clean phone number
+          // Format phone number to WhatsApp standard: +55(DDD)99999-9999
           if (userData.phone) {
-            userData.phone = userData.phone.toString().replace(/[^0-9+]/g, '');
+            const cleanPhone = userData.phone.toString().replace(/[^0-9]/g, '');
+            
+            if (cleanPhone.length >= 10) {
+              let formattedPhone = '';
+              
+              // If doesn't start with 55 (Brazil code), add it
+              if (!cleanPhone.startsWith('55') && cleanPhone.length === 11) {
+                formattedPhone = '55' + cleanPhone;
+              } else if (!cleanPhone.startsWith('55') && cleanPhone.length === 10) {
+                formattedPhone = '55' + cleanPhone;
+              } else {
+                formattedPhone = cleanPhone;
+              }
+              
+              // Format to +55(DDD)99999-9999 or +55(DDD)9999-9999
+              if (formattedPhone.length === 13) { // 55 + 11 digits
+                const countryCode = formattedPhone.substring(0, 2);
+                const areaCode = formattedPhone.substring(2, 4);
+                const firstPart = formattedPhone.substring(4, 9);
+                const lastPart = formattedPhone.substring(9, 13);
+                userData.phone = `+${countryCode}(${areaCode})${firstPart}-${lastPart}`;
+              } else if (formattedPhone.length === 12) { // 55 + 10 digits
+                const countryCode = formattedPhone.substring(0, 2);
+                const areaCode = formattedPhone.substring(2, 4);
+                const firstPart = formattedPhone.substring(4, 8);
+                const lastPart = formattedPhone.substring(8, 12);
+                userData.phone = `+${countryCode}(${areaCode})${firstPart}-${lastPart}`;
+              } else {
+                // Keep original if doesn't match expected format
+                userData.phone = cleanPhone;
+              }
+            } else {
+              // Keep original if too short
+              userData.phone = cleanPhone;
+            }
           }
           
           // Auto-create churches if they don't exist

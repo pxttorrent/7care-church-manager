@@ -372,7 +372,7 @@ export default function Settings() {
           role: getRole(row.Tipo || row.tipo || row.role),
           church: row.Igreja || row.igreja || row.church || 'Igreja Principal',
           churchCode: row.Código || row.codigo || row.code,
-          phone: row.Celular || row.celular || row.telefone || row.phone,
+          phone: formatPhoneNumber(row.Celular || row.celular || row.telefone || row.Telefone || row.phone),
           cpf: row.CPF || row.cpf,
           address: row.Endereço || row.endereco || row.address,
           birthDate: parseDate(row.Nascimento || row.nascimento || row.birthDate),
@@ -515,6 +515,45 @@ export default function Settings() {
     if (!value) return false;
     const str = value.toString().toLowerCase();
     return str === 'sim' || str === 'true' || str === '1' || str === 'yes';
+  };
+
+  const formatPhoneNumber = (phone: any): string | null => {
+    if (!phone) return null;
+    
+    const cleanPhone = phone.toString().replace(/[^0-9]/g, '');
+    
+    if (cleanPhone.length < 10) {
+      return cleanPhone; // Keep original if too short
+    }
+    
+    let formattedPhone = '';
+    
+    // If doesn't start with 55 (Brazil code), add it
+    if (!cleanPhone.startsWith('55') && cleanPhone.length === 11) {
+      formattedPhone = '55' + cleanPhone;
+    } else if (!cleanPhone.startsWith('55') && cleanPhone.length === 10) {
+      formattedPhone = '55' + cleanPhone;
+    } else {
+      formattedPhone = cleanPhone;
+    }
+    
+    // Format to +55(DDD)99999-9999 or +55(DDD)9999-9999
+    if (formattedPhone.length === 13) { // 55 + 11 digits
+      const countryCode = formattedPhone.substring(0, 2);
+      const areaCode = formattedPhone.substring(2, 4);
+      const firstPart = formattedPhone.substring(4, 9);
+      const lastPart = formattedPhone.substring(9, 13);
+      return `+${countryCode}(${areaCode})${firstPart}-${lastPart}`;
+    } else if (formattedPhone.length === 12) { // 55 + 10 digits
+      const countryCode = formattedPhone.substring(0, 2);
+      const areaCode = formattedPhone.substring(2, 4);
+      const firstPart = formattedPhone.substring(4, 8);
+      const lastPart = formattedPhone.substring(8, 12);
+      return `+${countryCode}(${areaCode})${firstPart}-${lastPart}`;
+    } else {
+      // Keep original if doesn't match expected format
+      return cleanPhone;
+    }
   };
 
   return (
