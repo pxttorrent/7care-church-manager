@@ -352,12 +352,20 @@ export default function Settings() {
       setImportProgress(85);
       
       // Filter out only rows with critical errors (no name), allow others through
-      const usersToImport = importData
-        .filter(row => {
-          const name = row.nome || row.Nome || row.name;
-          return name && name.toString().trim() !== ''; // Only skip if no name at all
-        })
-        .map(row => ({
+      const validRows = importData.filter(row => {
+        const name = row.nome || row.Nome || row.name;
+        return name && name.toString().trim() !== ''; // Only skip if no name at all
+      });
+
+      // Process in smaller batches to avoid payload size issues
+      const batchSize = 50; // Process 50 users at a time
+      let totalImported = 0;
+      let totalSkipped = importData.length - validRows.length;
+
+      for (let i = 0; i < validRows.length; i += batchSize) {
+        const batch = validRows.slice(i, i + batchSize);
+        
+        const usersToImport = batch.map(row => ({
           name: row.Nome || row.nome || row.name || 'Usuário Importado',
           email: row.Email || row.email || `${(row.Nome || row.nome || 'usuario').toLowerCase().replace(/\s+/g, '.')}@igreja.com`,
           password: '123456', // Default password
@@ -433,33 +441,40 @@ export default function Settings() {
           ].filter(Boolean).join(' | ') || null
         }));
 
-      const response = await fetch('/api/users/bulk-import', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ users: usersToImport })
-      });
-
-      const result = await response.json();
-      
-      if (response.ok) {
-        setImportProgress(100);
-        setImportStep('complete');
-        
-        const skippedCount = importData.length - usersToImport.length;
-        let message = `${result.imported} usuários importados com sucesso`;
-        if (skippedCount > 0) {
-          message += `. ${skippedCount} linhas ignoradas por falta de nome.`;
-        }
-        
-        toast({
-          title: "Importação concluída!",
-          description: message
+        const response = await fetch('/api/users/bulk-import', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ users: usersToImport })
         });
-      } else {
-        throw new Error(result.error || 'Erro na importação');
+
+        const result = await response.json();
+        
+        if (response.ok) {
+          totalImported += result.imported;
+          
+          // Update progress
+          const progress = 85 + ((i + batchSize) / validRows.length) * 15;
+          setImportProgress(Math.min(progress, 100));
+        } else {
+          throw new Error(result.error || 'Erro na importação');
+        }
       }
+      
+      // Complete the import
+      setImportProgress(100);
+      setImportStep('complete');
+      
+      let message = `${totalImported} usuários importados com sucesso`;
+      if (totalSkipped > 0) {
+        message += `. ${totalSkipped} linhas ignoradas por falta de nome.`;
+      }
+      
+      toast({
+        title: "Importação concluída!",
+        description: message
+      });
       
     } catch (error) {
       console.error('Import error:', error);
