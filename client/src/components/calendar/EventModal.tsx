@@ -83,7 +83,7 @@ export const EventModal = ({
     time: '09:00',
     duration: 60,
     location: '',
-    type: 'culto',
+    type: 'cultos',
     maxAttendees: 50,
     status: 'scheduled',
     organizer: ''
@@ -108,15 +108,18 @@ export const EventModal = ({
 
   const getTypeColor = (type: string) => {
     const colors = {
-      culto: "bg-purple-100 text-purple-800",
-      "escola-sabatina": "bg-blue-100 text-blue-800",
-      jovens: "bg-green-100 text-green-800",
-      deaconato: "bg-orange-100 text-orange-800",
-      reuniao: "bg-gray-100 text-gray-800",
-      estudo: "bg-yellow-100 text-yellow-800",
-      outro: "bg-pink-100 text-pink-800"
+      estudos: "bg-blue-100 text-blue-800",
+      reunioes: "bg-green-100 text-green-800",
+      visitas: "bg-purple-100 text-purple-800",
+      oracao: "bg-yellow-100 text-yellow-800",
+      chamadas: "bg-pink-100 text-pink-800",
+      cultos: "bg-indigo-100 text-indigo-800",
+      "igreja-local": "bg-red-100 text-red-800",
+      "asr-geral": "bg-orange-100 text-orange-800",
+      "asr-administrativo": "bg-teal-100 text-teal-800",
+      "regional-distrital": "bg-gray-100 text-gray-800"
     };
-    return colors[type as keyof typeof colors] || colors.outro;
+    return colors[type as keyof typeof colors] || colors.estudos;
   };
 
   const getStatusColor = (status: string) => {
@@ -188,7 +191,7 @@ export const EventModal = ({
                 </h2>
                 <div className="flex gap-2 mb-3">
                   <Badge className={getTypeColor(event.type)} data-testid="badge-event-type">
-                    {eventTypes.find(t => t.value === event.type)?.label}
+                    {eventTypeOptions.find(t => t.value === event.type)?.label}
                   </Badge>
                   <Badge className={getStatusColor(event.status)} data-testid="badge-event-status">
                     {statusOptions.find(s => s.value === event.status)?.label}
@@ -254,7 +257,7 @@ export const EventModal = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {eventTypes.map(type => (
+                    {eventTypeOptions.map(type => (
                       <SelectItem key={type.value} value={type.value}>
                         {type.label}
                       </SelectItem>
@@ -263,7 +266,7 @@ export const EventModal = ({
                 </Select>
               ) : (
                 <p className="text-sm text-muted-foreground mt-1">
-                  {eventTypes.find(t => t.value === event?.type)?.label}
+                  {eventTypeOptions.find(t => t.value === event?.type)?.label}
                 </p>
               )}
             </div>
