@@ -218,7 +218,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/users/bulk-import", async (req, res) => {
     try {
       console.log('Bulk import request received, body keys:', Object.keys(req.body || {}));
-      const { users } = req.body;
+      const { users, allowUpdates = false } = req.body;
+      console.log('Allow updates:', allowUpdates);
       
       if (!Array.isArray(users)) {
         console.log('Users data is not an array:', typeof users);
@@ -495,6 +496,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Process users individually to handle duplicates gracefully
       let actuallyCreated = 0;
       let duplicatesSkipped = 0;
+      let duplicatesUpdated = 0;
       
       for (let i = 0; i < processedUsers.length; i++) {
         const userData = processedUsers[i];
@@ -504,8 +506,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const existingUser = await storage.getUserByEmail(userData.email);
           
           if (existingUser) {
-            duplicatesSkipped++;
-            console.log(`Usuário já existe: ${userData.email} - ignorado`);
+            console.log(`Found existing user: ${userData.email}, allowUpdates: ${allowUpdates}`);
+            if (allowUpdates) {
+              // Update existing user
+              await storage.updateUser(existingUser.id, userData);
+              duplicatesUpdated++;
+              console.log(`Usuário atualizado: ${userData.email}`);
+            } else {
+              duplicatesSkipped++;
+              console.log(`Usuário já existe: ${userData.email} - ignorado`);
+            }
             continue;
           }
           
@@ -525,6 +535,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       let message = `${actuallyCreated} usuários importados com sucesso`;
+      if (duplicatesUpdated > 0) {
+        message += `. ${duplicatesUpdated} usuários existentes foram atualizados`;
+      }
       if (duplicatesSkipped > 0) {
         message += `. ${duplicatesSkipped} usuários já existiam e foram ignorados`;
       }
@@ -536,6 +549,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true, 
         message,
         imported: actuallyCreated,
+        updated: duplicatesUpdated,
         processed: processedUsers.length,
         skipped: skippedCount + duplicatesSkipped,
         total: users.length,

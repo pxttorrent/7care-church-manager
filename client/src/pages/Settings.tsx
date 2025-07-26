@@ -532,13 +532,16 @@ export default function Settings() {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ users: usersToImport })
+          body: JSON.stringify({ 
+            users: usersToImport,
+            allowUpdates: importErrors.length > 0 // Se há erros, permite atualizações
+          })
         });
 
         const result = await response.json();
         
         if (response.ok) {
-          totalImported += result.imported;
+          totalImported += result.imported + (result.updated || 0);
           
           // Update progress
           const progress = 85 + ((i + batchSize) / validRows.length) * 15;
@@ -555,7 +558,7 @@ export default function Settings() {
       // Show the server's message which includes duplicate handling
       toast({
         title: "Importação concluída!",
-        description: response.message || `${totalImported} usuários importados com sucesso`
+        description: result.message || `${totalImported} usuários importados com sucesso`
       });
       
     } catch (error) {
