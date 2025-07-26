@@ -287,20 +287,63 @@ export default function Settings() {
 
   const validateImportData = () => {
     const errors: string[] = [];
+    const duplicates: string[] = [];
+    const emails = new Set();
+    
     const validatedData = importData.map((row, index) => {
       const validatedRow = { ...row, valid: true, errors: [] };
+      const lineNumber = index + 1;
       
       // Check required fields
-      if (!row.nome && !row.Nome && !row.name) {
-        errors.push(`Linha ${index + 1}: Nome é obrigatório`);
+      const name = row.nome || row.Nome || row.name;
+      if (!name || name.toString().trim() === '') {
+        errors.push(`Linha ${lineNumber}: Nome é obrigatório`);
         validatedRow.valid = false;
+      }
+      
+      // Validate email
+      const email = row.email || row.Email;
+      if (email) {
+        const emailStr = email.toString().trim();
+        if (emailStr && !emailStr.includes('@')) {
+          errors.push(`Linha ${lineNumber}: Email "${emailStr}" é inválido`);
+          validatedRow.valid = false;
+        }
+        if (emails.has(emailStr)) {
+          duplicates.push(`Linha ${lineNumber}: Email "${emailStr}" duplicado`);
+          validatedRow.valid = false;
+        } else {
+          emails.add(emailStr);
+        }
+      }
+      
+      // Validate phone
+      const phone = row.celular || row.Celular || row.telefone || row.Telefone || row.phone;
+      if (phone) {
+        const phoneStr = phone.toString().trim();
+        if (phoneStr && phoneStr.length < 10) {
+          errors.push(`Linha ${lineNumber}: Telefone "${phoneStr}" muito curto`);
+          validatedRow.valid = false;
+        }
+      }
+      
+      // Validate role/type
+      const tipo = row.tipo || row.Tipo || row.role;
+      if (tipo) {
+        const tipoStr = tipo.toString().toLowerCase();
+        const validRoles = ['admin', 'missionary', 'member', 'interested', 'pastor', 'diácono', 'membro', 'interessado'];
+        if (!validRoles.some(role => tipoStr.includes(role))) {
+          errors.push(`Linha ${lineNumber}: Tipo "${tipo}" não reconhecido. Use: Admin, Missionary, Member ou Interested`);
+          validatedRow.valid = false;
+        }
       }
       
       return validatedRow;
     });
     
     setImportData(validatedData);
-    setImportErrors(errors);
+    setImportErrors([...errors, ...duplicates]);
+    setImportDuplicates(duplicates);
   };
 
   const performImport = async () => {
