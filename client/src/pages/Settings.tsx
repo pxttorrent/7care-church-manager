@@ -552,23 +552,26 @@ export default function Settings() {
             <TabsContent value="church" className="space-y-4">
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        <Globe className="h-5 w-5" />
-                        Gestão de Igrejas
-                      </CardTitle>
-                      <CardDescription>
-                        Gerencie todas as igrejas do sistema
-                      </CardDescription>
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <Globe className="h-5 w-5" />
+                          Gestão de Igrejas
+                        </CardTitle>
+                        <CardDescription>
+                          Gerencie todas as igrejas do sistema
+                        </CardDescription>
+                      </div>
+                      <Button
+                        onClick={() => setShowChurchModal(true)}
+                        data-testid="add-church-button"
+                        className="w-full sm:w-auto"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Nova Igreja
+                      </Button>
                     </div>
-                    <Button
-                      onClick={() => setShowChurchModal(true)}
-                      data-testid="add-church-button"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Nova Igreja
-                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -576,35 +579,38 @@ export default function Settings() {
                   <div className="space-y-3">
                     {churchesList.map((church) => (
                       <Card key={church.id} className={`p-4 ${!church.active ? 'opacity-60' : ''}`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3">
-                              <div>
-                                <h3 className="font-semibold text-lg">{church.name}</h3>
-                                <p className="text-sm text-muted-foreground">{church.address}</p>
-                                <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                                  <span className="flex items-center gap-1">
-                                    <Phone className="h-3 w-3" />
-                                    {church.phone}
-                                  </span>
-                                  <span className="flex items-center gap-1">
-                                    <Mail className="h-3 w-3" />
-                                    {church.email}
-                                  </span>
-                                  <span className="flex items-center gap-1">
-                                    <User className="h-3 w-3" />
-                                    {church.memberCount} membros
-                                  </span>
-                                </div>
+                        <div className="space-y-3">
+                          {/* Header da Igreja */}
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-semibold text-lg truncate">{church.name}</h3>
+                                <Badge variant={church.active ? 'secondary' : 'destructive'} className="shrink-0">
+                                  {church.active ? 'Ativa' : 'Inativa'}
+                                </Badge>
                               </div>
+                              <p className="text-sm text-muted-foreground line-clamp-1">{church.address}</p>
                             </div>
                           </div>
-                          
-                          <div className="flex items-center gap-2">
-                            <Badge variant={church.active ? 'secondary' : 'destructive'}>
-                              {church.active ? 'Ativa' : 'Inativa'}
-                            </Badge>
-                            
+
+                          {/* Informações de Contato */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Phone className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{church.phone}</span>
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Mail className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{church.email}</span>
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <User className="h-3 w-3 shrink-0" />
+                              <span>{church.memberCount} membros</span>
+                            </span>
+                          </div>
+
+                          {/* Botões de Ação */}
+                          <div className="flex flex-wrap gap-2 pt-2 border-t">
                             <Button
                               variant="outline"
                               size="sm"
@@ -613,24 +619,27 @@ export default function Settings() {
                                 setShowChurchModal(true);
                               }}
                               data-testid={`edit-church-${church.id}`}
+                              className="flex-1 sm:flex-none"
                             >
-                              <SettingsIcon className="h-4 w-4" />
+                              <SettingsIcon className="h-4 w-4 mr-2" />
+                              Editar
                             </Button>
                             
                             <Button
-                              variant={church.active ? 'destructive' : 'default'}
+                              variant={church.active ? 'secondary' : 'default'}
                               size="sm"
                               onClick={() => toggleChurchStatus(church.id)}
                               data-testid={`toggle-church-${church.id}`}
+                              className="flex-1 sm:flex-none"
                             >
                               {church.active ? (
                                 <>
-                                  <EyeOff className="h-4 w-4 mr-1" />
+                                  <EyeOff className="h-4 w-4 mr-2" />
                                   Desativar
                                 </>
                               ) : (
                                 <>
-                                  <Eye className="h-4 w-4 mr-1" />
+                                  <Eye className="h-4 w-4 mr-2" />
                                   Ativar
                                 </>
                               )}
@@ -641,8 +650,10 @@ export default function Settings() {
                               size="sm"
                               onClick={() => deleteChurch(church.id, church.name)}
                               data-testid={`delete-church-${church.id}`}
+                              className="sm:w-auto"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-4 w-4 sm:mr-2" />
+                              <span className="hidden sm:inline">Excluir</span>
                             </Button>
                           </div>
                         </div>
@@ -1102,7 +1113,7 @@ export default function Settings() {
 
       {/* Modal de Gestão de Igreja */}
       <Dialog open={showChurchModal} onOpenChange={setShowChurchModal}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Globe className="h-5 w-5" />
@@ -1255,12 +1266,12 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="flex gap-2 pt-4">
+        <div className="flex flex-col sm:flex-row gap-2 pt-4">
           <Button type="submit" className="flex-1" data-testid="save-church">
             <Save className="h-4 w-4 mr-2" />
             {church ? 'Atualizar Igreja' : 'Cadastrar Igreja'}
           </Button>
-          <Button type="button" variant="outline" onClick={onCancel} data-testid="cancel-church">
+          <Button type="button" variant="outline" onClick={onCancel} data-testid="cancel-church" className="sm:w-auto">
             Cancelar
           </Button>
         </div>
