@@ -55,20 +55,32 @@ export const useAuth = () => {
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    // Mock authentication
-    const user = mockUsers.find(u => u.email === email);
-    
-    if (user && password === '123456') {
-      localStorage.setItem('7care_auth', JSON.stringify(user));
-      setAuthState({
-        user,
-        isAuthenticated: true,
-        isLoading: false
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
       });
-      return true;
+
+      const data = await response.json();
+      
+      if (data.success && data.user) {
+        localStorage.setItem('7care_auth', JSON.stringify(data.user));
+        setAuthState({
+          user: data.user,
+          isAuthenticated: true,
+          isLoading: false
+        });
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Login error:', error);
+      return false;
     }
-    
-    return false;
   };
 
   const logout = () => {

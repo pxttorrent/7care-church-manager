@@ -12,7 +12,7 @@ export const MobileHeader = () => {
         <div className="flex items-center gap-3">
           <img src={logo} alt="7Care Plus" className="w-8 h-8" />
           <div>
-            <h1 className="text-lg font-bold bg-gradient-primary bg-clip-text text-transparent">
+            <h1 className="text-lg font-bold text-primary">
               7Care Plus
             </h1>
           </div>

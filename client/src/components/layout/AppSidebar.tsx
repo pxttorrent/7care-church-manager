@@ -132,7 +132,7 @@ export function AppSidebar() {
           <img src={logo} alt="7Care Plus" className="w-8 h-8" />
           {!isCollapsed && (
             <div>
-              <h1 className="text-xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+              <h1 className="text-xl font-bold text-primary">
                 7Care Plus
               </h1>
               <p className="text-xs text-muted-foreground">Gestão Eclesiástica</p>

@@ -75,7 +75,7 @@ export const RegisterForm = () => {
   return (
     <Card className="w-full max-w-md shadow-divine">
       <CardHeader className="text-center space-y-4">
-        <CardTitle className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+        <CardTitle className="text-2xl font-bold text-primary">
           Criar conta
         </CardTitle>
         <CardDescription>
