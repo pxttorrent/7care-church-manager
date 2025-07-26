@@ -36,6 +36,14 @@ export const Login = () => {
   }
 
   if (isAuthenticated) {
+    // Check for first access and tutorial completion
+    const tutorialCompleted = localStorage.getItem('tutorial_completed');
+    const tutorialSkipped = localStorage.getItem('tutorial_skipped');
+    
+    if (!tutorialCompleted && !tutorialSkipped) {
+      return <Navigate to="/first-access" replace />;
+    }
+    
     return <Navigate to="/dashboard" replace />;
   }
 

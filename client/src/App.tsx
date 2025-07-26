@@ -16,6 +16,7 @@ import Messages from "./pages/Messages";
 import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
 import { MobileLayout } from "./components/layout/MobileLayout";
+import { FirstAccessWelcome } from "./components/auth/FirstAccessWelcome";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Login />} />
+          <Route path="/first-access" element={<FirstAccessWelcome />} />
           <Route path="/dashboard" element={<MobileLayout><Dashboard /></MobileLayout>} />
           <Route path="/calendar" element={<MobileLayout><Calendar /></MobileLayout>} />
           <Route path="/menu" element={<Menu />} />

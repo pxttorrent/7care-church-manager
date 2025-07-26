@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { insertUserSchema, insertMeetingSchema, insertEventSchema, insertMessageSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Health check endpoint
@@ -8,54 +9,496 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Mock authentication endpoints for development
-  app.post("/api/auth/login", (req, res) => {
-    const { email, password } = req.body;
-    
-    // Simple demo credentials
-    const demoUsers = [
-      { email: "admin@7care.com", password: "admin123", role: "admin", name: "Administrador" },
-      { email: "missionary@7care.com", password: "missionary123", role: "missionary", name: "Missionário João" },
-      { email: "member@7care.com", password: "member123", role: "member", name: "Membro Maria" },
-      { email: "interested@7care.com", password: "interested123", role: "interested", name: "Pedro Silva" }
-    ];
-    
-    const user = demoUsers.find(u => u.email === email && u.password === password);
-    
-    if (user) {
-      res.json({ 
-        success: true, 
-        user: { 
-          id: Math.random().toString(36),
-          name: user.name, 
-          email: user.email, 
-          role: user.role,
-          isApproved: true
-        } 
-      });
-    } else {
-      res.status(401).json({ success: false, message: "Invalid credentials" });
+  // Authentication endpoints
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      // First check for demo users for easy testing
+      const demoUsers = [
+        { email: "admin@7care.com", password: "admin123", role: "admin", name: "Pastor João Silva", isApproved: true },
+        { email: "missionary@7care.com", password: "missionary123", role: "missionary", name: "Missionário João", isApproved: true },
+        { email: "member@7care.com", password: "member123", role: "member", name: "Membro Maria", isApproved: true },
+        { email: "interested@7care.com", password: "interested123", role: "interested", name: "Pedro Silva", isApproved: true }
+      ];
+      
+      const demoUser = demoUsers.find(u => u.email === email && u.password === password);
+      
+      if (demoUser) {
+        // Check if demo user exists in storage, if not create them
+        let user = await storage.getUserByEmail(email);
+        if (!user) {
+          user = await storage.createUser({
+            email: demoUser.email,
+            password: demoUser.password,
+            name: demoUser.name,
+            role: demoUser.role,
+            isApproved: demoUser.isApproved,
+            status: "approved",
+            church: "Igreja Central"
+          });
+        }
+        
+        res.json({ 
+          success: true, 
+          user: { 
+            id: user.id,
+            name: user.name, 
+            email: user.email, 
+            role: user.role,
+            isApproved: user.isApproved,
+            firstAccess: user.firstAccess
+          } 
+        });
+        return;
+      }
+      
+      // Check for real users in storage
+      const user = await storage.getUserByEmail(email);
+      if (user && user.password === password) {
+        if (!user.isApproved) {
+          res.status(401).json({ success: false, message: "Account pending approval" });
+          return;
+        }
+        
+        res.json({ 
+          success: true, 
+          user: { 
+            id: user.id,
+            name: user.name, 
+            email: user.email, 
+            role: user.role,
+            isApproved: user.isApproved,
+            firstAccess: user.firstAccess
+          } 
+        });
+      } else {
+        res.status(401).json({ success: false, message: "Invalid credentials" });
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
     }
   });
 
-  app.post("/api/auth/register", (req, res) => {
-    const { name, email, password, role } = req.body;
-    
-    // Mock registration response
-    res.json({ 
-      success: true, 
-      user: { 
-        id: Math.random().toString(36),
-        name, 
-        email, 
-        role: role || "interested",
-        isApproved: role === "interested"
-      } 
-    });
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const userData = insertUserSchema.parse(req.body);
+      
+      // Check if user already exists
+      const existingUser = await storage.getUserByEmail(userData.email);
+      if (existingUser) {
+        res.status(400).json({ success: false, message: "User already exists" });
+        return;
+      }
+      
+      const user = await storage.createUser({
+        ...userData,
+        role: userData.role || "interested",
+        isApproved: userData.role === "interested", // Auto-approve interested users
+        status: userData.role === "interested" ? "approved" : "pending"
+      });
+      
+      res.json({ 
+        success: true, 
+        user: { 
+          id: user.id,
+          name: user.name, 
+          email: user.email, 
+          role: user.role,
+          isApproved: user.isApproved,
+          firstAccess: user.firstAccess
+        } 
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+      res.status(400).json({ success: false, message: "Invalid user data" });
+    }
   });
 
   app.post("/api/auth/logout", (req, res) => {
     res.json({ success: true });
+  });
+
+  // User management endpoints
+  app.get("/api/users", async (req, res) => {
+    try {
+      const { role, status } = req.query;
+      let users = await storage.getAllUsers();
+      
+      if (role) {
+        users = users.filter(u => u.role === role);
+      }
+      if (status) {
+        users = users.filter(u => u.status === status);
+      }
+      
+      // Remove password from response
+      const safeUsers = users.map(({ password, ...user }) => user);
+      res.json(safeUsers);
+    } catch (error) {
+      console.error("Get users error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/users/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const user = await storage.getUserById(id);
+      
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      
+      const { password, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (error) {
+      console.error("Get user error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.put("/api/users/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updateData = req.body;
+      
+      const user = await storage.updateUser(id, updateData);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      
+      const { password, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (error) {
+      console.error("Update user error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/users/:id/approve", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const user = await storage.approveUser(id);
+      
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      
+      const { password, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (error) {
+      console.error("Approve user error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/users/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteUser(id);
+      
+      if (!success) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete user error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Meeting types endpoints
+  app.get("/api/meeting-types", async (req, res) => {
+    try {
+      const meetingTypes = await storage.getMeetingTypes();
+      res.json(meetingTypes);
+    } catch (error) {
+      console.error("Get meeting types error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Meetings endpoints
+  app.get("/api/meetings", async (req, res) => {
+    try {
+      const { userId, status } = req.query;
+      let meetings: any[] = [];
+      
+      if (userId) {
+        meetings = await storage.getMeetingsByUser(parseInt(userId as string));
+      } else if (status) {
+        meetings = await storage.getMeetingsByStatus(status as string);
+      }
+      
+      res.json(meetings);
+    } catch (error) {
+      console.error("Get meetings error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/meetings", async (req, res) => {
+    try {
+      const meetingData = insertMeetingSchema.parse(req.body);
+      const meeting = await storage.createMeeting(meetingData);
+      res.json(meeting);
+    } catch (error) {
+      console.error("Create meeting error:", error);
+      res.status(400).json({ error: "Invalid meeting data" });
+    }
+  });
+
+  app.put("/api/meetings/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updateData = req.body;
+      
+      const meeting = await storage.updateMeeting(id, updateData);
+      if (!meeting) {
+        res.status(404).json({ error: "Meeting not found" });
+        return;
+      }
+      
+      res.json(meeting);
+    } catch (error) {
+      console.error("Update meeting error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Events endpoints
+  app.get("/api/events", async (req, res) => {
+    try {
+      const events = await storage.getAllEvents();
+      res.json(events);
+    } catch (error) {
+      console.error("Get events error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/events", async (req, res) => {
+    try {
+      const eventData = insertEventSchema.parse(req.body);
+      const event = await storage.createEvent(eventData);
+      res.json(event);
+    } catch (error) {
+      console.error("Create event error:", error);
+      res.status(400).json({ error: "Invalid event data" });
+    }
+  });
+
+  // Relationships endpoints
+  app.get("/api/relationships/missionary/:missionaryId", async (req, res) => {
+    try {
+      const missionaryId = parseInt(req.params.missionaryId);
+      const relationships = await storage.getRelationshipsByMissionary(missionaryId);
+      res.json(relationships);
+    } catch (error) {
+      console.error("Get relationships error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/relationships", async (req, res) => {
+    try {
+      const { missionaryId, interestedId, notes } = req.body;
+      const relationship = await storage.createRelationship({
+        missionaryId,
+        interestedId,
+        notes
+      });
+      res.json(relationship);
+    } catch (error) {
+      console.error("Create relationship error:", error);
+      res.status(400).json({ error: "Invalid relationship data" });
+    }
+  });
+
+  // Messages/Chat endpoints
+  app.get("/api/conversations/:userId", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const conversations = await storage.getConversationsByUser(userId);
+      res.json(conversations);
+    } catch (error) {
+      console.error("Get conversations error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/conversations/:id/messages", async (req, res) => {
+    try {
+      const conversationId = parseInt(req.params.id);
+      const limit = parseInt(req.query.limit as string) || 50;
+      const messages = await storage.getMessagesByConversation(conversationId, limit);
+      res.json(messages);
+    } catch (error) {
+      console.error("Get messages error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/messages", async (req, res) => {
+    try {
+      const messageData = insertMessageSchema.parse(req.body);
+      const message = await storage.createMessage(messageData);
+      res.json(message);
+    } catch (error) {
+      console.error("Create message error:", error);
+      res.status(400).json({ error: "Invalid message data" });
+    }
+  });
+
+  // Notifications endpoints
+  app.get("/api/notifications/:userId", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const limit = parseInt(req.query.limit as string) || 20;
+      const notifications = await storage.getNotificationsByUser(userId, limit);
+      res.json(notifications);
+    } catch (error) {
+      console.error("Get notifications error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.put("/api/notifications/:id/read", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.markNotificationAsRead(id);
+      
+      if (!success) {
+        res.status(404).json({ error: "Notification not found" });
+        return;
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Mark notification read error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Points and achievements endpoints
+  app.get("/api/point-activities", async (req, res) => {
+    try {
+      const activities = await storage.getPointActivities();
+      res.json(activities);
+    } catch (error) {
+      console.error("Get point activities error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/achievements", async (req, res) => {
+    try {
+      const achievements = await storage.getAchievements();
+      res.json(achievements);
+    } catch (error) {
+      console.error("Get achievements error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/users/:id/points", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const points = await storage.getUserPoints(userId);
+      res.json({ points });
+    } catch (error) {
+      console.error("Get user points error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/users/:id/points", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const { points, activityId, description } = req.body;
+      
+      const success = await storage.addPointsToUser(userId, points, activityId, description);
+      if (!success) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      
+      const totalPoints = await storage.getUserPoints(userId);
+      res.json({ success: true, totalPoints });
+    } catch (error) {
+      console.error("Add points error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Dashboard data endpoints
+  app.get("/api/dashboard/:role", async (req, res) => {
+    try {
+      const role = req.params.role;
+      const userId = parseInt(req.query.userId as string);
+      
+      let dashboardData = {};
+      
+      switch (role) {
+        case "admin":
+          const allUsers = await storage.getAllUsers();
+          const pendingUsers = allUsers.filter(u => u.status === "pending");
+          dashboardData = {
+            totalUsers: allUsers.length,
+            totalInterested: allUsers.filter(u => u.role === "interested").length,
+            totalChurches: new Set(allUsers.map(u => u.church).filter(Boolean)).size,
+            pendingApprovals: pendingUsers.length,
+            thisWeekEvents: 0, // Would calculate from events
+            totalMessages: 0   // Would calculate from messages
+          };
+          break;
+          
+        case "missionary":
+          const relationships = await storage.getRelationshipsByMissionary(userId);
+          const meetings = await storage.getMeetingsByUser(userId);
+          dashboardData = {
+            myInterested: relationships.length,
+            scheduledMeetings: meetings.filter(m => m.status === "approved").length,
+            completedStudies: meetings.filter(m => m.status === "completed").length,
+            thisWeekGoal: 10 // This would be configurable
+          };
+          break;
+          
+        case "member":
+          const memberMeetings = await storage.getMeetingsByUser(userId);
+          dashboardData = {
+            nextEvents: memberMeetings.filter(m => m.status === "approved" && new Date(m.scheduledAt!) > new Date()).length,
+            unreadMessages: 0, // Would calculate from messages
+            completedActivities: memberMeetings.filter(m => m.status === "completed").length
+          };
+          break;
+          
+        case "interested":
+          const interestedMeetings = await storage.getMeetingsByUser(userId);
+          const nextMeeting = interestedMeetings
+            .filter(m => m.status === "approved" && new Date(m.scheduledAt!) > new Date())
+            .sort((a, b) => new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime())[0];
+          
+          dashboardData = {
+            nextStudy: nextMeeting ? new Date(nextMeeting.scheduledAt!).toLocaleDateString('pt-BR') : "Nenhum agendado",
+            completedLessons: interestedMeetings.filter(m => m.status === "completed").length,
+            nextMeeting: nextMeeting ? "Agendado" : "Nenhum agendado"
+          };
+          break;
+      }
+      
+      res.json(dashboardData);
+    } catch (error) {
+      console.error("Get dashboard data error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
 
   // Catch-all for undefined routes
