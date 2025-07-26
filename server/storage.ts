@@ -573,4 +573,311 @@ class MemoryStorage implements IStorage {
   }
 }
 
-export const storage = new MemoryStorage();
+import { db } from "./db";
+import { eq, and, gte, lte, desc, asc } from "drizzle-orm";
+import { 
+  users, relationships, meetings, events, messages, conversations,
+  videoCallSessions, notifications, meetingTypes, pointActivities, achievements
+} from "@shared/schema";
+
+export class DatabaseStorage implements IStorage {
+  async createUser(data: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values({
+        ...data,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        firstAccess: true,
+        isApproved: data.isApproved ?? false,
+        status: data.status ?? 'pending',
+        points: data.points ?? 0,
+        level: data.level ?? 'Iniciante',
+        attendance: data.attendance ?? 0,
+      })
+      .returning();
+    return user;
+  }
+
+  async getUserById(id: number): Promise<User | null> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || null;
+  }
+
+  async getUserByEmail(email: string): Promise<User | null> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || null;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async updateUser(id: number, data: Partial<InsertUser>): Promise<User | null> {
+    const [user] = await db
+      .update(users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user || null;
+  }
+
+  async deleteUser(id: number): Promise<boolean> {
+    const result = await db.delete(users).where(eq(users.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  async getUsersByRole(role: string): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.role, role));
+  }
+
+  async approveUser(id: number): Promise<User | null> {
+    const [user] = await db
+      .update(users)
+      .set({ 
+        status: 'approved',
+        isApproved: true,
+        updatedAt: new Date()
+      })
+      .where(eq(users.id, id))
+      .returning();
+    return user || null;
+  }
+
+  async bulkCreateUsers(userData: InsertUser[]): Promise<User[]> {
+    const usersWithDefaults = userData.map(data => ({
+      ...data,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      firstAccess: true,
+      isApproved: data.isApproved ?? false,
+      status: data.status ?? 'pending',
+      points: data.points ?? 0,
+      level: data.level ?? 'Iniciante',
+      attendance: data.attendance ?? 0,
+    }));
+
+    return await db.insert(users).values(usersWithDefaults).returning();
+  }
+
+  // Churches (simplified implementation for now)
+  async getOrCreateChurch(name: string): Promise<{ id: number; name: string }> {
+    // Simplified implementation - just log and return mock data
+    console.log(`Igreja processada: ${name} (${name.includes('(g)') ? 'g' : 'i'})`);
+    return { id: 1, name };
+  }
+
+  async getAllChurches(): Promise<Array<{ id: number; name: string; address?: string; isActive: boolean }>> {
+    // Simplified implementation 
+    return [];
+  }
+
+  // Relationships (keeping existing implementation for compatibility)
+  async createRelationship(data: InsertRelationship): Promise<Relationship> {
+    const [relationship] = await db.insert(relationships).values(data).returning();
+    return relationship;
+  }
+
+  async getRelationshipsByMissionary(missionaryId: number): Promise<Relationship[]> {
+    return await db.select().from(relationships).where(eq(relationships.missionaryId, missionaryId));
+  }
+
+  async getRelationshipsByInterested(interestedId: number): Promise<Relationship[]> {
+    return await db.select().from(relationships).where(eq(relationships.interestedId, interestedId));
+  }
+
+  async updateRelationship(id: number, data: Partial<InsertRelationship>): Promise<Relationship | null> {
+    const [relationship] = await db
+      .update(relationships)
+      .set(data)
+      .where(eq(relationships.id, id))
+      .returning();
+    return relationship || null;
+  }
+
+  // Meetings (keeping minimal implementation)
+  async createMeeting(data: InsertMeeting): Promise<Meeting> {
+    const [meeting] = await db.insert(meetings).values(data).returning();
+    return meeting;
+  }
+
+  async getMeetingById(id: number): Promise<Meeting | null> {
+    const [meeting] = await db.select().from(meetings).where(eq(meetings.id, id));
+    return meeting || null;
+  }
+
+  async getMeetingsByUser(userId: number): Promise<Meeting[]> {
+    return await db.select().from(meetings).where(eq(meetings.userId, userId));
+  }
+
+  async getMeetingsByStatus(status: string): Promise<Meeting[]> {
+    return await db.select().from(meetings).where(eq(meetings.status, status));
+  }
+
+  async updateMeeting(id: number, data: Partial<InsertMeeting>): Promise<Meeting | null> {
+    const [meeting] = await db
+      .update(meetings)
+      .set(data)
+      .where(eq(meetings.id, id))
+      .returning();
+    return meeting || null;
+  }
+
+  async deleteMeeting(id: number): Promise<boolean> {
+    const result = await db.delete(meetings).where(eq(meetings.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  // Meeting Types (minimal implementation)
+  async getMeetingTypes(): Promise<MeetingType[]> {
+    return await db.select().from(meetingTypes);
+  }
+
+  async createMeetingType(data: Omit<MeetingType, 'id'>): Promise<MeetingType> {
+    const [meetingType] = await db.insert(meetingTypes).values(data).returning();
+    return meetingType;
+  }
+
+  // Events (minimal implementation)
+  async createEvent(data: InsertEvent): Promise<Event> {
+    const [event] = await db.insert(events).values(data).returning();
+    return event;
+  }
+
+  async getEventById(id: number): Promise<Event | null> {
+    const [event] = await db.select().from(events).where(eq(events.id, id));
+    return event || null;
+  }
+
+  async getAllEvents(): Promise<Event[]> {
+    return await db.select().from(events);
+  }
+
+  async getEventsByDate(startDate: Date, endDate: Date): Promise<Event[]> {
+    return await db.select().from(events).where(
+      and(
+        gte(events.startDate, startDate),
+        lte(events.startDate, endDate)
+      )
+    );
+  }
+
+  async updateEvent(id: number, data: Partial<InsertEvent>): Promise<Event | null> {
+    const [event] = await db
+      .update(events)
+      .set(data)
+      .where(eq(events.id, id))
+      .returning();
+    return event || null;
+  }
+
+  async deleteEvent(id: number): Promise<boolean> {
+    const result = await db.delete(events).where(eq(events.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  // Messages and Conversations (minimal implementation)
+  async createConversation(name: string | null, isGroup: boolean, createdBy: number): Promise<Conversation> {
+    const [conversation] = await db.insert(conversations).values({
+      name,
+      isGroup,
+      createdBy,
+      createdAt: new Date()
+    }).returning();
+    return conversation;
+  }
+
+  async getConversationById(id: number): Promise<Conversation | null> {
+    const [conversation] = await db.select().from(conversations).where(eq(conversations.id, id));
+    return conversation || null;
+  }
+
+  async getConversationsByUser(userId: number): Promise<Conversation[]> {
+    return await db.select().from(conversations).where(eq(conversations.createdBy, userId));
+  }
+
+  async createMessage(data: InsertMessage): Promise<Message> {
+    const [message] = await db.insert(messages).values(data).returning();
+    return message;
+  }
+
+  async getMessagesByConversation(conversationId: number, limit: number = 50): Promise<Message[]> {
+    return await db.select().from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(desc(messages.createdAt))
+      .limit(limit);
+  }
+
+  // Video Calls (minimal implementation)
+  async createVideoCallSession(data: Omit<VideoCallSession, 'id' | 'createdAt'>): Promise<VideoCallSession> {
+    const [session] = await db.insert(videoCallSessions).values({
+      ...data,
+      createdAt: new Date()
+    }).returning();
+    return session;
+  }
+
+  async getVideoCallSessionById(id: number): Promise<VideoCallSession | null> {
+    const [session] = await db.select().from(videoCallSessions).where(eq(videoCallSessions.id, id));
+    return session || null;
+  }
+
+  async updateVideoCallSession(id: number, data: Partial<VideoCallSession>): Promise<VideoCallSession | null> {
+    const [session] = await db
+      .update(videoCallSessions)
+      .set(data)
+      .where(eq(videoCallSessions.id, id))
+      .returning();
+    return session || null;
+  }
+
+  // Notifications (minimal implementation)
+  async createNotification(data: InsertNotification): Promise<Notification> {
+    const [notification] = await db.insert(notifications).values({
+      ...data,
+      createdAt: new Date()
+    }).returning();
+    return notification;
+  }
+
+  async getNotificationsByUser(userId: number, limit: number = 20): Promise<Notification[]> {
+    return await db.select().from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(limit);
+  }
+
+  async markNotificationAsRead(id: number): Promise<boolean> {
+    const result = await db
+      .update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  // Points and Achievements (minimal implementation)
+  async getPointActivities(): Promise<PointActivity[]> {
+    return await db.select().from(pointActivities);
+  }
+
+  async getAchievements(): Promise<Achievement[]> {
+    return await db.select().from(achievements);
+  }
+
+  async addPointsToUser(userId: number, points: number, activityId: number, description?: string): Promise<boolean> {
+    const user = await this.getUserById(userId);
+    if (!user) return false;
+
+    const newPoints = (user.points || 0) + points;
+    await this.updateUser(userId, { points: newPoints });
+    
+    return true;
+  }
+
+  async getUserPoints(userId: number): Promise<number> {
+    const user = await this.getUserById(userId);
+    return user?.points || 0;
+  }
+}
+
+export const storage = new DatabaseStorage();
