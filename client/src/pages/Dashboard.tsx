@@ -1,4 +1,4 @@
-import { Calendar, Users, MessageSquare, Video, BarChart3, Clock, Heart, Plus } from 'lucide-react';
+import { Calendar, Users, MessageSquare, Video, BarChart3, Clock, Heart, Plus, Cake, TrendingUp, UserCheck } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,13 +16,22 @@ const Dashboard = () => {
       totalChurches: 5,
       pendingApprovals: 3,
       thisWeekEvents: 12,
-      totalMessages: 89
+      totalMessages: 89,
+      birthdaysToday: 2,
+      birthdaysThisWeek: 8,
+      visitometroThisWeek: 85,
+      visitometroLastWeek: 78,
+      averageAttendance: 142
     },
     missionary: {
       myInterested: 8,
       scheduledMeetings: 4,
       completedStudies: 15,
-      thisWeekGoal: 10
+      thisWeekGoal: 10,
+      birthdaysToday: 1,
+      birthdaysThisWeek: 3,
+      visitometroThisWeek: 85,
+      visitometroLastWeek: 78
     },
     member: {
       nextEvents: 3,
@@ -30,7 +39,10 @@ const Dashboard = () => {
       completedActivities: 7,
       points: 450,
       level: 3,
-      nextLevelPoints: 500
+      nextLevelPoints: 500,
+      birthdaysToday: 1,
+      birthdaysThisWeek: 3,
+      visitometroThisWeek: 85
     },
     interested: {
       nextStudy: "Quarta-feira, 19h",
@@ -38,8 +50,23 @@ const Dashboard = () => {
       nextMeeting: "Amanhã",
       points: 85,
       level: 1,
-      nextLevelPoints: 100
+      nextLevelPoints: 100,
+      birthdaysToday: 0,
+      birthdaysThisWeek: 1
     }
+  };
+
+  // Mock birthday data
+  const birthdayData = {
+    today: [
+      { name: 'Maria Silva', age: 28, date: '26/01' },
+      { name: 'João Santos', age: 45, date: '26/01' }
+    ],
+    thisWeek: [
+      { name: 'Ana Costa', age: 32, date: '27/01' },
+      { name: 'Pedro Lima', age: 38, date: '28/01' },
+      { name: 'Sofia Oliveira', age: 25, date: '30/01' }
+    ]
   };
 
   const getGreeting = () => {
@@ -337,6 +364,173 @@ const Dashboard = () => {
         {user?.role === 'missionary' && renderMissionaryDashboard()}
         {user?.role === 'member' && renderMemberDashboard()}
         {user?.role === 'interested' && renderInterestedDashboard()}
+      </div>
+
+      {/* Aniversariantes e Visitômetro */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Aniversariantes */}
+        <Card className="shadow-divine">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cake className="h-5 w-5 text-orange-600" />
+              Aniversariantes
+            </CardTitle>
+            <CardDescription>
+              Celebre a vida dos membros da igreja
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Hoje */}
+            {birthdayData.today.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="font-semibold text-sm text-primary flex items-center gap-2">
+                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                  Hoje ({birthdayData.today.length})
+                </h4>
+                {birthdayData.today.map((person, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-orange-50 dark:bg-orange-950 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 bg-orange-100 dark:bg-orange-900 rounded-full flex items-center justify-center">
+                        <span className="text-orange-600 font-semibold text-sm">
+                          {person.name.charAt(0)}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="font-medium text-sm">{person.name}</div>
+                        <div className="text-xs text-muted-foreground">{person.age} anos</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{person.date}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Esta Semana */}
+            {birthdayData.thisWeek.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="font-semibold text-sm text-muted-foreground flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  Esta Semana ({birthdayData.thisWeek.length})
+                </h4>
+                {birthdayData.thisWeek.map((person, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                        <span className="text-blue-600 font-semibold text-sm">
+                          {person.name.charAt(0)}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="font-medium text-sm">{person.name}</div>
+                        <div className="text-xs text-muted-foreground">{person.age} anos</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{person.date}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {birthdayData.today.length === 0 && birthdayData.thisWeek.length === 0 && (
+              <div className="text-center py-4 text-muted-foreground">
+                <Cake className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Nenhum aniversário esta semana</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Visitômetro */}
+        <Card className="shadow-divine">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-green-600" />
+              Visitômetro
+            </CardTitle>
+            <CardDescription>
+              Acompanhe a frequência semanal
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Esta Semana */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-lg">
+                    {user?.role === 'admin' ? dashboardData.admin.visitometroThisWeek :
+                     user?.role === 'missionary' ? dashboardData.missionary.visitometroThisWeek :
+                     user?.role === 'member' ? dashboardData.member.visitometroThisWeek : 85} pessoas
+                  </div>
+                  <div className="text-sm text-muted-foreground">Esta semana</div>
+                </div>
+                <div className="text-right">
+                  {user?.role === 'admin' && (
+                    <div className="flex items-center gap-1 text-green-600">
+                      <TrendingUp className="h-4 w-4" />
+                      <span className="text-sm font-medium">
+                        +{dashboardData.admin.visitometroThisWeek - dashboardData.admin.visitometroLastWeek}
+                      </span>
+                    </div>
+                  )}
+                  {user?.role === 'missionary' && (
+                    <div className="flex items-center gap-1 text-green-600">
+                      <TrendingUp className="h-4 w-4" />
+                      <span className="text-sm font-medium">
+                        +{dashboardData.missionary.visitometroThisWeek - dashboardData.missionary.visitometroLastWeek}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Meta Semanal</span>
+                  <span>100 pessoas</span>
+                </div>
+                <div className="bg-muted rounded-full h-3">
+                  <div 
+                    className="bg-green-600 h-3 rounded-full transition-all duration-500"
+                    style={{ 
+                      width: `${Math.min((user?.role === 'admin' ? dashboardData.admin.visitometroThisWeek :
+                               user?.role === 'missionary' ? dashboardData.missionary.visitometroThisWeek :
+                               user?.role === 'member' ? dashboardData.member.visitometroThisWeek : 85) / 100 * 100, 100)}%` 
+                    }}
+                  />
+                </div>
+                <div className="text-xs text-muted-foreground text-center">
+                  {100 - (user?.role === 'admin' ? dashboardData.admin.visitometroThisWeek :
+                          user?.role === 'missionary' ? dashboardData.missionary.visitometroThisWeek :
+                          user?.role === 'member' ? dashboardData.member.visitometroThisWeek : 85)} pessoas para atingir a meta
+                </div>
+              </div>
+
+              {/* Comparação com semana passada */}
+              {(user?.role === 'admin' || user?.role === 'missionary') && (
+                <div className="border-t pt-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Semana passada</span>
+                    <span className="font-medium">
+                      {user?.role === 'admin' ? dashboardData.admin.visitometroLastWeek : dashboardData.missionary.visitometroLastWeek} pessoas
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Média Geral (apenas admin) */}
+              {user?.role === 'admin' && (
+                <div className="border-t pt-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Média mensal</span>
+                    <span className="font-medium">{dashboardData.admin.averageAttendance} pessoas</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Quick Actions */}
