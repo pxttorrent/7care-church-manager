@@ -429,6 +429,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Dashboard statistics endpoint
+  app.get("/api/dashboard/stats", async (req, res) => {
+    try {
+      const allUsers = await storage.getAllUsers();
+      const allEvents = await storage.getAllEvents();
+      
+      // Count users by role
+      const usersByRole = allUsers.reduce((acc, user) => {
+        acc[user.role] = (acc[user.role] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Count pending approvals
+      const pendingApprovals = allUsers.filter(user => user.status === 'pending').length;
+
+      // Count events this week
+      const now = new Date();
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+      const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+      
+      const thisWeekEvents = allEvents.filter(event => {
+        const eventDate = new Date(event.startDate);
+        return eventDate >= weekStart && eventDate < weekEnd;
+      }).length;
+
+      // Count birthdays today and this week
+      const today = new Date();
+      const todayStr = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      
+      const birthdaysToday = allUsers.filter(user => {
+        if (!user.birthDate) return false;
+        const birthDate = new Date(user.birthDate);
+        const birthStr = `${String(birthDate.getMonth() + 1).padStart(2, '0')}-${String(birthDate.getDate()).padStart(2, '0')}`;
+        return birthStr === todayStr;
+      }).length;
+
+      const birthdaysThisWeek = allUsers.filter(user => {
+        if (!user.birthDate) return false;
+        const birthDate = new Date(user.birthDate);
+        const thisYearBirthday = new Date(now.getFullYear(), birthDate.getMonth(), birthDate.getDate());
+        return thisYearBirthday >= weekStart && thisYearBirthday < weekEnd;
+      }).length;
+
+      // Churches count
+      const churches = await storage.getAllChurches();
+      const churchesCount = churches.length;
+
+      res.json({
+        totalUsers: allUsers.length,
+        totalInterested: usersByRole.interested || 0,
+        totalMembers: usersByRole.member || 0,
+        totalMissionaries: usersByRole.missionary || 0,
+        totalAdmins: usersByRole.admin || 0,
+        totalChurches: churchesCount,
+        pendingApprovals,
+        thisWeekEvents,
+        birthdaysToday,
+        birthdaysThisWeek,
+        totalEvents: allEvents.length,
+        approvedUsers: allUsers.filter(user => user.status === 'approved').length
+      });
+    } catch (error) {
+      console.error("Dashboard stats error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // System cleanup endpoint
   app.post("/api/system/clear-all", async (req, res) => {
     try {
