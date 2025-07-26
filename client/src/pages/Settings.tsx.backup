@@ -266,6 +266,80 @@ export default function Settings() {
     });
   };
 
+  const handleClearAllData = async () => {
+    const confirmed = window.confirm(
+      "⚠️ ATENÇÃO: Esta ação irá excluir TODOS os dados do sistema permanentemente!\n\n" +
+      "Isso inclui:\n" +
+      "• Todos os usuários cadastrados\n" +
+      "• Todas as reuniões e eventos\n" +
+      "• Todas as mensagens e conversas\n" +
+      "• Todos os registros de pontos e atividades\n" +
+      "• Todas as notificações\n\n" +
+      "Esta ação NÃO PODE SER DESFEITA!\n\n" +
+      "Tem certeza que deseja continuar?"
+    );
+
+    if (!confirmed) return;
+
+    const doubleConfirm = window.confirm(
+      "ÚLTIMA CONFIRMAÇÃO:\n\n" +
+      "Você tem ABSOLUTA CERTEZA que deseja excluir TODOS os dados do sistema?\n\n" +
+      "Digite 'CONFIRMAR' no próximo prompt para prosseguir."
+    );
+
+    if (!doubleConfirm) return;
+
+    const finalConfirm = prompt(
+      "Para confirmar a exclusão de TODOS os dados, digite exatamente: CONFIRMAR"
+    );
+
+    if (finalConfirm !== "CONFIRMAR") {
+      toast({
+        title: "Operação cancelada",
+        description: "A limpeza dos dados foi cancelada.",
+      });
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      
+      const response = await fetch('/api/system/clear-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: "Sistema limpo com sucesso",
+          description: result.message || "Todos os dados foram removidos do sistema.",
+        });
+        
+        // Refresh the page to show empty state
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+        
+      } else {
+        throw new Error(result.error || 'Falha ao limpar dados');
+      }
+      
+    } catch (error) {
+      console.error('Clear data error:', error);
+      toast({
+        title: "Erro ao limpar dados",
+        description: error instanceof Error ? error.message : "Ocorreu um erro inesperado.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const updateChurchField = (churchId: number, field: string, value: string) => {
     setChurchesList(prev => prev.map(church => 
       church.id === churchId 
@@ -285,7 +359,79 @@ export default function Settings() {
     }
   };
 
+  const handleClearAllData = async () => {
+    const confirmed = window.confirm(
+      "⚠️ ATENÇÃO: Esta ação irá excluir TODOS os dados do sistema permanentemente!\n\n" +
+      "Isso inclui:\n" +
+      "• Todos os usuários cadastrados\n" +
+      "• Todas as reuniões e eventos\n" +
+      "• Todas as mensagens e conversas\n" +
+      "• Todos os registros de pontos e atividades\n" +
+      "• Todas as notificações\n\n" +
+      "Esta ação NÃO PODE SER DESFEITA!\n\n" +
+      "Tem certeza que deseja continuar?"
+    );
 
+    if (!confirmed) return;
+
+    const doubleConfirm = window.confirm(
+      "ÚLTIMA CONFIRMAÇÃO:\n\n" +
+      "Você tem ABSOLUTA CERTEZA que deseja excluir TODOS os dados do sistema?\n\n" +
+      "Digite 'CONFIRMAR' no próximo prompt para prosseguir."
+    );
+
+    if (!doubleConfirm) return;
+
+    const finalConfirm = prompt(
+      "Para confirmar a exclusão de TODOS os dados, digite exatamente: CONFIRMAR"
+    );
+
+    if (finalConfirm !== "CONFIRMAR") {
+      toast({
+        title: "Operação cancelada",
+        description: "A limpeza dos dados foi cancelada.",
+      });
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      
+      const response = await fetch('/api/system/clear-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: "Sistema limpo com sucesso",
+          description: result.message || "Todos os dados foram removidos do sistema.",
+        });
+        
+        // Refresh the page to show empty state
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+        
+      } else {
+        throw new Error(result.error || 'Falha ao limpar dados');
+      }
+      
+    } catch (error) {
+      console.error('Clear data error:', error);
+      toast({
+        title: "Erro ao limpar dados",
+        description: error instanceof Error ? error.message : "Ocorreu um erro inesperado.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const validateImportData = () => {
     const errors: string[] = [];

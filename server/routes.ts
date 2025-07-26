@@ -429,6 +429,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // System cleanup endpoint
+  app.post("/api/system/clear-all", async (req, res) => {
+    try {
+      const success = await storage.clearAllData();
+      if (success) {
+        res.json({ success: true, message: "Todos os dados do sistema foram limpos com sucesso" });
+      } else {
+        res.status(500).json({ error: "Falha ao limpar os dados do sistema" });
+      }
+    } catch (error) {
+      console.error("Clear all data error:", error);
+      res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+
   // Meetings endpoints
   app.get("/api/meetings", async (req, res) => {
     try {

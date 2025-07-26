@@ -878,6 +878,27 @@ export class DatabaseStorage implements IStorage {
     const user = await this.getUserById(userId);
     return user?.points || 0;
   }
+
+  // System cleanup methods
+  async clearAllData(): Promise<boolean> {
+    try {
+      // Delete data in order to respect foreign key constraints
+      await db.delete(messages);
+      await db.delete(conversations);
+      await db.delete(notifications);
+      await db.delete(videoCallSessions);
+      await db.delete(relationships);
+      await db.delete(meetings);
+      await db.delete(events);
+      await db.delete(users);
+      
+      console.log('All system data cleared successfully');
+      return true;
+    } catch (error) {
+      console.error('Error clearing system data:', error);
+      return false;
+    }
+  }
 }
 
 export const storage = new DatabaseStorage();
