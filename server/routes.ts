@@ -224,34 +224,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      // Validate and process each user
-      const processedUsers = users.map((userData: any) => {
-        // Generate email if not provided
-        if (!userData.email) {
-          const namePart = userData.name?.toLowerCase().replace(/\s+/g, '.') || 'usuario';
-          userData.email = `${namePart}@igreja.com`;
-        }
+      let processedCount = 0;
+      let skippedCount = 0;
+      const errors: string[] = [];
+
+      // Validate and process each user with error handling
+      const processedUsers = [];
+      
+      for (let i = 0; i < users.length; i++) {
+        const userData = users[i];
         
-        // Generate password if not provided
-        if (!userData.password) {
-          userData.password = '123456'; // Default password
-        }
+        try {
+          // Skip if no name
+          if (!userData.name || userData.name.toString().trim() === '') {
+            skippedCount++;
+            errors.push(`Linha ${i + 1}: Nome é obrigatório - linha ignorada`);
+            continue;
+          }
 
-        // Set default role if not provided
-        if (!userData.role) {
-          userData.role = 'member';
-        }
+          // Generate email if not provided or invalid
+          if (!userData.email || !userData.email.includes('@')) {
+            const namePart = userData.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
+            userData.email = `${namePart}@igreja.com`;
+          }
+          
+          // Generate password if not provided
+          if (!userData.password) {
+            userData.password = '123456'; // Default password
+          }
 
-        // Parse dates if they are strings
-        if (userData.birthDate && typeof userData.birthDate === 'string') {
-          userData.birthDate = new Date(userData.birthDate);
-        }
-        if (userData.baptismDate && typeof userData.baptismDate === 'string') {
-          userData.baptismDate = new Date(userData.baptismDate);
-        }
+          // Set default role if not provided
+          if (!userData.role) {
+            userData.role = 'member';
+          }
 
-        return userData;
-      });
+          // Clean phone number
+          if (userData.phone) {
+            userData.phone = userData.phone.toString().replace(/[^0-9+]/g, '');
+          }
+
+          // Parse dates safely
+          if (userData.birthDate && typeof userData.birthDate === 'string') {
+            try {
+              userData.birthDate = new Date(userData.birthDate);
+              if (isNaN(userData.birthDate.getTime())) {
+                userData.birthDate = null;
+              }
+            } catch {
+              userData.birthDate = null;
+            }
+          }
+          
+          if (userData.baptismDate && typeof userData.baptismDate === 'string') {
+            try {
+              userData.baptismDate = new Date(userData.baptismDate);
+              if (isNaN(userData.baptismDate.getTime())) {
+                userData.baptismDate = null;
+              }
+            } catch {
+              userData.baptismDate = null;
+            }
+          }
+
+          processedUsers.push(userData);
+          processedCount++;
+          
+        } catch (error) {
+          skippedCount++;
+          errors.push(`Linha ${i + 1}: Erro no processamento - linha ignorada`);
+          console.error(`Error processing user ${i + 1}:`, error);
+        }
+      }
 
       const createdUsers = await storage.bulkCreateUsers(processedUsers);
       
@@ -259,8 +302,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true, 
         message: `${createdUsers.length} usuários importados com sucesso`,
         imported: createdUsers.length,
-        total: users.length
+        processed: processedCount,
+        skipped: skippedCount,
+        total: users.length,
+        errors: errors.slice(0, 5) // Return first 5 errors
       });
+      
     } catch (error) {
       console.error('Bulk import error:', error);
       res.status(500).json({ error: "Failed to import users" });

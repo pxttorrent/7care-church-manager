@@ -351,9 +351,12 @@ export default function Settings() {
       setImportStep('importing');
       setImportProgress(85);
       
-      // Transform import data to user format
+      // Filter out only rows with critical errors (no name), allow others through
       const usersToImport = importData
-        .filter(row => row.valid !== false)
+        .filter(row => {
+          const name = row.nome || row.Nome || row.name;
+          return name && name.toString().trim() !== ''; // Only skip if no name at all
+        })
         .map(row => ({
           name: row.nome || row.Nome || row.name || 'Usuário Importado',
           email: row.email || row.Email || `${(row.nome || row.Nome || 'usuario').toLowerCase().replace(/\s+/g, '.')}@igreja.com`,
@@ -382,9 +385,16 @@ export default function Settings() {
       if (response.ok) {
         setImportProgress(100);
         setImportStep('complete');
+        
+        const skippedCount = importData.length - usersToImport.length;
+        let message = `${result.imported} usuários importados com sucesso`;
+        if (skippedCount > 0) {
+          message += `. ${skippedCount} linhas ignoradas por falta de nome.`;
+        }
+        
         toast({
           title: "Importação concluída!",
-          description: `${result.imported} usuários importados com sucesso.`
+          description: message
         });
       } else {
         throw new Error(result.error || 'Erro na importação');
@@ -1188,19 +1198,22 @@ export default function Settings() {
                 </div>
 
                 {importErrors.length > 0 && (
-                  <Alert variant="destructive">
+                  <Alert variant="default">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertDescription>
                       <div className="space-y-1">
-                        <p className="font-medium">Erros encontrados:</p>
+                        <p className="font-medium">Avisos encontrados (linhas serão ignoradas):</p>
                         <ul className="list-disc pl-4 space-y-1">
                           {importErrors.slice(0, 3).map((error, index) => (
                             <li key={index} className="text-sm">{error}</li>
                           ))}
                         </ul>
                         {importErrors.length > 3 && (
-                          <p className="text-sm">E mais {importErrors.length - 3} erros...</p>
+                          <p className="text-sm">E mais {importErrors.length - 3} avisos...</p>
                         )}
+                        <p className="text-sm font-medium mt-2">
+                          Somente linhas sem nome serão ignoradas. Outros erros serão corrigidos automaticamente.
+                        </p>
                       </div>
                     </AlertDescription>
                   </Alert>
@@ -1209,10 +1222,9 @@ export default function Settings() {
                 <div className="flex gap-2">
                   <Button
                     onClick={performImport}
-                    disabled={importErrors.length > 0}
                     data-testid="start-import"
                   >
-                    {importErrors.length > 0 ? 'Corrija os erros primeiro' : 'Iniciar Importação'}
+                    {importErrors.length > 0 ? 'Importar (ignorar erros)' : 'Iniciar Importação'}
                   </Button>
                   <Button
                     variant="outline"
