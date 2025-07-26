@@ -217,12 +217,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Bulk import users endpoint
   app.post("/api/users/bulk-import", async (req, res) => {
     try {
+      console.log('Bulk import request received, body keys:', Object.keys(req.body || {}));
       const { users } = req.body;
       
-      if (!Array.isArray(users) || users.length === 0) {
-        res.status(400).json({ error: "Invalid users data" });
+      if (!Array.isArray(users)) {
+        console.log('Users data is not an array:', typeof users);
+        res.status(400).json({ error: "Users data must be an array" });
         return;
       }
+      
+      if (users.length === 0) {
+        console.log('Empty users array received');
+        res.status(400).json({ error: "Empty users array" });
+        return;
+      }
+      
+      console.log(`Processing ${users.length} users for import`);
 
       let processedCount = 0;
       let skippedCount = 0;
@@ -239,7 +249,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (!userData.name || userData.name.toString().trim() === '') {
             skippedCount++;
             errors.push(`Linha ${i + 1}: Nome é obrigatório - linha ignorada`);
+            console.log(`Skipping user ${i + 1}: no name provided`);
             continue;
+          }
+          
+          // Debug log for first few users
+          if (i < 3) {
+            console.log(`Processing user ${i + 1}:`, {
+              name: userData.name,
+              hasEmail: !!userData.email,
+              hasPhone: !!userData.phone,
+              hasChurch: !!userData.church || !!userData.igreja,
+              availableFields: Object.keys(userData)
+            });
           }
 
           // Generate email if not provided or invalid
@@ -464,8 +486,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
         } catch (error) {
           skippedCount++;
-          errors.push(`Linha ${i + 1}: Erro no processamento - linha ignorada`);
-          console.error(`Error processing user ${i + 1}:`, error);
+          const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+          errors.push(`Linha ${i + 1}: ${errorMsg}`);
+          console.error(`Error processing user ${i + 1} (${userData.name || 'no name'}):`, error);
         }
       }
 
@@ -521,7 +544,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
     } catch (error) {
       console.error('Bulk import error:', error);
-      res.status(500).json({ error: "Failed to import users" });
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      res.status(500).json({ 
+        error: "Failed to import users",
+        details: errorMsg,
+        timestamp: new Date().toISOString()
+      });
     }
   });
 
