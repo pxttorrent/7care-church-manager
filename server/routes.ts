@@ -351,14 +351,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const createdUsers = await storage.bulkCreateUsers(processedUsers);
+      // Process users individually to handle duplicates gracefully
+      let actuallyCreated = 0;
+      let duplicatesSkipped = 0;
+      
+      for (let i = 0; i < processedUsers.length; i++) {
+        const userData = processedUsers[i];
+        
+        try {
+          // Check if user already exists
+          const existingUser = await storage.getUserByEmail(userData.email);
+          
+          if (existingUser) {
+            duplicatesSkipped++;
+            console.log(`Usuário já existe: ${userData.email} - ignorado`);
+            continue;
+          }
+          
+          // Create new user
+          await storage.createUser(userData);
+          actuallyCreated++;
+          
+          if ((i + 1) % 10 === 0) {
+            console.log(`Processados ${i + 1}/${processedUsers.length} usuários`);
+          }
+          
+        } catch (error) {
+          console.error(`Error creating user ${userData.name} (${userData.email}):`, error);
+          errors.push(`Erro ao criar usuário ${userData.name}: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+          skippedCount++;
+        }
+      }
+      
+      let message = `${actuallyCreated} usuários importados com sucesso`;
+      if (duplicatesSkipped > 0) {
+        message += `. ${duplicatesSkipped} usuários já existiam e foram ignorados`;
+      }
+      if (skippedCount > 0) {
+        message += `. ${skippedCount} linhas com erro foram ignoradas`;
+      }
       
       res.json({ 
         success: true, 
-        message: `${createdUsers.length} usuários importados com sucesso`,
-        imported: createdUsers.length,
-        processed: processedCount,
-        skipped: skippedCount,
+        message,
+        imported: actuallyCreated,
+        processed: processedUsers.length,
+        skipped: skippedCount + duplicatesSkipped,
         total: users.length,
         errors: errors.slice(0, 5) // Return first 5 errors
       });

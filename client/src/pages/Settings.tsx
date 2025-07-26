@@ -476,21 +476,24 @@ export default function Settings() {
       setImportProgress(100);
       setImportStep('complete');
       
-      let message = `${totalImported} usuários importados com sucesso`;
-      if (totalSkipped > 0) {
-        message += `. ${totalSkipped} linhas ignoradas por falta de nome.`;
-      }
-      
+      // Show the server's message which includes duplicate handling
       toast({
         title: "Importação concluída!",
-        description: message
+        description: response.message || `${totalImported} usuários importados com sucesso`
       });
       
     } catch (error) {
       console.error('Import error:', error);
+      
+      // Show more detailed error information
+      let errorMessage = "Ocorreu um erro durante a importação.";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Erro na importação",
-        description: "Ocorreu um erro durante a importação. Tente novamente.",
+        description: errorMessage,
         variant: "destructive"
       });
       setImportStep('validation');
