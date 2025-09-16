@@ -24,7 +24,7 @@ interface BirthdayCardProps {
 export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = false }: BirthdayCardProps) => {
   const formatDate = (dateString: string) => {
     // Para formato YYYY-MM-DD, extrai diretamente os componentes
-    if (dateString.includes('-') && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    if (dateString && typeof dateString === 'string' && dateString.includes('-') && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
       const [year, month, day] = dateString.split('-');
       const parsedDay = parseInt(day);
       const parsedMonth = parseInt(month);
@@ -39,7 +39,7 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
     // Se a data for inválida, tenta parsear manualmente
     if (isNaN(date.getTime())) {
       // Tenta parsear formato DD/MM/YYYY
-      if (dateString.includes('/')) {
+      if (dateString && typeof dateString === 'string' && dateString.includes('/')) {
         const parts = dateString.split('/');
         if (parts.length === 3) {
           const [day, month, year] = parts;
@@ -75,7 +75,7 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
     // Se a data for inválida, tenta parsear manualmente
     if (isNaN(date.getTime())) {
       // Tenta parsear formato DD/MM/YYYY
-      if (dateString.includes('/')) {
+      if (dateString && typeof dateString === 'string' && dateString.includes('/')) {
         const parts = dateString.split('/');
         if (parts.length === 3) {
           const [day, month] = parts;
@@ -94,7 +94,7 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
       }
       
       // Tenta parsear formato YYYY-MM-DD
-      if (dateString.includes('-') && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      if (dateString && typeof dateString === 'string' && dateString.includes('-') && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const [year, month, day] = dateString.split('-');
         const thisYearBirthday = new Date(currentYear, parseInt(month) - 1, parseInt(day));
         
@@ -125,7 +125,7 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
     // Se a data for inválida, tenta parsear manualmente
     if (isNaN(birthDate.getTime())) {
       // Tenta parsear formato DD/MM/YYYY
-      if (dateString.includes('/')) {
+      if (dateString && typeof dateString === 'string' && dateString.includes('/')) {
         const parts = dateString.split('/');
         if (parts.length === 3) {
           const [day, month] = parts;
@@ -138,7 +138,7 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
       }
       
       // Tenta parsear formato YYYY-MM-DD
-      if (dateString.includes('-') && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      if (dateString && typeof dateString === 'string' && dateString.includes('-') && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const [year, month, day] = dateString.split('-');
         const parsedDay = parseInt(day);
         const parsedMonth = parseInt(month);
@@ -182,24 +182,24 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
       
       if (!isNaN(dateA.getTime())) {
         dayA = dateA.getDate();
-      } else if (a.birthDate.includes('/')) {
+      } else if (a.birthDate && typeof a.birthDate === 'string' && a.birthDate.includes('/')) {
         const parts = a.birthDate.split('/');
         if (parts.length === 3) {
           dayA = parseInt(parts[0]);
         }
-      } else if (a.birthDate.includes('-') && a.birthDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      } else if (a.birthDate && typeof a.birthDate === 'string' && a.birthDate.includes('-') && a.birthDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const parts = a.birthDate.split('-');
         dayA = parseInt(parts[2]);
       }
       
       if (!isNaN(dateB.getTime())) {
         dayB = dateB.getDate();
-      } else if (b.birthDate.includes('/')) {
+      } else if (b.birthDate && typeof b.birthDate === 'string' && b.birthDate.includes('/')) {
         const parts = b.birthDate.split('/');
         if (parts.length === 3) {
           dayB = parseInt(parts[0]);
         }
-      } else if (b.birthDate.includes('-') && b.birthDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      } else if (b.birthDate && typeof b.birthDate === 'string' && b.birthDate.includes('-') && b.birthDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const parts = b.birthDate.split('-');
         dayB = parseInt(parts[2]);
       }
