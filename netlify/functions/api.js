@@ -1169,7 +1169,8 @@ exports.handler = async (event, context) => {
         body: JSON.stringify({ 
           status: 'online',
           timestamp: new Date().toISOString(),
-          version: '1.0.0'
+          version: '1.0.1',
+          test: 'Mudança aplicada com sucesso!'
         })
       };
     }
