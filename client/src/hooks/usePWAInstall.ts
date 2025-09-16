@@ -99,7 +99,7 @@ export const usePWAInstall = () => {
         platform: 'Desktop',
         steps: [
           '1. Clique no ícone de instalação na barra de endereços',
-          '2. Ou acesse o menu do navegador e selecione "Instalar 7Care Plus"',
+          '2. Ou acesse o menu do navegador e selecione "Instalar 7care"',
           '3. Confirme a instalação'
         ]
       };

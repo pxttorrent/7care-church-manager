@@ -14,9 +14,23 @@ import {
   Heart,
   Zap,
   Award,
-  TrendingUp
+  TrendingUp,
+  Mountain,
+  Crown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { 
+  getLevelByPoints, 
+  getNextLevel, 
+  getProgressToNextLevel, 
+  getPointsToNextLevel,
+  getMountName,
+  getLevelName,
+  getLevelColor,
+  getLevelIcon,
+  GAMIFICATION_LEVELS
+} from '@/lib/gamification';
+import { MountIcon } from '@/components/ui/mount-icon';
 
 interface Achievement {
   id: number;
@@ -31,71 +45,15 @@ interface Achievement {
   target?: number;
 }
 
-interface Level {
-  level: number;
-  name: string;
-  minPoints: number;
-  maxPoints: number;
-  color: string;
-  benefits: string[];
-}
-
-const levels: Level[] = [
-  {
-    level: 1,
-    name: 'Interessado',
-    minPoints: 0,
-    maxPoints: 99,
-    color: 'text-gray-600',
-    benefits: ['Acesso ao app', 'Notificações de eventos']
-  },
-  {
-    level: 2,
-    name: 'Membro Iniciante',
-    minPoints: 100,
-    maxPoints: 299,
-    color: 'text-green-600',
-    benefits: ['Chat com líderes', 'Inscrição em atividades']
-  },
-  {
-    level: 3,
-    name: 'Membro Ativo',
-    minPoints: 300,
-    maxPoints: 599,
-    color: 'text-blue-600',
-    benefits: ['Criação de grupos', 'Acesso a relatórios']
-  },
-  {
-    level: 4,
-    name: 'Líder Comunitário',
-    minPoints: 600,
-    maxPoints: 999,
-    color: 'text-purple-600',
-    benefits: ['Organização de eventos', 'Mentoria de novos membros']
-  },
-  {
-    level: 5,
-    name: 'Embaixador',
-    minPoints: 1000,
-    maxPoints: 1999,
-    color: 'text-orange-600',
-    benefits: ['Todas as funcionalidades', 'Reconhecimento especial']
-  },
-  {
-    level: 6,
-    name: 'Líder Espiritual',
-    minPoints: 2000,
-    maxPoints: 9999,
-    color: 'text-red-600',
-    benefits: ['Status VIP', 'Acesso prioritário', 'Badges exclusivos']
-  }
-];
+// Usar o sistema de gamificação baseado nos montes bíblicos
+const getCurrentLevel = (points: number) => getLevelByPoints(points);
+const getNextLevelInfo = (points: number) => getNextLevel(points);
 
 const mockAchievements: Achievement[] = [
   {
     id: 1,
     title: 'Primeiro Passo',
-    description: 'Complete seu primeiro acesso ao 7Care Plus',
+            description: 'Complete seu primeiro acesso',
     icon: Star,
     points: 10,
     category: 'growth',
@@ -172,16 +130,11 @@ export const PointsSystem = ({
 }: PointsSystemProps) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  const currentLevel = levels.find(l => l.level === userLevel) || levels[0];
-  const nextLevel = levels.find(l => l.level === userLevel + 1);
+  const currentLevel = getCurrentLevel(userPoints);
+  const nextLevel = getNextLevelInfo(userPoints);
   
-  const progressToNextLevel = nextLevel 
-    ? ((userPoints - currentLevel.minPoints) / (nextLevel.minPoints - currentLevel.minPoints)) * 100
-    : 100;
-
-  const pointsToNextLevel = nextLevel 
-    ? nextLevel.minPoints - userPoints
-    : 0;
+  const progressToNextLevel = getProgressToNextLevel(userPoints);
+  const pointsToNextLevel = getPointsToNextLevel(userPoints);
 
   const categoryColors = {
     attendance: 'bg-blue-100 text-blue-800',
@@ -218,60 +171,58 @@ export const PointsSystem = ({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="text-center">
-            <div className="inline-flex items-center gap-3 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg p-4 mb-4">
-              <Award className={cn("h-8 w-8", currentLevel.color)} />
-              <div>
-                <h3 className={cn("text-xl font-bold", currentLevel.color)}>
-                  {currentLevel.name}
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Nível {currentLevel.level}
-                </p>
-              </div>
+            <div className="text-4xl mb-2">
+              <MountIcon iconType={getLevelIcon(userPoints)} className="h-16 w-16 mx-auto" />
             </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary" data-testid="user-points">
-                  {userPoints.toLocaleString()}
-                </div>
-                <div className="text-sm text-muted-foreground">Pontos Totais</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600" data-testid="unlocked-achievements">
-                  {unlockedAchievements.length}
-                </div>
-                <div className="text-sm text-muted-foreground">Conquistas</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600" data-testid="completion-percentage">
-                  {Math.round((userPoints / totalPossiblePoints) * 100)}%
-                </div>
-                <div className="text-sm text-muted-foreground">Completude</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600" data-testid="points-to-next">
-                  {pointsToNextLevel > 0 ? pointsToNextLevel : '✓'}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {pointsToNextLevel > 0 ? 'Para Próximo' : 'Máximo'}
-                </div>
-              </div>
+            <div className={getLevelColor(userPoints) + " text-xl font-bold mb-1"}>
+              {getMountName(userPoints)}
             </div>
-            
-            {nextLevel && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Progresso para {nextLevel.name}</span>
-                  <span>{Math.round(progressToNextLevel)}%</span>
-                </div>
-                <Progress value={progressToNextLevel} className="h-3" />
-                <p className="text-xs text-muted-foreground">
-                  Faltam {pointsToNextLevel} pontos para o próximo nível
-                </p>
-              </div>
-            )}
+            <div className="text-sm text-muted-foreground mb-3">
+              {currentLevel.name}
+            </div>
           </div>
+            
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-primary" data-testid="user-points">
+                {userPoints.toLocaleString()}
+              </div>
+              <div className="text-sm text-muted-foreground">Pontos Totais</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600" data-testid="unlocked-achievements">
+                {unlockedAchievements.length}
+              </div>
+              <div className="text-sm text-muted-foreground">Conquistas</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600" data-testid="completion-percentage">
+                {Math.round((userPoints / totalPossiblePoints) * 100)}%
+              </div>
+              <div className="text-sm text-muted-foreground">Completude</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600" data-testid="points-to-next">
+                {pointsToNextLevel > 0 ? pointsToNextLevel : '✓'}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {pointsToNextLevel > 0 ? 'Para Próximo' : 'Máximo'}
+              </div>
+            </div>
+          </div>
+            
+          {nextLevel && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Progresso para {nextLevel.mount}</span>
+                <span>{Math.round(progressToNextLevel)}%</span>
+              </div>
+              <Progress value={progressToNextLevel} className="h-3" />
+              <p className="text-xs text-muted-foreground">
+                Faltam {pointsToNextLevel} pontos para o próximo monte
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -280,7 +231,7 @@ export const PointsSystem = ({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Gift className="h-5 w-5 text-primary" />
-            Benefícios do Seu Nível
+            Benefícios do Seu Monte
           </CardTitle>
         </CardHeader>
         <CardContent>

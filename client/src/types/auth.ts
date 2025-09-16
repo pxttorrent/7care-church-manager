@@ -8,7 +8,12 @@ export interface User {
   church?: string;
   avatar?: string;
   phone?: string;
+  profilePhoto?: string;
+  birthDate?: string;
   isApproved: boolean;
+  status?: string;
+  firstAccess?: boolean;
+  usingDefaultPassword?: boolean;
   createdAt: string;
 }
 

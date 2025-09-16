@@ -78,9 +78,7 @@ export const RegisterForm = () => {
         <CardTitle className="text-2xl font-bold text-primary">
           Criar conta
         </CardTitle>
-        <CardDescription>
-          Junte-se à comunidade do 7Care Plus
-        </CardDescription>
+
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">

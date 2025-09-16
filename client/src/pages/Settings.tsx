@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,19 +34,20 @@ import {
   Loader2,
   Eye,
   EyeOff,
-  Plus
+  Plus,
+  Star,
+  Edit2
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { MobileLayout } from '@/components/layout/MobileLayout';
+import { MountainProgress } from '@/components/dashboard/MountainProgress';
+import { PointsConfiguration } from '@/components/settings/PointsConfiguration';
+import { useLastImportDate } from '@/hooks/useLastImportDate';
+import { useSystemLogo } from '@/hooks/useSystemLogo';
+
 
 interface SettingsData {
-  profile: {
-    name: string;
-    email: string;
-    phone: string;
-    church: string;
-  };
   notifications: {
     emailEnabled: boolean;
     pushEnabled: boolean;
@@ -75,12 +76,6 @@ interface SettingsData {
 }
 
 const initialSettings: SettingsData = {
-  profile: {
-    name: 'Pastor João Silva',
-    email: 'admin@7care.com',
-    phone: '(11) 99999-9999',
-    church: 'Igreja Central'
-  },
   notifications: {
     emailEnabled: true,
     pushEnabled: true,
@@ -122,11 +117,29 @@ export default function Settings() {
   const [importData, setImportData] = useState<any[]>([]);
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importDuplicates, setImportDuplicates] = useState<any[]>([]);
-  const [lastImportDate, setLastImportDate] = useState<string | null>('2025-01-20T14:30:00Z');
+  const { lastImportDate, updateLastImportDate, getDaysSinceLastImport, getFormattedLastImportDate } = useLastImportDate();
 
   // Church management states
   const [editingChurch, setEditingChurch] = useState<number | null>(null);
-  const [churchesList, setChurchesList] = useState([]);
+  const [churchesList, setChurchesList] = useState<any[]>([]);
+  const [defaultChurchId, setDefaultChurchId] = useState<number | null>(null);
+  const [defaultChurchName, setDefaultChurchName] = useState<string>('');
+  const [isSavingDefault, setIsSavingDefault] = useState(false);
+
+  // Clear data dialog states
+  const [showClearDataDialog, setShowClearDataDialog] = useState(false);
+  const [clearDataCallback, setClearDataCallback] = useState<((value: boolean) => void) | null>(null);
+
+  // Logo management states
+  const [currentLogo, setCurrentLogo] = useState<string>('');
+  const { refreshLogo, clearLogoSystem } = useSystemLogo();
+
+  // Mobile Header Layout states
+  const [mobileHeaderLayout, setMobileHeaderLayout] = useState({
+    logo: { offsetX: 0, offsetY: 0 },
+    welcome: { offsetX: 0, offsetY: 0 },
+    actions: { offsetX: 0, offsetY: 0 }
+  });
 
   // Load churches from backend
   const loadChurches = async () => {
@@ -134,11 +147,11 @@ export default function Settings() {
       const response = await fetch('/api/churches');
       if (response.ok) {
         const churches = await response.json();
-        const formattedChurches = churches.map(church => ({
+        const formattedChurches = (churches as any[]).map((church: any) => ({
           id: church.id,
           name: church.name,
           address: church.address || 'Endereço não informado',
-          active: church.isActive !== false
+          active: true // Todas as igrejas são consideradas ativas por padrão
         }));
         setChurchesList(formattedChurches);
       }
@@ -147,11 +160,152 @@ export default function Settings() {
     }
   };
 
+  // Load default church
+  const loadDefaultChurch = async () => {
+    try {
+      const response = await fetch('/api/settings/default-church');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.defaultChurch) {
+          setDefaultChurchId(data.defaultChurch.id);
+          setDefaultChurchName(data.defaultChurch.name);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading default church:', error);
+    }
+  };
+
+  // Logo management functions
+
+  // Save default church
+  const saveDefaultChurch = async () => {
+    if (!defaultChurchId) return;
+    
+    setIsSavingDefault(true);
+    try {
+      const response = await fetch('/api/settings/default-church', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ churchId: defaultChurchId }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          // Update local state
+          const selectedChurch = (churchesList as any[]).find((c: any) => c.id === defaultChurchId);
+          if (selectedChurch) {
+            setDefaultChurchName(selectedChurch.name);
+          }
+          
+          toast({
+            title: "Igreja padrão atualizada",
+            description: "A igreja padrão foi definida com sucesso.",
+          });
+        }
+      } else {
+        throw new Error('Failed to update default church');
+      }
+    } catch (error) {
+      console.error('Error saving default church:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível definir a igreja padrão.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSavingDefault(false);
+    }
+  };
+
   useEffect(() => {
     if (user?.role === 'admin') {
       loadChurches();
+      loadDefaultChurch();
     }
   }, [user]);
+
+  // Load current system logo from localStorage
+  useEffect(() => {
+    const savedLogo = localStorage.getItem('systemLogo');
+    if (savedLogo && savedLogo !== '') {
+      setCurrentLogo(savedLogo);
+    }
+  }, []);
+
+  // Load mobile header layout from localStorage (deve ser carregado primeiro)
+  useEffect(() => {
+    console.log('🔧 Settings - Carregando layout do localStorage...');
+    const savedLayout = localStorage.getItem('mobileHeaderLayout');
+    console.log('🔧 Settings - Layout salvo encontrado:', savedLayout);
+    
+    if (savedLayout) {
+      try {
+        const parsedLayout = JSON.parse(savedLayout);
+        console.log('🔧 Settings - Layout parseado com sucesso:', parsedLayout);
+        setMobileHeaderLayout(parsedLayout);
+      } catch (error) {
+        console.error('❌ Settings - Erro ao carregar layout do mobile header:', error);
+      }
+    } else {
+      console.log('🔧 Settings - Nenhum layout salvo encontrado, usando padrão');
+    }
+  }, []);
+
+  // Debug: Log sempre que o layout mudar no Settings
+  useEffect(() => {
+    console.log('🔧 Settings - Estado do layout atualizado:', mobileHeaderLayout);
+  }, [mobileHeaderLayout]);
+
+  // Mobile Header Layout functions
+  const updateMobileHeaderLayout = (element: 'logo' | 'welcome' | 'actions', axis: 'offsetX' | 'offsetY', value: number) => {
+    console.log(`🔧 Settings - Atualizando layout: ${element}.${axis} = ${value}`);
+    setMobileHeaderLayout(prev => {
+      const newLayout = {
+        ...prev,
+        [element]: {
+          ...prev[element],
+          [axis]: value
+        }
+      };
+      console.log(`🔧 Settings - Novo layout:`, newLayout);
+      return newLayout;
+    });
+  };
+
+  const resetMobileHeaderLayout = () => {
+    console.log('🔧 Settings - Resetando layout para valores padrão');
+    const defaultLayout = {
+      logo: { offsetX: 0, offsetY: 0 },
+      welcome: { offsetX: 0, offsetY: 0 },
+      actions: { offsetX: 0, offsetY: 0 }
+    };
+    setMobileHeaderLayout(defaultLayout);
+    console.log('🔧 Settings - Layout resetado:', defaultLayout);
+  };
+
+  const saveMobileHeaderLayout = () => {
+    console.log('🔧 Settings - Salvando layout:', mobileHeaderLayout);
+    
+    localStorage.setItem('mobileHeaderLayout', JSON.stringify(mobileHeaderLayout));
+    console.log('🔧 Settings - Layout salvo no localStorage');
+    
+    // Disparar evento para notificar o MobileHeader
+    const layoutEvent = new CustomEvent('mobileHeaderLayoutUpdated', { 
+      detail: { layout: mobileHeaderLayout } 
+    });
+    console.log('🔧 Settings - Disparando evento:', layoutEvent);
+    window.dispatchEvent(layoutEvent);
+    console.log('🔧 Settings - Evento disparado com sucesso');
+    
+    toast({
+      title: "Layout salvo",
+      description: "As posições do mobile header foram atualizadas com sucesso.",
+    });
+  };
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -261,9 +415,12 @@ export default function Settings() {
             : c
         ));
         
+        const newStatus = !church.active;
+        const statusText = newStatus ? 'ativada' : 'desativada';
+        
         toast({
           title: "Igreja atualizada",
-          description: `${church.name} foi ${!church.active ? 'ativada' : 'desativada'} com sucesso.`,
+          description: `${church.name} foi ${statusText} com sucesso.${!newStatus ? ' Usuários associados podem ser afetados.' : ''}`,
         });
       }
     } catch (error) {
@@ -316,10 +473,27 @@ export default function Settings() {
             ? { ...church, [field]: value }
             : church
         ));
-        toast({
-          title: "Igreja atualizada",
-          description: "As informações da igreja foram salvas.",
-        });
+        
+        // Se o nome da igreja foi alterado, atualizar todos os usuários
+        if (field === 'name') {
+          const church = churchesList.find(c => c.id === churchId);
+          if (church) {
+            toast({
+              title: "Igreja atualizada",
+              description: `Nome da igreja alterado de "${church.name}" para "${value}". Todos os usuários associados serão atualizados.`,
+            });
+          } else {
+            toast({
+              title: "Igreja atualizada",
+              description: "As informações da igreja foram salvas e todos os usuários associados serão atualizados.",
+            });
+          }
+        } else {
+          toast({
+            title: "Igreja atualizada",
+            description: "As informações da igreja foram salvas.",
+          });
+        }
       }
     } catch (error) {
       toast({
@@ -342,33 +516,12 @@ export default function Settings() {
   };
 
   const handleClearAllData = async () => {
-    const confirmed = window.confirm(
-      "⚠️ ATENÇÃO: Esta ação irá excluir TODOS os dados do sistema permanentemente!\n\n" +
-      "Isso inclui:\n" +
-      "• Todos os usuários cadastrados\n" +
-      "• Todas as reuniões e eventos\n" +
-      "• Todas as mensagens e conversas\n" +
-      "• Todos os registros de pontos e atividades\n" +
-      "• Todas as notificações\n\n" +
-      "Esta ação NÃO PODE SER DESFEITA!\n\n" +
-      "Tem certeza que deseja continuar?"
-    );
+    const confirmed = await new Promise<boolean>((resolve) => {
+      setShowClearDataDialog(true);
+      setClearDataCallback(() => resolve);
+    });
 
-    if (!confirmed) return;
-
-    const doubleConfirm = window.confirm(
-      "ÚLTIMA CONFIRMAÇÃO:\n\n" +
-      "Você tem ABSOLUTA CERTEZA que deseja excluir TODOS os dados do sistema?\n\n" +
-      "Digite 'CONFIRMAR' no próximo prompt para prosseguir."
-    );
-
-    if (!doubleConfirm) return;
-
-    const finalConfirm = prompt(
-      "Para confirmar a exclusão de TODOS os dados, digite exatamente: CONFIRMAR"
-    );
-
-    if (finalConfirm !== "CONFIRMAR") {
+    if (!confirmed) {
       toast({
         title: "Operação cancelada",
         description: "A limpeza dos dados foi cancelada.",
@@ -494,91 +647,190 @@ export default function Settings() {
       let totalImported = 0;
       let totalSkipped = importData.length - validRows.length;
 
+      let lastResult: any = null;
+      
       for (let i = 0; i < validRows.length; i += batchSize) {
         const batch = validRows.slice(i, i + batchSize);
         
         const usersToImport = batch.map(row => {
-          const originalPhone = row.Celular || row.celular || row.telefone || row.Telefone || row.phone;
+          // Mapeamento completo de telefone com todas as variações
+          const originalPhone = row.Celular || row.celular || row.telefone || row.Telefone || row.phone || row['Celular'];
           const formattedPhone = formatPhoneNumber(originalPhone);
           
           // Check if phone was too short
           const phoneWarning = originalPhone && !formattedPhone;
           
           return {
+            // Campos básicos
             name: row.Nome || row.nome || row.name || 'Usuário Importado',
             email: row.Email || row.email || `${(row.Nome || row.nome || 'usuario').toLowerCase().replace(/\s+/g, '.')}@igreja.com`,
             password: '123456', // Default password
             role: getRole(row.Tipo || row.tipo || row.role),
+            
+            // Campos da igreja
             church: row.Igreja || row.igreja || row.church || 'Igreja Principal',
             churchCode: row.Código || row.codigo || row.code,
+            
+            // Contato
             phone: formattedPhone,
             cpf: row.CPF || row.cpf,
+            
+            // Endereço
             address: row.Endereço || row.endereco || row.address,
+            
+            // Datas
             birthDate: parseDate(row.Nascimento || row.nascimento || row.birthDate),
             baptismDate: parseDate(row.Batismo || row.batismo || row.baptismDate),
+            
+            // Informações pessoais
             civilStatus: row['Estado civil'] || row.estadoCivil || row.civilStatus,
             occupation: row.Ocupação || row.ocupacao || row.profissao || row.occupation,
             education: row['Grau de educação'] || row.educacao || row.education,
-            isDonor: parseBooleanField(row.Dizimista || row.dizimista),
-            isOffering: parseBooleanField(row.Ofertante || row.ofertante),
+            
+            // Dados financeiros
+            ...(() => {
+              const dizimistaResult = parseDizimistaField(row.Dizimista || row.dizimista);
+              return {
+                isDonor: dizimistaResult.isDonor,
+                dizimistaType: dizimistaResult.dizimistaType
+              };
+            })(),
+            ...(() => {
+              const ofertanteResult = parseOfertanteField(row.Ofertante || row.ofertante);
+              return {
+                isOffering: ofertanteResult.isOffering,
+                ofertanteType: ofertanteResult.ofertanteType
+              };
+            })(),
+            
+            // Escola Sabatina
             isEnrolledES: parseBooleanField(row['Matriculado na ES'] || row.matriculadoES),
             hasLesson: parseBooleanField(row['Tem lição'] || row.temLicao),
             esPeriod: row['Período ES'] || row.periodoES,
+            
+            // Dados espirituais
             previousReligion: row['Religião anterior'] || row.religiaoAnterior,
             biblicalInstructor: row['Instrutor bíblico'] || row.instrutorBiblico,
+            
+            // Departamentos
             departments: row['Departamentos e cargos'] || row.departamentos,
+            
+            // Dados extras completos
             extraData: JSON.stringify({
+              // Dados básicos
               sexo: row.Sexo || row.sexo,
               idade: row.Idade || row.idade,
               codigo: row.Código || row.codigo,
+              
+              // Engajamento e classificação
               engajamento: row.Engajamento || row.engajamento,
               classificacao: row.Classificação || row.classificacao,
+              
+              // Telefone
               phoneWarning: phoneWarning,
               originalPhone: phoneWarning ? originalPhone : null,
+              
+              // Dízimos
               dizimos12m: row['Dízimos - 12m'] || row.dizimos12m,
               ultimoDizimo: row['Último dízimo - 12m'] || row.ultimoDizimo,
               valorDizimo: row['Valor dízimo - 12m'] || row.valorDizimo,
+              numeroMesesSemDizimar: row['Número de meses s/ dizimar'] || row.numeroMesesSemDizimar,
+              dizimistaAntesUltimoDizimo: row['Dizimista antes do últ. dízimo'] || row.dizimistaAntesUltimoDizimo,
+              dizimistaType: (() => {
+                const dizimistaResult = parseDizimistaField(row.Dizimista || row.dizimista);
+                return dizimistaResult.dizimistaType;
+              })(),
+              
+              // Ofertas
               ofertas12m: row['Ofertas - 12m'] || row.ofertas12m,
               ultimaOferta: row['Última oferta - 12m'] || row.ultimaOferta,
               valorOferta: row['Valor oferta - 12m'] || row.valorOferta,
+              numeroMesesSemOfertar: row['Número de meses s/ ofertar'] || row.numeroMesesSemOfertar,
+              ofertanteAntesUltimaOferta: row['Ofertante antes da últ. oferta'] || row.ofertanteAntesUltimaOferta,
+              ofertanteType: (() => {
+                const ofertanteResult = parseOfertanteField(row.Ofertante || row.ofertante);
+                return ofertanteResult.ofertanteType;
+              })(),
+              
+              // Movimentos
               ultimoMovimento: row['Último movimento'] || row.ultimoMovimento,
               dataUltimoMovimento: row['Data do último movimento'] || row.dataUltimoMovimento,
               tipoEntrada: row['Tipo de entrada'] || row.tipoEntrada,
+              
+              // Batismo
+              tempoBatismo: row['Tempo de batismo'] || row.tempoBatismo,
               localidadeBatismo: row['Localidade do batismo'] || row.localidadeBatismo,
               batizadoPor: row['Batizado por'] || row.batizadoPor,
               idadeBatismo: row['Idade no Batismo'] || row.idadeBatismo,
+              tempoBatismoAnos: row['Tempo de batismo - anos'] || row.tempoBatismoAnos,
+              
+              // Conversão
               comoConheceu: row['Como conheceu a IASD'] || row.comoConheceu,
               fatorDecisivo: row['Fator decisivo'] || row.fatorDecisivo,
               comoEstudou: row['Como estudou a Bíblia'] || row.comoEstudou,
               instrutorBiblico2: row['Instrutor bíblico 2'] || row.instrutorBiblico2,
+              
+              // Cargos e departamentos
               temCargo: row['Tem cargo'] || row.temCargo,
+              teen: row.Teen || row.teen,
+              departamentosCargos: row['Departamentos e cargos'] || row.departamentosCargos,
+              
+              // Família
               nomeMae: row['Nome da mãe'] || row.nomeMae,
               nomePai: row['Nome do pai'] || row.nomePai,
+              dataCasamento: row['Data de casamento'] || row.dataCasamento,
+              
+              // Localização
               bairro: row.Bairro || row.bairro,
               cidadeEstado: row['Cidade e Estado'] || row.cidadeEstado,
               cidadeNascimento: row['Cidade de nascimento'] || row.cidadeNascimento,
               estadoNascimento: row['Estado de nascimento'] || row.estadoNascimento,
+              
+              // Unidade
               nomeUnidade: row['Nome da unidade'] || row.nomeUnidade,
+              
+              // Atividades espirituais
               comunhao: row.Comunhão || row.comunhao,
               missao: row.Missão || row.missao,
               estudoBiblico: row['Estudo bíblico'] || row.estudoBiblico,
               batizouAlguem: row['Batizou alguém'] || row.batizouAlguem,
+              discPosBatismal: row['Disc. pós batismal'] || row.discPosBatismal,
+              
+              // Presença
               presencaTotal: row['Total presença no cartão'] || row.presencaTotal,
               presencaQuizLocal: row['Presença no quiz local'] || row.presencaQuizLocal,
+              presencaQuizOutraUnidade: row['Presença no quiz outra unidade'] || row.presencaQuizOutraUnidade,
               presencaQuizOnline: row['Presença no quiz online'] || row.presencaQuizOnline,
+              totalPresenca: row['Total de presença'] || row.totalPresenca,
               teveParticipacao: row['Teve participação'] || row.teveParticipacao,
+              
+              // Colaboração
               campoColaborador: row['Campo - colaborador'] || row.campoColaborador,
               areaColaborador: row['Área - colaborador'] || row.areaColaborador,
+              estabelecimentoColaborador: row['Estabelecimento - colaborador'] || row.estabelecimentoColaborador,
               funcaoColaborador: row['Função - colaborador'] || row.funcaoColaborador,
+              
+              // Validação
               camposVazios: row['Campos vazios/inválidos'] || row.camposVazios,
               cpfValido: row['CPF válido'] || row.cpfValido,
+              nomeCamposVazios: row['Nome dos campos vazios no ACMS'] || row.nomeCamposVazios,
+              
+              // Educação
               alunoEducacao: row['Aluno educação Adv.'] || row.alunoEducacao,
-              parentesco: row['Parentesco p/ c/ aluno'] || row.parentesco
+              parentesco: row['Parentesco p/ c/ aluno'] || row.parentesco,
+              
+              // Lição
+              temLicao: parseBooleanField(row['Tem lição'] || row.temLicao)
             }),
+            
+            // Observações
             observations: [
-            row['Como estudou a Bíblia'] && `Como estudou: ${row['Como estudou a Bíblia']}`,
-            row['Teve participação'] && `Participação: ${row['Teve participação']}`,
-            row['Campos vazios/inválidos'] && `Campos vazios: ${row['Campos vazios/inválidos']}`
+              row['Como estudou a Bíblia'] && `Como estudou: ${row['Como estudou a Bíblia']}`,
+              row['Teve participação'] && `Participação: ${row['Teve participação']}`,
+              row['Campos vazios/inválidos'] && `Campos vazios: ${row['Campos vazios/inválidos']}`,
+              row['Tempo de batismo'] && `Tempo de batismo: ${row['Tempo de batismo']}`,
+              row['Engajamento'] && `Engajamento: ${row['Engajamento']}`,
+              row['Classificação'] && `Classificação: ${row['Classificação']}`
             ].filter(Boolean).join(' | ') || null
           };
         });
@@ -595,6 +847,7 @@ export default function Settings() {
         });
 
         const result = await response.json();
+        lastResult = result;
         
         if (response.ok) {
           totalImported += result.imported + (result.updated || 0);
@@ -614,8 +867,16 @@ export default function Settings() {
       // Show the server's message which includes duplicate handling
       toast({
         title: "Importação concluída!",
-        description: result.message || `${totalImported} usuários importados com sucesso`
+        description: lastResult?.message || `${totalImported} usuários importados com sucesso`
       });
+      
+      // Recarregar igrejas se o usuário for admin
+      if (user?.role === 'admin') {
+        await loadChurches();
+      }
+      
+      // Dispatch custom event to update dashboard
+      window.dispatchEvent(new CustomEvent('user-imported'));
       
     } catch (error) {
       console.error('Import error:', error);
@@ -637,24 +898,263 @@ export default function Settings() {
 
   const getRole = (tipo: string): string => {
     if (!tipo) return 'member';
-    const tipoLower = tipo.toLowerCase();
-    if (tipoLower.includes('admin') || tipoLower.includes('pastor')) return 'admin';
-    if (tipoLower.includes('mission') || tipoLower.includes('diácon')) return 'missionary';
-    if (tipoLower.includes('interest') || tipoLower.includes('visit')) return 'interested';
+    const tipoLower = tipo.toLowerCase().trim();
+    
+    // Admin/Pastor roles
+    if (tipoLower.includes('admin') || 
+        tipoLower.includes('pastor') || 
+        tipoLower.includes('pastora') ||
+        tipoLower.includes('ministro') ||
+        tipoLower.includes('ministra') ||
+        tipoLower.includes('líder') ||
+        tipoLower.includes('lider') ||
+        tipoLower.includes('coordenador') ||
+        tipoLower.includes('coordenadora')) {
+      return 'admin';
+    }
+    
+    // Missionary/Diácono roles
+    if (tipoLower.includes('mission') || 
+        tipoLower.includes('missionário') ||
+        tipoLower.includes('missionaria') ||
+        tipoLower.includes('diácon') ||
+        tipoLower.includes('diacon') ||
+        tipoLower.includes('evangelista') ||
+        tipoLower.includes('pioneiro') ||
+        tipoLower.includes('pioneira') ||
+        tipoLower.includes('colportor') ||
+        tipoLower.includes('colportora')) {
+      return 'missionary';
+    }
+    
+    // Interested/Visitor roles
+    if (tipoLower.includes('interest') || 
+        tipoLower.includes('interessado') ||
+        tipoLower.includes('interessada') ||
+        tipoLower.includes('visit') ||
+        tipoLower.includes('visitante') ||
+        tipoLower.includes('simpatizante') ||
+        tipoLower.includes('estudante') ||
+        tipoLower.includes('candidato') ||
+        tipoLower.includes('candidata') ||
+        tipoLower.includes('prospecto') ||
+        tipoLower.includes('prospecta')) {
+      return 'interested';
+    }
+    
+    // Member roles (default)
+    if (tipoLower.includes('member') || 
+        tipoLower.includes('membro') ||
+        tipoLower.includes('fiel') ||
+        tipoLower.includes('batizado') ||
+        tipoLower.includes('batizada') ||
+        tipoLower.includes('adventista') ||
+        tipoLower.includes('crente') ||
+        tipoLower.includes('frequentador') ||
+        tipoLower.includes('frequentadora')) {
+      return 'member';
+    }
+    
+    // Default to member if no match found
     return 'member';
   };
 
   const parseDate = (dateValue: any): Date | null => {
     if (!dateValue) return null;
+    
     try {
-      const dateStr = dateValue.toString();
-      if (dateStr.includes('/')) {
-        const [day, month, year] = dateStr.split('/');
-        return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      // Limpa a string (remove espaços, aspas)
+      const dateStr = dateValue.toString().trim().replace(/['"]/g, '');
+      console.log(`Tentando processar data: "${dateStr}" (tipo original: ${typeof dateValue})`);
+      
+      // 1. Detecção de Números do Excel (serial dates)
+      if (!isNaN(dateValue) && typeof dateValue === 'number') {
+        console.log(`Detectado número do Excel: ${dateValue}`);
+        // Excel armazena datas como número de dias desde 1/1/1900
+        // Mas o JavaScript usa 1/1/1970 como epoch, então precisamos ajustar
+        const excelEpoch = new Date(1900, 0, 1); // 1 de janeiro de 1900
+        const daysSinceEpoch = dateValue - 2; // Excel tem bug do ano bissexto 1900
+        const date = new Date(excelEpoch.getTime() + daysSinceEpoch * 24 * 60 * 60 * 1000);
+        
+        if (!isNaN(date.getTime()) && date.getFullYear() > 1900) {
+          console.log(`Data do Excel convertida: ${date.toISOString()} (${date.toLocaleDateString('pt-BR')})`);
+          return date;
+        }
       }
+      
+      // 2. Formato DD/MM/YYYY (formato brasileiro padrão)
+      if (dateStr.includes('/')) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+          const [day, month, year] = parts;
+          const parsedDay = parseInt(day);
+          const parsedMonth = parseInt(month);
+          let parsedYear = parseInt(year);
+          
+          // Se o ano tem 2 dígitos, converte para 4 dígitos
+          if (parsedYear < 100) {
+            parsedYear += parsedYear < 50 ? 2000 : 1900;
+          }
+          
+          console.log(`Partes da data: dia=${parsedDay}, mês=${parsedMonth}, ano=${parsedYear}`);
+          
+          // Validação de dados
+          if (parsedDay >= 1 && parsedDay <= 31 && 
+              parsedMonth >= 1 && parsedMonth <= 12 && 
+              parsedYear >= 1900 && parsedYear <= 2100) {
+            const date = new Date(parsedYear, parsedMonth - 1, parsedDay);
+            // Verifica se a data é válida (handles edge cases like 31/02/2023)
+            if (date.getDate() === parsedDay && 
+                date.getMonth() === parsedMonth - 1 && 
+                date.getFullYear() === parsedYear) {
+              console.log(`Data DD/MM/YYYY válida: ${date.toISOString()} (${date.toLocaleDateString('pt-BR')})`);
+              return date;
+            } else {
+              console.log(`Data DD/MM/YYYY inválida após criação: ${date.toISOString()}`);
+            }
+          } else {
+            console.log(`Partes da data DD/MM/YYYY inválidas: dia=${parsedDay}, mês=${parsedMonth}, ano=${parsedYear}`);
+          }
+        }
+      }
+      
+      // 3. Formato DD-MM-YYYY
+      if (dateStr.includes('-') && dateStr.match(/^\d{1,2}-\d{1,2}-\d{4}$/)) {
+        const parts = dateStr.split('-');
+        const [day, month, year] = parts;
+        const parsedDay = parseInt(day);
+        const parsedMonth = parseInt(month);
+        const parsedYear = parseInt(year);
+        
+        if (parsedDay >= 1 && parsedDay <= 31 && 
+            parsedMonth >= 1 && parsedMonth <= 12 && 
+            parsedYear >= 1900 && parsedYear <= 2100) {
+          const date = new Date(parsedYear, parsedMonth - 1, parsedDay);
+          if (date.getDate() === parsedDay && 
+              date.getMonth() === parsedMonth - 1 && 
+              date.getFullYear() === parsedYear) {
+            console.log(`Data DD-MM-YYYY válida: ${date.toISOString()} (${date.toLocaleDateString('pt-BR')})`);
+            return date;
+          }
+        }
+      }
+      
+      // 4. Formato YYYY-MM-DD (formato ISO)
+      if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const date = new Date(dateStr);
+        if (!isNaN(date.getTime()) && date.getFullYear() > 1900) {
+          console.log(`Data ISO válida: ${date.toISOString()} (${date.toLocaleDateString('pt-BR')})`);
+          return date;
+        }
+      }
+      
+      // 5. Formato YYYY/MM/DD (formato alternativo)
+      if (dateStr.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
+        const parts = dateStr.split('/');
+        const [year, month, day] = parts;
+        const parsedYear = parseInt(year);
+        const parsedMonth = parseInt(month);
+        const parsedDay = parseInt(day);
+        
+        if (parsedYear >= 1900 && parsedYear <= 2100 &&
+            parsedMonth >= 1 && parsedMonth <= 12 &&
+            parsedDay >= 1 && parsedDay <= 31) {
+          const date = new Date(parsedYear, parsedMonth - 1, parsedDay);
+          if (date.getDate() === parsedDay && 
+              date.getMonth() === parsedMonth - 1 && 
+              date.getFullYear() === parsedYear) {
+            console.log(`Data YYYY/MM/DD válida: ${date.toISOString()} (${date.toLocaleDateString('pt-BR')})`);
+            return date;
+          }
+        }
+      }
+      
+      // 6. Formato DD.MM.YYYY
+      if (dateStr.includes('.') && dateStr.match(/^\d{1,2}\.\d{1,2}\.\d{4}$/)) {
+        const parts = dateStr.split('.');
+        const [day, month, year] = parts;
+        const parsedDay = parseInt(day);
+        const parsedMonth = parseInt(month);
+        const parsedYear = parseInt(year);
+        
+        if (parsedDay >= 1 && parsedDay <= 31 && 
+            parsedMonth >= 1 && parsedMonth <= 12 && 
+            parsedYear >= 1900 && parsedYear <= 2100) {
+          const date = new Date(parsedYear, parsedMonth - 1, parsedDay);
+          if (date.getDate() === parsedDay && 
+              date.getMonth() === parsedMonth - 1 && 
+              date.getFullYear() === parsedYear) {
+            console.log(`Data DD.MM.YYYY válida: ${date.toISOString()} (${date.toLocaleDateString('pt-BR')})`);
+            return date;
+          }
+        }
+      }
+      
+      // 7. Formato DD.MM.YY
+      if (dateStr.includes('.') && dateStr.match(/^\d{1,2}\.\d{1,2}\.\d{2}$/)) {
+        const parts = dateStr.split('.');
+        const [day, month, year] = parts;
+        const parsedDay = parseInt(day);
+        const parsedMonth = parseInt(month);
+        let parsedYear = parseInt(year);
+        
+        // Se o ano tem 2 dígitos, converte para 4 dígitos
+        parsedYear += parsedYear < 50 ? 2000 : 1900;
+        
+        if (parsedDay >= 1 && parsedDay <= 31 && 
+            parsedMonth >= 1 && parsedMonth <= 12 && 
+            parsedYear >= 1900 && parsedYear <= 2100) {
+          const date = new Date(parsedYear, parsedMonth - 1, parsedDay);
+          if (date.getDate() === parsedDay && 
+              date.getMonth() === parsedMonth - 1 && 
+              date.getFullYear() === parsedYear) {
+            console.log(`Data DD.MM.YY válida: ${date.toISOString()} (${date.toLocaleDateString('pt-BR')})`);
+            return date;
+          }
+        }
+      }
+      
+      // 8. Intervalos com ano (ex: "15/01-20/02/2024") - usa a primeira data
+      if (dateStr.includes('-') && dateStr.includes('/')) {
+        const match = dateStr.match(/^(\d{1,2}\/\d{1,2})-\d{1,2}\/\d{1,2}\/(\d{4})$/);
+        if (match) {
+          const firstDate = match[1] + '/' + match[2]; // "15/01/2024"
+          console.log(`Detectado intervalo, usando primeira data: ${firstDate}`);
+          return parseDate(firstDate);
+        }
+      }
+      
+      // 9. Intervalos sem ano (ex: "24/07-03/08") - usa ano atual
+      if (dateStr.includes('-') && dateStr.includes('/') && !dateStr.match(/\d{4}/)) {
+        const match = dateStr.match(/^(\d{1,2}\/\d{1,2})-\d{1,2}\/\d{1,2}$/);
+        if (match) {
+          const currentYear = new Date().getFullYear();
+          const firstDate = match[1] + '/' + currentYear; // "24/07/2024"
+          console.log(`Detectado intervalo sem ano, usando primeira data com ano atual: ${firstDate}`);
+          return parseDate(firstDate);
+        }
+      }
+      
+      // 10. Data sem ano (ex: "03/12") - usa ano atual
+      if (dateStr.match(/^\d{1,2}\/\d{1,2}$/)) {
+        const currentYear = new Date().getFullYear();
+        const dateWithYear = dateStr + '/' + currentYear;
+        console.log(`Data sem ano detectada, adicionando ano atual: ${dateWithYear}`);
+        return parseDate(dateWithYear);
+      }
+      
+      // 11. Fallback: tenta o construtor padrão do JavaScript
       const date = new Date(dateValue);
-      return isNaN(date.getTime()) ? null : date;
-    } catch {
+      if (!isNaN(date.getTime()) && date.getFullYear() > 1900) {
+        console.log(`Data processada por fallback: ${date.toISOString()} (${date.toLocaleDateString('pt-BR')})`);
+        return date;
+      }
+      
+      console.log(`Não foi possível processar a data: "${dateStr}"`);
+      return null;
+      
+    } catch (error) {
+      console.log(`Erro ao processar data: ${error}`);
       return null;
     }
   };
@@ -663,6 +1163,72 @@ export default function Settings() {
     if (!value) return false;
     const str = value.toString().toLowerCase();
     return str === 'sim' || str === 'true' || str === '1' || str === 'yes';
+  };
+
+  // Função para detectar e mapear valores de dizimista
+  const parseDizimistaField = (value: any): { isDonor: boolean; dizimistaType: string } => {
+    if (!value) return { isDonor: false, dizimistaType: 'Não Dizimista' };
+    
+    const str = value.toString().trim();
+    const lowerStr = str.toLowerCase();
+    
+    // Mapeamento dos valores textuais
+    if (lowerStr === 'não dizimista' || lowerStr === 'nao dizimista' || lowerStr === 'não' || lowerStr === 'nao' || lowerStr === 'n') {
+      return { isDonor: false, dizimistaType: 'Não Dizimista' };
+    }
+    
+    if (lowerStr === 'pontual (1-3)' || lowerStr === 'pontual' || lowerStr.includes('pontual')) {
+      return { isDonor: true, dizimistaType: 'Pontual (1-3)' };
+    }
+    
+    if (lowerStr === 'sazonal (4-7)' || lowerStr === 'sazonal' || lowerStr.includes('sazonal')) {
+      return { isDonor: true, dizimistaType: 'Sazonal (4-7)' };
+    }
+    
+    if (lowerStr === 'recorrente (8-12)' || lowerStr === 'recorrente' || lowerStr.includes('recorrente')) {
+      return { isDonor: true, dizimistaType: 'Recorrente (8-12)' };
+    }
+    
+    // Fallback para valores booleanos tradicionais
+    if (lowerStr === 'sim' || lowerStr === 'true' || lowerStr === '1' || lowerStr === 'yes') {
+      return { isDonor: true, dizimistaType: 'Sim' };
+    }
+    
+    // Se não reconhecer, assume que é um dizimista com o valor original
+    return { isDonor: true, dizimistaType: str };
+  };
+
+  // Função para detectar e mapear valores de ofertante
+  const parseOfertanteField = (value: any): { isOffering: boolean; ofertanteType: string } => {
+    if (!value) return { isOffering: false, ofertanteType: 'Não Ofertante' };
+    
+    const str = value.toString().trim();
+    const lowerStr = str.toLowerCase();
+    
+    // Mapeamento dos valores textuais
+    if (lowerStr === 'não ofertante' || lowerStr === 'nao ofertante' || lowerStr === 'não' || lowerStr === 'nao' || lowerStr === 'n') {
+      return { isOffering: false, ofertanteType: 'Não Ofertante' };
+    }
+    
+    if (lowerStr === 'pontual (1-3)' || lowerStr === 'pontual' || lowerStr.includes('pontual')) {
+      return { isOffering: true, ofertanteType: 'Pontual (1-3)' };
+    }
+    
+    if (lowerStr === 'sazonal (4-7)' || lowerStr === 'sazonal' || lowerStr.includes('sazonal')) {
+      return { isOffering: true, ofertanteType: 'Sazonal (4-7)' };
+    }
+    
+    if (lowerStr === 'recorrente (8-12)' || lowerStr === 'recorrente' || lowerStr.includes('recorrente')) {
+      return { isOffering: true, ofertanteType: 'Recorrente (8-12)' };
+    }
+    
+    // Fallback para valores booleanos tradicionais
+    if (lowerStr === 'sim' || lowerStr === 'true' || lowerStr === '1' || lowerStr === 'yes') {
+      return { isOffering: true, ofertanteType: 'Sim' };
+    }
+    
+    // Se não reconhecer, assume que é um ofertante com o valor original
+    return { isOffering: true, ofertanteType: str };
   };
 
   const formatPhoneNumber = (phone: any): string | null => {
@@ -704,6 +1270,11 @@ export default function Settings() {
     }
   };
 
+
+
+  const isMemberOnlyNotifications = user?.role === 'member';
+  const defaultTab = 'notifications';
+
   return (
     <MobileLayout>
       <div className="container mx-auto p-4 space-y-6">
@@ -713,75 +1284,30 @@ export default function Settings() {
           <h1 className="text-2xl font-bold text-foreground">Configurações</h1>
         </div>
 
-        <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="profile" className="text-xs">Perfil</TabsTrigger>
+        <Tabs defaultValue={defaultTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="notifications" className="text-xs">Notificações</TabsTrigger>
-            <TabsTrigger value="privacy" className="text-xs">Privacidade</TabsTrigger>
-            <TabsTrigger value="appearance" className="text-xs">Aparência</TabsTrigger>
+            {!isMemberOnlyNotifications && (
+              <>
+                <TabsTrigger value="privacy" className="text-xs">Privacidade</TabsTrigger>
+                <TabsTrigger value="appearance" className="text-xs">Aparência</TabsTrigger>
+              </>
+            )}
+
+            {user?.role === 'admin' && (
+              <TabsTrigger value="points-config" className="text-xs">Base de Cálculo</TabsTrigger>
+            )}
+            {user?.role === 'admin' && (
+              <TabsTrigger value="system" className="text-xs">Sistema</TabsTrigger>
+            )}
             {user?.role === 'admin' && (
               <TabsTrigger value="church" className="text-xs">Igreja</TabsTrigger>
             )}
+            {user?.role === 'admin' && (
+              <TabsTrigger value="data-management" className="text-xs">Gestão de Dados</TabsTrigger>
+            )}
           </TabsList>
 
-          {/* Profile Settings */}
-          <TabsContent value="profile" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Informações Pessoais
-                </CardTitle>
-                <CardDescription>
-                  Gerencie suas informações de perfil
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Nome completo</Label>
-                    <Input
-                      id="name"
-                      value={settings.profile.name}
-                      onChange={(e) => updateSetting('profile', 'name', e.target.value)}
-                      data-testid="input-name"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={settings.profile.email}
-                      onChange={(e) => updateSetting('profile', 'email', e.target.value)}
-                      data-testid="input-email"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Telefone</Label>
-                    <Input
-                      id="phone"
-                      value={settings.profile.phone}
-                      onChange={(e) => updateSetting('profile', 'phone', e.target.value)}
-                      data-testid="input-phone"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="church">Igreja</Label>
-                    <Input
-                      id="church"
-                      value={settings.profile.church}
-                      onChange={(e) => updateSetting('profile', 'church', e.target.value)}
-                      data-testid="input-church"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           {/* Notifications Settings */}
           <TabsContent value="notifications" className="space-y-4">
@@ -868,6 +1394,7 @@ export default function Settings() {
           </TabsContent>
 
           {/* Privacy Settings */}
+          {!isMemberOnlyNotifications && (
           <TabsContent value="privacy" className="space-y-4">
             <Card>
               <CardHeader>
@@ -922,9 +1449,11 @@ export default function Settings() {
               </CardContent>
             </Card>
           </TabsContent>
+          )}
 
           {/* Appearance Settings */}
-          <TabsContent value="appearance" className="space-y-4">
+          {!isMemberOnlyNotifications && (
+            <TabsContent value="appearance" className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -988,7 +1517,343 @@ export default function Settings() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            </TabsContent>
+          )}
+
+
+          {/* System Settings (Admin only) */}
+          {user?.role === 'admin' && (
+            <TabsContent value="system" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <SettingsIcon className="h-5 w-5" />
+                    Configurações do Sistema
+                  </CardTitle>
+                  <CardDescription>
+                    Gerencie as configurações globais do sistema
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Logo Management */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold">Logo do Sistema</h3>
+                      <Badge variant="secondary">Admin</Badge>
+                    </div>
+                    
+                    {/* Current Logo Display */}
+                    <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border">
+                      <div className="relative">
+                        {currentLogo ? (
+                          <>
+                            <img 
+                              src={currentLogo} 
+                              alt="Logo atual do sistema" 
+                              className="w-16 h-16 object-contain"
+                              onError={(e) => {
+                                console.log('❌ Erro ao carregar logo atual:', currentLogo);
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                              <span className="text-xs text-white font-bold">✓</span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
+                            <span className="text-xs text-gray-500">Sem logo</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">
+                          {currentLogo ? 'Logo Atual' : 'Sem Logo Definida'}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          {currentLogo 
+                            ? 'Esta é a logo que aparece em todo o sistema' 
+                            : 'Nenhuma logo foi configurada para o sistema'
+                          }
+                        </p>
+                        {currentLogo && (
+                          <p className="text-xs text-gray-500 mt-1">Caminho: {currentLogo}</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            localStorage.removeItem('systemLogo');
+                            setCurrentLogo('');
+                          }}
+                          title="Remover logo atual"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            refreshLogo();
+                            toast({
+                              title: "Logo atualizada!",
+                              description: "Cache limpo e logo recarregada.",
+                            });
+                          }}
+                          title="Recarregar logo (limpar cache)"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => {
+                            clearLogoSystem();
+                            setCurrentLogo('');
+                            toast({
+                              title: "Sistema limpo!",
+                              description: "Todas as logos antigas foram removidas.",
+                            });
+                          }}
+                          title="Limpar completamente o sistema de logo"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Logo Display - Read Only */}
+                    <div className="space-y-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <SettingsIcon className="h-5 w-5 text-gray-500" />
+                          <span className="text-sm font-medium text-gray-700">Logo Atual do Sistema</span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          A logo está salva no banco de dados e é exibida automaticamente em todo o sistema.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Mobile Header Layout Editor */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold">Layout do Mobile Header</h3>
+                        <Badge variant="secondary">Admin</Badge>
+                      </div>
+                      
+                      <div className="p-4 bg-gray-50 rounded-lg border">
+                        <p className="text-sm text-gray-600 mb-4">
+                          Arraste e solte os elementos para ajustar suas posições no header móvel
+                        </p>
+                        
+                        {/* Preview do Mobile Header */}
+                        <div className="bg-white rounded-lg border p-4 mb-4">
+                          <div className="text-xs text-gray-500 mb-2 text-center">Preview do Header</div>
+                          <div className="bg-gradient-to-r from-white via-blue-50/30 to-purple-50/30 rounded-lg p-3 border">
+                            <div className="flex items-center gap-3">
+                              {/* Logo */}
+                              <div 
+                                className="relative cursor-move bg-blue-100 p-2 rounded border-2 border-dashed border-blue-300"
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData('text/plain', 'logo');
+                                }}
+                                style={{
+                                  transform: `translateX(${mobileHeaderLayout.logo.offsetX}px) translateY(${mobileHeaderLayout.logo.offsetY}px)`
+                                }}
+                              >
+                                <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center text-white text-xs font-bold">
+                                  L
+                                </div>
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full text-white text-xs flex items-center justify-center">
+                                  ↕
+                                </div>
+                              </div>
+
+                              {/* Boas-vindas */}
+                              <div 
+                                className="relative cursor-move bg-green-100 p-2 rounded border-2 border-dashed border-green-300"
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData('text/plain', 'welcome');
+                                }}
+                                style={{
+                                  transform: `translateX(${mobileHeaderLayout.welcome.offsetX}px) translateY(${mobileHeaderLayout.welcome.offsetY}px)`
+                                }}
+                              >
+                                <div className="text-xs text-green-700 font-medium whitespace-nowrap">
+                                  Boa noite, Usuário!
+                                </div>
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-600 rounded-full text-white text-xs flex items-center justify-center">
+                                  ↕
+                                </div>
+                              </div>
+
+                              {/* Botões de ação */}
+                              <div 
+                                className="relative cursor-move bg-purple-100 p-2 rounded border-2 border-dashed border-purple-300 ml-auto"
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData('text/plain', 'actions');
+                                }}
+                                style={{
+                                  transform: `translateX(${mobileHeaderLayout.actions.offsetX}px) translateY(${mobileHeaderLayout.actions.offsetY}px)`
+                                }}
+                              >
+                                <div className="flex gap-1">
+                                  <div className="w-4 h-4 bg-purple-500 rounded text-white text-xs flex items-center justify-center">C</div>
+                                  <div className="w-4 h-4 bg-purple-500 rounded text-white text-xs flex items-center justify-center">N</div>
+                                  <div className="w-4 h-4 bg-purple-500 rounded text-white text-xs flex items-center justify-center">U</div>
+                                </div>
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-600 rounded-full text-white text-xs flex items-center justify-center">
+                                  ↕
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Controles de posição */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Logo */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">Logo</Label>
+                            <div className="space-y-2">
+                              <div>
+                                <Label className="text-xs">X: {mobileHeaderLayout.logo.offsetX}px</Label>
+                                <input
+                                  type="range"
+                                  min="-50"
+                                  max="50"
+                                  value={mobileHeaderLayout.logo.offsetX}
+                                  onChange={(e) => updateMobileHeaderLayout('logo', 'offsetX', parseInt(e.target.value))}
+                                  className="w-full"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Y: {mobileHeaderLayout.logo.offsetY}px</Label>
+                                <input
+                                  type="range"
+                                  min="-20"
+                                  max="20"
+                                  value={mobileHeaderLayout.logo.offsetY}
+                                  onChange={(e) => updateMobileHeaderLayout('logo', 'offsetY', parseInt(e.target.value))}
+                                  className="w-full"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Boas-vindas */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">Boas-vindas</Label>
+                            <div className="space-y-2">
+                              <div>
+                                <Label className="text-xs">X: {mobileHeaderLayout.welcome.offsetX}px</Label>
+                                <input
+                                  type="range"
+                                  min="-50"
+                                  max="50"
+                                  value={mobileHeaderLayout.welcome.offsetX}
+                                  onChange={(e) => updateMobileHeaderLayout('welcome', 'offsetX', parseInt(e.target.value))}
+                                  className="w-full"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Y: {mobileHeaderLayout.welcome.offsetY}px</Label>
+                                <input
+                                  type="range"
+                                  min="-20"
+                                  max="20"
+                                  value={mobileHeaderLayout.welcome.offsetY}
+                                  onChange={(e) => updateMobileHeaderLayout('welcome', 'offsetY', parseInt(e.target.value))}
+                                  className="w-full"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Botões de ação */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">Botões de Ação</Label>
+                            <div className="space-y-2">
+                              <div>
+                                <Label className="text-xs">X: {mobileHeaderLayout.actions.offsetX}px</Label>
+                                <input
+                                  type="range"
+                                  min="-50"
+                                  max="50"
+                                  value={mobileHeaderLayout.actions.offsetX}
+                                  onChange={(e) => updateMobileHeaderLayout('actions', 'offsetX', parseInt(e.target.value))}
+                                  className="w-full"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Y: {mobileHeaderLayout.actions.offsetY}px</Label>
+                                <input
+                                  type="range"
+                                  min="-20"
+                                  max="20"
+                                  value={mobileHeaderLayout.actions.offsetY}
+                                  onChange={(e) => updateMobileHeaderLayout('actions', 'offsetY', parseInt(e.target.value))}
+                                  className="w-full"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Botões de ação */}
+                        <div className="flex items-center gap-2 mt-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={resetMobileHeaderLayout}
+                          >
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Resetar Posições
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={saveMobileHeaderLayout}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            <Save className="h-4 w-4 mr-2" />
+                            Salvar Layout
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              console.log('🔧 Settings - Teste manual do evento');
+                              const testEvent = new CustomEvent('mobileHeaderLayoutUpdated', { 
+                                detail: { layout: mobileHeaderLayout } 
+                              });
+                              window.dispatchEvent(testEvent);
+                              console.log('🔧 Settings - Evento de teste disparado');
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            🧪 Testar Sincronização
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
+          {/* Points Configuration (Admin only) */}
+          {user?.role === 'admin' && (
+            <TabsContent value="points-config" className="space-y-4">
+              <PointsConfiguration />
+            </TabsContent>
+          )}
 
           {/* Church Management (Admin only) */}
           {user?.role === 'admin' && (
@@ -1016,6 +1881,52 @@ export default function Settings() {
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {/* Default Church Configuration */}
+                  <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Star className="h-5 w-5 text-blue-600" />
+                      <h3 className="font-semibold text-blue-900">Igreja Padrão</h3>
+                    </div>
+                    <p className="text-sm text-blue-700 mb-4">
+                      Esta igreja será usada como padrão para novos usuários e usuários sem igreja definida.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Select
+                        value={defaultChurchId?.toString() || ''}
+                        onValueChange={(value) => setDefaultChurchId(parseInt(value))}
+                      >
+                        <SelectTrigger className="w-full sm:w-64">
+                          <SelectValue placeholder="Selecione a igreja padrão" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {churchesList.map((church) => (
+                            <SelectItem key={church.id} value={church.id.toString()}>
+                              {church.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        onClick={saveDefaultChurch}
+                        disabled={!defaultChurchId || isSavingDefault}
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        {isSavingDefault ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        Salvar
+                      </Button>
+                    </div>
+                    {defaultChurchName && (
+                      <div className="mt-3 p-2 bg-blue-100 rounded text-sm text-blue-800">
+                        <strong>Igreja padrão atual:</strong> {defaultChurchName}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Tabela Responsiva */}
                   <div className="space-y-2">
                     {/* Header da Tabela - Apenas em Desktop */}
@@ -1137,98 +2048,100 @@ export default function Settings() {
               </Card>
             </TabsContent>
           )}
+
+          {/* Data Management (Admin only) */}
+          {user?.role === 'admin' && (
+            <TabsContent value="data-management" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="h-5 w-5" />
+                    Gestão de Dados
+                  </CardTitle>
+                  <CardDescription>
+                    Backup e restauração de dados
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Data da Última Importação */}
+                  <div className="p-3 bg-muted/50 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">Última Importação</p>
+                        <p className="text-xs text-muted-foreground">
+                          {getFormattedLastImportDate()}
+                        </p>
+                      </div>
+                      {lastImportDate && (
+                        <Badge variant="secondary" className="text-xs">
+                          {getDaysSinceLastImport()} dias atrás
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button variant="outline" className="flex-1" data-testid="button-export">
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar Dados
+                    </Button>
+                    
+                    <Button 
+                      variant="outline" 
+                      className="flex-1" 
+                      onClick={() => setShowImportModal(true)}
+                      data-testid="button-import"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Importar Dados
+                    </Button>
+                    
+                    <Button 
+                      variant="destructive" 
+                      className="flex-1" 
+                      data-testid="button-delete-data"
+                      onClick={handleClearAllData}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Limpar Dados
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
         </Tabs>
 
         {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <Button 
-            onClick={handleSave} 
-            disabled={isLoading}
-            className="flex-1"
-            data-testid="button-save"
-          >
-            {isLoading ? (
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-2" />
-            )}
-            Salvar Configurações
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            onClick={handleReset}
-            className="flex-1"
-            data-testid="button-reset"
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Restaurar Padrão
-          </Button>
-        </div>
-
-        {/* Data Management */}
-        {user?.role === 'admin' && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                Gestão de Dados
-              </CardTitle>
-              <CardDescription>
-                Backup e restauração de dados
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Data da Última Importação */}
-              <div className="p-3 bg-muted/50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">Última Importação</p>
-                    <p className="text-xs text-muted-foreground">
-                      {lastImportDate ? (
-                        `${new Date(lastImportDate).toLocaleDateString('pt-BR')} às ${new Date(lastImportDate).toLocaleTimeString('pt-BR')}`
-                      ) : (
-                        'Nenhuma importação realizada'
-                      )}
-                    </p>
-                  </div>
-                  {lastImportDate && (
-                    <Badge variant="secondary" className="text-xs">
-                      {Math.floor((Date.now() - new Date(lastImportDate).getTime()) / (1000 * 60 * 60 * 24))} dias atrás
-                    </Badge>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button variant="outline" className="flex-1" data-testid="button-export">
-                  <Download className="h-4 w-4 mr-2" />
-                  Exportar Dados
-                </Button>
-                
-                <Button 
-                  variant="outline" 
-                  className="flex-1" 
-                  onClick={() => setShowImportModal(true)}
-                  data-testid="button-import"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Importar Dados
-                </Button>
-                
-                <Button 
-                  variant="destructive" 
-                  className="flex-1" 
-                  data-testid="button-delete-data"
-                  onClick={handleClearAllData}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Limpar Dados
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+        {!isMemberOnlyNotifications && (
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button 
+              onClick={handleSave} 
+              disabled={isLoading}
+              className="flex-1"
+              data-testid="button-save"
+            >
+              {isLoading ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              Salvar Configurações
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              onClick={handleReset}
+              className="flex-1"
+              data-testid="button-reset"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Restaurar Padrão
+            </Button>
+          </div>
         )}
+
       </div>
 
       {/* Modal de Importação */}
@@ -1556,12 +2469,22 @@ export default function Settings() {
 
                 <Button
                   onClick={() => {
+                    // Emitir evento personalizado para notificar que a importação foi bem-sucedida
+                    const importSuccessEvent = new CustomEvent('import-success', {
+                      detail: {
+                        type: 'users',
+                        count: importData.filter(r => r.valid).length,
+                        timestamp: new Date().toISOString()
+                      }
+                    });
+                    window.dispatchEvent(importSuccessEvent);
+                    
                     setShowImportModal(false);
                     setImportStep('upload');
                     setImportProgress(0);
                     setImportFile(null);
                     setImportData([]);
-                    setLastImportDate(new Date().toISOString());
+                    updateLastImportDate(new Date().toISOString());
                   }}
                   data-testid="close-import"
                 >
@@ -1569,6 +2492,46 @@ export default function Settings() {
                 </Button>
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de Confirmação para Limpeza de Dados */}
+      <Dialog open={showClearDataDialog} onOpenChange={setShowClearDataDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Confirmar Limpeza de Dados
+            </DialogTitle>
+            <DialogDescription>
+              Esta ação irá <strong>permanentemente</strong> remover todos os dados do sistema, incluindo usuários, eventos, pontuações e configurações. Esta ação não pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex gap-3 justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowClearDataDialog(false);
+                if (clearDataCallback) {
+                  clearDataCallback(false);
+                }
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setShowClearDataDialog(false);
+                if (clearDataCallback) {
+                  clearDataCallback(true);
+                }
+              }}
+            >
+              Confirmar Limpeza
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

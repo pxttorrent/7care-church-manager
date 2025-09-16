@@ -17,22 +17,15 @@ import {
   X,
   Trash2
 } from "lucide-react";
+import { CalendarEvent, EventType } from "@/types/calendar";
 
-interface CalendarEvent {
-  id: number;
-  title: string;
-  description?: string;
-  date: string;
-  time: string;
-  duration: number;
-  location?: string;
-  type: 'estudos' | 'reunioes' | 'visitas' | 'oracao' | 'chamadas' | 'cultos' | 'igreja-local' | 'asr-geral' | 'asr-administrativo' | 'regional-distrital';
-  attendees?: number;
-  maxAttendees?: number;
-  status: 'scheduled' | 'confirmed' | 'cancelled';
-  isRecurring?: boolean;
-  organizer: string;
-}
+// Função utilitária para formatar datas sem problemas de fuso horário
+const formatDateSafe = (dateString: string): string => {
+  const [year, month, day] = dateString.split('-');
+  // CORRIGIDO: Usar data local em vez de UTC para evitar offset de um dia
+  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  return date.toLocaleDateString('pt-BR');
+};
 
 interface EventModalProps {
   event?: CalendarEvent;
@@ -41,7 +34,7 @@ interface EventModalProps {
   onSave: (eventData: Partial<CalendarEvent>) => void;
   onDelete?: (eventId: number) => void;
   isEditing?: boolean;
-  eventTypes?: Array<{ id: string; label: string; color: string }>;
+  eventTypes?: EventType[];
 }
 
 const defaultEventTypes = [
@@ -79,7 +72,7 @@ export const EventModal = ({
   const [formData, setFormData] = useState<Partial<CalendarEvent>>(event || {
     title: '',
     description: '',
-    date: new Date().toISOString().split('T')[0],
+    startDate: new Date().toISOString().split('T')[0],
     time: '09:00',
     duration: 60,
     location: '',
@@ -108,16 +101,16 @@ export const EventModal = ({
 
   const getTypeColor = (type: string) => {
     const colors = {
-      estudos: "bg-blue-100 text-blue-800",
-      reunioes: "bg-green-100 text-green-800",
-      visitas: "bg-purple-100 text-purple-800",
-      oracao: "bg-yellow-100 text-yellow-800",
-      chamadas: "bg-pink-100 text-pink-800",
-      cultos: "bg-indigo-100 text-indigo-800",
-      "igreja-local": "bg-red-100 text-red-800",
-      "asr-geral": "bg-orange-100 text-orange-800",
-      "asr-administrativo": "bg-teal-100 text-teal-800",
-      "regional-distrital": "bg-gray-100 text-gray-800"
+      estudos: "bg-blue-500 text-white border-blue-600",
+      reunioes: "bg-emerald-500 text-white border-emerald-600",
+      visitas: "bg-purple-500 text-white border-purple-600",
+      oracao: "bg-amber-500 text-white border-amber-600",
+      chamadas: "bg-rose-500 text-white border-rose-600",
+      cultos: "bg-indigo-500 text-white border-indigo-600",
+      "igreja-local": "bg-red-500 text-white border-red-600",
+      "asr-geral": "bg-orange-500 text-white border-orange-600",
+      "asr-administrativo": "bg-cyan-500 text-white border-cyan-600",
+      "regional-distrital": "bg-slate-500 text-white border-slate-600"
     };
     return colors[type as keyof typeof colors] || colors.estudos;
   };
@@ -140,40 +133,49 @@ export const EventModal = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="flex flex-row items-center justify-between">
-          <DialogTitle className="text-xl">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent 
+        className="w-[90vw] max-w-md max-h-[80vh] overflow-y-auto p-2 sm:p-2"
+        aria-describedby="event-modal-description"
+      >
+        <DialogHeader className="flex flex-row items-center justify-between sticky top-0 bg-background pt-1 pb-1 border-b z-10">
+          <DialogTitle className="text-xs sm:text-sm">
             {event ? (isEditing ? 'Editar Evento' : 'Detalhes do Evento') : 'Novo Evento'}
           </DialogTitle>
-          <div className="flex gap-2">
+          <div id="event-modal-description" className="sr-only">
+            {event ? (isEditing ? 'Formulário para editar evento existente' : 'Visualização dos detalhes do evento') : 'Formulário para criar novo evento'}
+          </div>
+          <div className="flex gap-1">
             {event && !isEditing ? (
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={() => setIsEditing(true)}
                 data-testid="button-edit-event"
+                className="h-6 px-2 text-xs"
               >
-                <Edit2 className="h-4 w-4 mr-1" />
+                <Edit2 className="h-3 w-3 mr-1" />
                 Editar
               </Button>
             ) : (
-              <div className="flex gap-2">
+              <div className="flex gap-1">
                 <Button 
                   variant="outline" 
                   size="sm" 
                   onClick={handleCancel}
                   data-testid="button-cancel-edit"
+                  className="h-6 px-2 text-xs"
                 >
-                  <X className="h-4 w-4 mr-1" />
+                  <X className="h-3 w-3 mr-1" />
                   Cancelar
                 </Button>
                 <Button 
                   size="sm" 
                   onClick={handleSave}
                   data-testid="button-save-event"
+                  className="h-6 px-2 text-xs"
                 >
-                  <Save className="h-4 w-4 mr-1" />
+                  <Save className="h-3 w-3 mr-1" />
                   Salvar
                 </Button>
               </div>
@@ -181,29 +183,29 @@ export const EventModal = ({
           </div>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-2 pt-1 pb-2">
           {/* Event Header */}
           {!isEditing && event && (
-            <div className="flex items-start space-x-4">
+            <div className="flex items-start space-x-2">
               <div className="flex-1">
-                <h2 className="text-2xl font-semibold mb-2" data-testid="text-event-title">
+                <h2 className="text-base sm:text-lg font-semibold mb-1" data-testid="text-event-title">
                   {event.title}
                 </h2>
-                <div className="flex gap-2 mb-3">
-                  <Badge className={getTypeColor(event.type)} data-testid="badge-event-type">
+                <div className="flex flex-wrap gap-1 mb-2">
+                  <Badge className={`${getTypeColor(event.type)} text-xs`} data-testid="badge-event-type">
                     {eventTypeOptions.find(t => t.value === event.type)?.label}
                   </Badge>
-                  <Badge className={getStatusColor(event.status)} data-testid="badge-event-status">
+                  <Badge className={`${getStatusColor(event.status)} text-xs`} data-testid="badge-event-status">
                     {statusOptions.find(s => s.value === event.status)?.label}
                   </Badge>
                   {event.isRecurring && (
-                    <Badge variant="outline" data-testid="badge-recurring">
+                    <Badge variant="outline" data-testid="badge-recurring" className="text-xs">
                       Recorrente
                     </Badge>
                   )}
                 </div>
                 {event.description && (
-                  <p className="text-muted-foreground mb-4" data-testid="text-event-description">
+                  <p className="text-xs text-muted-foreground mb-2" data-testid="text-event-description">
                     {event.description}
                   </p>
                 )}
@@ -212,9 +214,9 @@ export const EventModal = ({
           )}
 
           {/* Form Fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <Label htmlFor="title">Título do Evento</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="sm:col-span-2">
+              <Label htmlFor="title" className="text-xs">Título</Label>
               {isEditing ? (
                 <Input
                   id="title"
@@ -222,38 +224,40 @@ export const EventModal = ({
                   onChange={(e) => setFormData({...formData, title: e.target.value})}
                   placeholder="Ex: Culto da Manhã"
                   data-testid="input-event-title"
+                  className="mt-1 h-6 text-xs"
                 />
               ) : (
-                <p className="text-sm text-muted-foreground mt-1">{event?.title}</p>
+                <p className="text-xs text-muted-foreground mt-1">{event?.title}</p>
               )}
             </div>
 
-            <div className="md:col-span-2">
-              <Label htmlFor="description">Descrição</Label>
+            <div className="sm:col-span-2">
+              <Label htmlFor="description" className="text-xs">Descrição</Label>
               {isEditing ? (
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  placeholder="Descrição opcional do evento..."
-                  rows={3}
+                  placeholder="Descrição opcional..."
+                  rows={2}
                   data-testid="input-event-description"
+                  className="mt-1 text-xs min-h-[60px]"
                 />
               ) : (
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {event?.description || 'Nenhuma descrição'}
                 </p>
               )}
             </div>
 
             <div>
-              <Label htmlFor="type">Tipo de Evento</Label>
+              <Label htmlFor="type" className="text-xs">Tipo</Label>
               {isEditing ? (
                 <Select 
                   value={formData.type} 
                   onValueChange={(value) => setFormData({...formData, type: value as any})}
                 >
-                  <SelectTrigger data-testid="select-event-type">
+                  <SelectTrigger data-testid="select-event-type" className="mt-1 h-6 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -265,20 +269,20 @@ export const EventModal = ({
                   </SelectContent>
                 </Select>
               ) : (
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {eventTypeOptions.find(t => t.value === event?.type)?.label}
                 </p>
               )}
             </div>
 
             <div>
-              <Label htmlFor="status">Status</Label>
+              <Label htmlFor="status" className="text-xs">Status</Label>
               {isEditing ? (
                 <Select 
                   value={formData.status} 
                   onValueChange={(value) => setFormData({...formData, status: value as any})}
                 >
-                  <SelectTrigger data-testid="select-event-status">
+                  <SelectTrigger data-testid="select-event-status" className="mt-1 h-6 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -290,34 +294,35 @@ export const EventModal = ({
                   </SelectContent>
                 </Select>
               ) : (
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {statusOptions.find(s => s.value === event?.status)?.label}
                 </p>
               )}
             </div>
 
             <div>
-              <Label htmlFor="date">Data</Label>
+              <Label htmlFor="date" className="text-xs">Data</Label>
               {isEditing ? (
                 <Input
                   id="date"
                   type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({...formData, date: e.target.value})}
+                  value={formData.startDate as string | undefined}
+                  onChange={(e) => setFormData({...formData, startDate: e.target.value})}
                   data-testid="input-event-date"
+                  className="mt-1 h-6 text-xs"
                 />
               ) : (
-                <div className="flex items-center gap-2 mt-1">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    {event?.date ? new Date(event.date).toLocaleDateString('pt-BR') : ''}
+                <div className="flex items-center gap-1 mt-1">
+                  <Calendar className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
+                    {event?.startDate ? formatDateSafe(event.startDate) : ''}
                   </span>
                 </div>
               )}
             </div>
 
             <div>
-              <Label htmlFor="time">Horário</Label>
+              <Label htmlFor="time" className="text-xs">Horário</Label>
               {isEditing ? (
                 <Input
                   id="time"
@@ -325,11 +330,12 @@ export const EventModal = ({
                   value={formData.time}
                   onChange={(e) => setFormData({...formData, time: e.target.value})}
                   data-testid="input-event-time"
+                  className="mt-1 h-6 text-xs"
                 />
               ) : (
-                <div className="flex items-center gap-2 mt-1">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
+                <div className="flex items-center gap-1 mt-1">
+                  <Clock className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
                     {event?.time} ({formatDuration(event?.duration || 0)})
                   </span>
                 </div>
@@ -337,7 +343,7 @@ export const EventModal = ({
             </div>
 
             <div>
-              <Label htmlFor="duration">Duração (minutos)</Label>
+              <Label htmlFor="duration" className="text-xs">Duração</Label>
               {isEditing ? (
                 <Input
                   id="duration"
@@ -347,16 +353,17 @@ export const EventModal = ({
                   value={formData.duration}
                   onChange={(e) => setFormData({...formData, duration: parseInt(e.target.value)})}
                   data-testid="input-event-duration"
+                  className="mt-1 h-6 text-xs"
                 />
               ) : (
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {formatDuration(event?.duration || 0)}
                 </p>
               )}
             </div>
 
             <div>
-              <Label htmlFor="maxAttendees">Capacidade Máxima</Label>
+              <Label htmlFor="maxAttendees" className="text-xs">Capacidade</Label>
               {isEditing ? (
                 <Input
                   id="maxAttendees"
@@ -365,51 +372,54 @@ export const EventModal = ({
                   value={formData.maxAttendees}
                   onChange={(e) => setFormData({...formData, maxAttendees: parseInt(e.target.value)})}
                   data-testid="input-event-capacity"
+                  className="mt-1 h-6 text-xs"
                 />
               ) : (
-                <div className="flex items-center gap-2 mt-1">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
+                <div className="flex items-center gap-1 mt-1">
+                  <Users className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
                     {event?.attendees || 0}/{event?.maxAttendees} pessoas
                   </span>
                 </div>
               )}
             </div>
 
-            <div className="md:col-span-2">
-              <Label htmlFor="location">Local</Label>
+            <div className="sm:col-span-2">
+              <Label htmlFor="location" className="text-xs">Local</Label>
               {isEditing ? (
                 <Input
                   id="location"
                   value={formData.location}
                   onChange={(e) => setFormData({...formData, location: e.target.value})}
-                  placeholder="Ex: Igreja Central - Auditório Principal"
+                  placeholder="Ex: Igreja Central"
                   data-testid="input-event-location"
+                  className="mt-1 h-6 text-xs"
                 />
               ) : (
-                <div className="flex items-center gap-2 mt-1">
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
+                <div className="flex items-center gap-1 mt-1">
+                  <MapPin className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
                     {event?.location || 'Local não informado'}
                   </span>
                 </div>
               )}
             </div>
 
-            <div className="md:col-span-2">
-              <Label htmlFor="organizer">Organizador</Label>
+            <div className="sm:col-span-2">
+              <Label htmlFor="organizer" className="text-xs">Organizador</Label>
               {isEditing ? (
                 <Input
                   id="organizer"
                   value={formData.organizer}
                   onChange={(e) => setFormData({...formData, organizer: e.target.value})}
-                  placeholder="Nome do organizador responsável"
+                  placeholder="Nome do organizador"
                   data-testid="input-event-organizer"
+                  className="mt-1 h-7 text-xs"
                 />
               ) : (
-                <div className="flex items-center gap-2 mt-1">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
+                <div className="flex items-center gap-1 mt-1">
+                  <User className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
                     {event?.organizer || 'Organizador não informado'}
                   </span>
                 </div>
@@ -419,15 +429,16 @@ export const EventModal = ({
 
           {/* Action Buttons */}
           {event && !isEditing && onDelete && (
-            <div className="flex justify-end pt-4 border-t">
+            <div className="flex justify-end pt-3 border-t mt-4">
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={() => onDelete(event.id)}
                 data-testid="button-delete-event"
+                className="h-7 px-2 text-xs"
               >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Excluir Evento
+                <Trash2 className="h-3 w-3 mr-1" />
+                Excluir
               </Button>
             </div>
           )}

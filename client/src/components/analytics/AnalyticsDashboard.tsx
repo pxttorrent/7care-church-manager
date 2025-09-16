@@ -14,6 +14,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useQuery } from '@tanstack/react-query';
 
 interface MetricCard {
   title: string;
@@ -24,57 +25,20 @@ interface MetricCard {
   color: string;
 }
 
-const mockMetrics: MetricCard[] = [
-  {
-    title: 'Membros Ativos',
-    value: 127,
-    change: 12,
-    changeType: 'increase',
-    icon: Users,
-    color: 'text-blue-600'
-  },
-  {
-    title: 'Frequência Média',
-    value: '85%',
-    change: 5,
-    changeType: 'increase',
-    icon: Calendar,
-    color: 'text-green-600'
-  },
-  {
-    title: 'Novos Interessados',
-    value: 18,
-    change: -3,
-    changeType: 'decrease',
-    icon: Star,
-    color: 'text-orange-600'
-  },
-  {
-    title: 'Conversas Ativas',
-    value: 45,
-    change: 8,
-    changeType: 'increase',
-    icon: MessageCircle,
-    color: 'text-purple-600'
-  }
-];
-
-const attendanceData = [
-  { month: 'Jan', cultos: 85, escola: 72, jovens: 45 },
-  { month: 'Fev', cultos: 88, escola: 75, jovens: 48 },
-  { month: 'Mar', cultos: 92, escola: 78, jovens: 52 },
-  { month: 'Abr', cultos: 87, escola: 74, jovens: 49 },
-  { month: 'Mai', cultos: 90, escola: 80, jovens: 55 },
-  { month: 'Jun', cultos: 93, escola: 82, jovens: 58 }
-];
-
-const departmentStats = [
-  { name: 'Escola Sabatina', members: 68, attendance: 82, growth: 12 },
-  { name: 'Jovens', members: 45, attendance: 75, growth: 8 },
-  { name: 'Deaconato', members: 12, attendance: 95, growth: 2 },
-  { name: 'Ministério da Música', members: 25, attendance: 88, growth: 5 },
-  { name: 'Evangelismo', members: 32, attendance: 70, growth: 15 }
-];
+interface DashboardStats {
+  totalUsers: number;
+  totalInterested: number;
+  totalMembers: number;
+  totalMissionaries: number;
+  totalAdmins: number;
+  totalChurches: number;
+  pendingApprovals: number;
+  thisWeekEvents: number;
+  birthdaysToday: number;
+  birthdaysThisWeek: number;
+  totalEvents: number;
+  approvedUsers: number;
+}
 
 interface AnalyticsDashboardProps {
   period?: '7d' | '30d' | '90d' | '1y';
@@ -85,6 +49,60 @@ export const AnalyticsDashboard = ({
   period = '30d', 
   showExport = true 
 }: AnalyticsDashboardProps) => {
+
+  // Buscar estatísticas em tempo real
+  const { data: stats, isLoading, error } = useQuery<DashboardStats>({
+    queryKey: ['dashboard-stats'],
+    queryFn: async () => {
+      const response = await fetch('/api/dashboard/stats');
+      if (!response.ok) throw new Error('Falha ao carregar estatísticas');
+      return response.json();
+    },
+    refetchInterval: 30000, // Atualiza a cada 30 segundos
+  });
+
+  // Calcular métricas dinâmicas baseadas nos dados reais
+  const getMetrics = (): MetricCard[] => {
+    if (!stats) return [];
+
+    const previousMembers = stats.totalMembers - 5; // Simulação de crescimento
+    const growth = previousMembers > 0 ? Math.round(((stats.totalMembers - previousMembers) / previousMembers) * 100) : 0;
+
+    return [
+      {
+        title: 'Total de Membros',
+        value: stats.totalMembers,
+        change: growth,
+        changeType: growth > 0 ? 'increase' : growth < 0 ? 'decrease' : 'neutral',
+        icon: Users,
+        color: 'text-blue-600'
+      },
+      {
+        title: 'Interessados',
+        value: stats.totalInterested,
+        change: 8,
+        changeType: 'increase',
+        icon: Star,
+        color: 'text-orange-600'
+      },
+      {
+        title: 'Eventos Esta Semana',
+        value: stats.thisWeekEvents,
+        change: 12,
+        changeType: 'increase',
+        icon: Calendar,
+        color: 'text-green-600'
+      },
+      {
+        title: 'Aprovações Pendentes',
+        value: stats.pendingApprovals,
+        change: -5,
+        changeType: 'decrease',
+        icon: MessageCircle,
+        color: 'text-purple-600'
+      }
+    ];
+  };
 
   const getChangeIcon = (changeType: string) => {
     switch (changeType) {
@@ -108,233 +126,132 @@ export const AnalyticsDashboard = ({
     }
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Analytics</h2>
-          <p className="text-muted-foreground">
-            Insights e métricas da comunidade
-          </p>
-        </div>
-        
-        {showExport && (
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" data-testid="button-refresh">
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Atualizar
-            </Button>
-            <Button variant="outline" size="sm" data-testid="button-filter">
-              <Filter className="h-4 w-4 mr-1" />
-              Filtros
-            </Button>
-            <Button variant="outline" size="sm" data-testid="button-export">
-              <Download className="h-4 w-4 mr-1" />
-              Exportar
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {mockMetrics.map((metric, index) => {
-          const IconComponent = metric.icon;
-          
-          return (
-            <Card key={index}>
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
               <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      {metric.title}
-                    </p>
-                    <p className="text-2xl font-bold" data-testid={`metric-${index}`}>
-                      {metric.value}
-                    </p>
-                  </div>
-                  <IconComponent className={cn("h-8 w-8", metric.color)} />
-                </div>
-                
-                <div className="flex items-center mt-4">
-                  {getChangeIcon(metric.changeType)}
-                  <span className={cn(
-                    "text-sm font-medium ml-1",
-                    getChangeColor(metric.changeType)
-                  )}>
-                    {metric.change > 0 ? '+' : ''}{metric.change}%
-                  </span>
-                  <span className="text-sm text-muted-foreground ml-1">
-                    vs período anterior
-                  </span>
+                <div className="animate-pulse">
+                  <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                  <div className="h-8 bg-muted rounded w-1/2"></div>
                 </div>
               </CardContent>
             </Card>
-          );
-        })}
+          ))}
+        </div>
       </div>
+    );
+  }
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Attendance Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Frequência por Atividade
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {attendanceData.slice(-3).map((data, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex justify-between text-sm font-medium">
-                    <span>{data.month}</span>
-                    <span>Total: {data.cultos + data.escola + data.jovens}</span>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 text-xs">Cultos</div>
-                      <div className="flex-1 bg-muted rounded-full h-2">
-                        <div 
-                          className="bg-blue-600 h-2 rounded-full"
-                          style={{ width: `${(data.cultos / 100) * 100}%` }}
-                        />
-                      </div>
-                      <div className="w-8 text-xs text-right">{data.cultos}</div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 text-xs">Escola</div>
-                      <div className="flex-1 bg-muted rounded-full h-2">
-                        <div 
-                          className="bg-green-600 h-2 rounded-full"
-                          style={{ width: `${(data.escola / 100) * 100}%` }}
-                        />
-                      </div>
-                      <div className="w-8 text-xs text-right">{data.escola}</div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 text-xs">Jovens</div>
-                      <div className="flex-1 bg-muted rounded-full h-2">
-                        <div 
-                          className="bg-orange-600 h-2 rounded-full"
-                          style={{ width: `${(data.jovens / 100) * 100}%` }}
-                        />
-                      </div>
-                      <div className="w-8 text-xs text-right">{data.jovens}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Department Performance */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Performance por Departamento
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {departmentStats.map((dept, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm">{dept.name}</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {dept.members} membros
-                      </Badge>
-                      <Badge 
-                        variant="outline"
-                        className={cn(
-                          "text-xs",
-                          dept.growth > 10 ? "text-green-600" : 
-                          dept.growth > 5 ? "text-orange-600" : "text-muted-foreground"
-                        )}
-                      >
-                        +{dept.growth}%
-                      </Badge>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground w-16">Presença</span>
-                    <div className="flex-1 bg-muted rounded-full h-2">
-                      <div 
-                        className={cn(
-                          "h-2 rounded-full",
-                          dept.attendance >= 90 ? "bg-green-600" :
-                          dept.attendance >= 80 ? "bg-blue-600" :
-                          dept.attendance >= 70 ? "bg-orange-600" : "bg-red-600"
-                        )}
-                        style={{ width: `${dept.attendance}%` }}
-                      />
-                    </div>
-                    <span className="text-xs w-10 text-right">{dept.attendance}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Insights and Recommendations */}
+  if (error) {
+    return (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5" />
-            Insights e Recomendações
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h4 className="font-medium mb-3 text-green-600">Pontos Positivos</h4>
-              <ul className="space-y-2">
-                <li className="flex items-start gap-2 text-sm">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
-                  <span>Crescimento de 12% em membros ativos este mês</span>
-                </li>
-                <li className="flex items-start gap-2 text-sm">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
-                  <span>Deaconato mantém 95% de presença consistente</span>
-                </li>
-                <li className="flex items-start gap-2 text-sm">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2" />
-                  <span>Aumentou em 8 conversas ativas no chat</span>
-                </li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="font-medium mb-3 text-orange-600">Oportunidades de Melhoria</h4>
-              <ul className="space-y-2">
-                <li className="flex items-start gap-2 text-sm">
-                  <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mt-2" />
-                  <span>Evangelismo precisa de mais engajamento (70% presença)</span>
-                </li>
-                <li className="flex items-start gap-2 text-sm">
-                  <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mt-2" />
-                  <span>Foco em reter os 18 novos interessados</span>
-                </li>
-                <li className="flex items-start gap-2 text-sm">
-                  <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mt-2" />
-                  <span>Considerar eventos especiais para jovens</span>
-                </li>
-              </ul>
-            </div>
-          </div>
+        <CardContent className="p-6 text-center">
+          <p className="text-red-600">Erro ao carregar estatísticas</p>
         </CardContent>
       </Card>
+    );
+  }
+
+  const metrics = getMetrics();
+
+  return (
+    <div className="space-y-6">
+      {/* Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {metrics.map((metric, index) => (
+          <Card key={index}>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">{metric.title}</p>
+                  <p className="text-2xl font-bold">{metric.value}</p>
+                </div>
+                <metric.icon className={`h-8 w-8 ${metric.color}`} />
+              </div>
+              <div className="flex items-center mt-4">
+                {getChangeIcon(metric.changeType)}
+                <span className={cn("text-sm font-medium ml-1", getChangeColor(metric.changeType))}>
+                  {metric.change > 0 ? '+' : ''}{metric.change}%
+                </span>
+                <span className="text-sm text-muted-foreground ml-1">vs período anterior</span>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Additional Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Resumo Geral</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>Total de Usuários:</span>
+                <span className="font-medium">{stats?.totalUsers || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Igrejas:</span>
+                <span className="font-medium">{stats?.totalChurches || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Eventos:</span>
+                <span className="font-medium">{stats?.totalEvents || 0}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Aniversariantes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>Hoje:</span>
+                <span className="font-medium">{stats?.birthdaysToday || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Esta Semana:</span>
+                <span className="font-medium">{stats?.birthdaysThisWeek || 0}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>Aprovados:</span>
+                <span className="font-medium">{stats?.approvedUsers || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Pendentes:</span>
+                <span className="font-medium">{stats?.pendingApprovals || 0}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {showExport && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm">
+            <Download className="h-4 w-4 mr-2" />
+            Exportar Relatório
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

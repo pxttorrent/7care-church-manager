@@ -1,3 +1,4 @@
+import React, { useEffect } from 'react';
 import { 
   Users, MessageSquare, Video, BarChart3, Settings, Clock, 
   Heart, FileText, UserPlus, Phone, LogOut, User, Bell 
@@ -8,9 +9,10 @@ import { MobileLayout } from '@/components/layout/MobileLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const Menu = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUserData } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -26,7 +28,7 @@ const Menu = () => {
   const menuItems = {
     admin: [
       { title: 'Usuários', icon: Users, path: '/users', color: 'bg-blue-500', description: 'Gerenciar membros' },
-      { title: 'Interessados', icon: UserPlus, path: '/interested', color: 'bg-green-500', description: 'Novos contatos' },
+      { title: 'Interessados', icon: UserPlus, path: '/my-interested', color: 'bg-green-500', description: 'Novos contatos' },
       { title: 'Mensagens', icon: MessageSquare, path: '/messages', color: 'bg-purple-500', description: 'Comunicação' },
       { title: 'Videochamadas', icon: Video, path: '/video-calls', color: 'bg-red-500', description: 'Reuniões online' },
       { title: 'Relatórios', icon: BarChart3, path: '/reports', color: 'bg-orange-500', description: 'Análises' },
@@ -39,12 +41,12 @@ const Menu = () => {
       { title: 'Videochamadas', icon: Video, path: '/video-calls', color: 'bg-blue-500', description: 'Reuniões online' },
       { title: 'Meus Relatórios', icon: FileText, path: '/my-reports', color: 'bg-orange-500', description: 'Meus dados' },
       { title: 'Agendamentos', icon: Clock, path: '/meetings', color: 'bg-teal-500', description: 'Marcar reuniões' },
-      { title: 'Interessados Gerais', icon: UserPlus, path: '/interested', color: 'bg-green-500', description: 'Todos os contatos' }
+      { title: 'Interessados Gerais', icon: UserPlus, path: '/my-interested', color: 'bg-green-500', description: 'Todos os contatos' }
     ],
     member: [
       { title: 'Videochamadas', icon: Video, path: '/video-calls', color: 'bg-blue-500', description: 'Reuniões online' },
       { title: 'Agendamentos', icon: Clock, path: '/meetings', color: 'bg-teal-500', description: 'Marcar reuniões' },
-      { title: 'Notificações', icon: Bell, path: '/notifications', color: 'bg-yellow-500', description: 'Avisos importantes' }
+      { title: 'Configurações', icon: Settings, path: '/settings', color: 'bg-gray-500', description: 'Notificações' }
     ],
     interested: [
       { title: 'Agendamentos', icon: Clock, path: '/meetings', color: 'bg-teal-500', description: 'Marcar reuniões' },
@@ -59,24 +61,37 @@ const Menu = () => {
 
   const currentMenuItems = menuItems[user?.role || 'interested'];
 
+  // Refresh user data when component mounts to ensure we have the latest church information
+  useEffect(() => {
+    if (user?.id && !user.church) {
+      refreshUserData();
+    }
+  }, [user?.id, user?.church, refreshUserData]);
+
   return (
     <MobileLayout>
       <div className="p-4 space-y-6">
         {/* User Profile Section */}
-        <Card className="bg-gradient-hero text-white shadow-divine">
+        <Card className="bg-gradient-to-br from-slate-800 via-blue-800 to-slate-700 text-white shadow-divine">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold">
-                {user?.name.charAt(0).toUpperCase()}
-              </div>
+              <Avatar className="h-16 w-16">
+                <AvatarImage
+                  src={user?.profilePhoto ? (user.profilePhoto.startsWith('http') ? user.profilePhoto : `/uploads/${user.profilePhoto}`) : undefined}
+                  className="h-full w-full object-cover"
+                />
+                <AvatarFallback className="bg-white/20 text-2xl font-bold">
+                  {user?.name?.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
               <div className="flex-1">
                 <h2 className="text-xl font-bold">{user?.name}</h2>
-                <p className="text-white/90 capitalize">
+                <p className="text-white font-medium capitalize">
                   {user?.role === 'admin' ? 'Administrador' : 
                    user?.role === 'missionary' ? 'Missionário' :
                    user?.role === 'member' ? 'Membro' : 'Interessado'}
                 </p>
-                <p className="text-white/70 text-sm">{user?.church || 'Igreja Central'}</p>
+                <p className="text-white/90 text-sm">{user?.church || 'Igreja não informada'}</p>
               </div>
             </div>
           </CardContent>

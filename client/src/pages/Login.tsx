@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { RegisterForm } from '@/components/auth/RegisterForm';
@@ -7,12 +7,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { X, Download, Smartphone } from 'lucide-react';
-import logo from '@/assets/logo.png';
+
+import { useSystemLogo } from '@/hooks/useSystemLogo';
 
 export const Login = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [showInstallPrompt, setShowInstallPrompt] = useState(true);
-  const { isAuthenticated, isLoading } = useAuth();
+  const { systemLogo } = useSystemLogo();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const { isInstallable, isInstalled, installApp, getInstallInstructions } = usePWAInstall();
   
   const installInstructions = getInstallInstructions();
@@ -26,7 +28,7 @@ export const Login = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-hero">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800">
         <div className="text-center space-y-4">
           <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
           <p className="text-white">Carregando...</p>
@@ -40,47 +42,73 @@ export const Login = () => {
     const tutorialCompleted = localStorage.getItem('tutorial_completed');
     const tutorialSkipped = localStorage.getItem('tutorial_skipped');
     
-    if (!tutorialCompleted && !tutorialSkipped) {
+    // Debug logs
+    console.log('🔍 Debug Login.tsx:');
+    console.log('  - isAuthenticated:', isAuthenticated);
+    console.log('  - user:', user);
+    console.log('  - tutorialCompleted:', tutorialCompleted);
+    console.log('  - tutorialSkipped:', tutorialSkipped);
+    console.log('  - user?.firstAccess:', user?.firstAccess);
+    console.log('  - user?.status:', user?.status);
+    console.log('  - user?.usingDefaultPassword:', user?.usingDefaultPassword);
+    
+    // Check if user needs first access (firstAccess flag, or using default password)
+    // But only if they haven't completed the tutorial yet
+    // Note: status 'pending' alone should not force first access
+    const needsFirstAccess = !tutorialCompleted && !tutorialSkipped && 
+      (user?.firstAccess || user?.usingDefaultPassword);
+    
+    console.log('  - needsFirstAccess:', needsFirstAccess);
+    console.log('  - Conditions breakdown:');
+    console.log('    - !tutorialCompleted:', !tutorialCompleted);
+    console.log('    - !tutorialSkipped:', !tutorialSkipped);
+    console.log('    - user?.firstAccess:', user?.firstAccess);
+    console.log('    - user?.status === "pending":', user?.status === 'pending');
+    console.log('    - user?.usingDefaultPassword:', user?.usingDefaultPassword);
+    
+    if (needsFirstAccess) {
+      console.log('  - Redirecionando para /first-access');
       return <Navigate to="/first-access" replace />;
     }
     
+    console.log('  - Redirecionando para /dashboard');
     return <Navigate to="/dashboard" replace />;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4 relative">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center p-4 relative">
       {/* PWA Install Notification */}
       {!isInstalled && showInstallPrompt && (
-        <div className="fixed top-4 left-4 right-4 z-50 max-w-md mx-auto">
+        <div className="fixed bottom-4 right-4 z-50 max-w-xs">
           <Alert className="bg-white/95 backdrop-blur-sm border-primary/20 shadow-lg">
             <Smartphone className="h-4 w-4" />
-            <AlertDescription className="pr-8">
+            <AlertDescription className="pr-6">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <p className="font-medium text-primary mb-2">
-                    📱 Instale o 7Care Plus no seu celular!
+                  <p className="font-medium text-primary mb-1 text-sm">
+                    📱 Instale o app!
                   </p>
-                  <div className="text-sm text-muted-foreground space-y-1">
-                    <p className="font-medium">Como instalar ({installInstructions.platform}):</p>
-                    {installInstructions.steps.map((step, index) => (
-                      <p key={index} className="text-xs">{step}</p>
+                  <div className="text-xs text-muted-foreground">
+                    <p className="font-medium mb-1">{installInstructions.platform}:</p>
+                    {installInstructions.steps.slice(0, 2).map((step, index) => (
+                      <p key={index} className="text-xs leading-tight">{step}</p>
                     ))}
                   </div>
                   {isInstallable && (
                     <Button 
                       onClick={handleInstall}
                       size="sm" 
-                      className="mt-2 bg-primary hover:bg-primary-dark text-white"
+                      className="mt-2 bg-primary hover:bg-primary-dark text-white text-xs h-7 px-2"
                     >
                       <Download className="w-3 h-3 mr-1" />
-                      Instalar App
+                      Instalar
                     </Button>
                   )}
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 w-6 p-0 hover:bg-primary/10"
+                  className="h-5 w-5 p-0 hover:bg-primary/10 ml-1"
                   onClick={() => setShowInstallPrompt(false)}
                 >
                   <X className="h-3 w-3" />
@@ -95,21 +123,17 @@ export const Login = () => {
         {/* Logo and Title */}
         <div className="text-center space-y-6">
           <div className="flex justify-center">
-            <div className="w-20 h-20 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center shadow-glow">
-              <img src={logo} alt="7Care Plus" className="w-12 h-12" />
+            <div className="w-40 h-40 bg-background backdrop-blur-sm rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(59,130,246,0.3)]">
+              {systemLogo && (
+                <img 
+                  src={systemLogo} 
+                  alt="Logo" 
+                  className="w-32 h-32 object-contain"
+                />
+              )}
             </div>
           </div>
-          <div className="space-y-2">
-            <h1 className="text-4xl font-bold text-white drop-shadow-lg">
-              7Care Plus
-            </h1>
-            <p className="text-white/90 text-lg">
-              Sistema de Gestão Eclesiástica
-            </p>
-            <p className="text-white/70 text-sm">
-              Conectando corações, fortalecendo a fé
-            </p>
-          </div>
+
         </div>
 
         {/* Auth Forms */}
@@ -130,10 +154,7 @@ export const Login = () => {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="text-center text-white/60 text-sm">
-          <p>© 2024 7Care Plus. Todos os direitos reservados.</p>
-        </div>
+
       </div>
     </div>
   );

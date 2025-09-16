@@ -27,5 +27,38 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Otimizações de build para melhor performance
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true, // Remove console.logs em produção
+        drop_debugger: true,
+      },
+    },
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          ui: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-select'],
+          charts: ['recharts'],
+          forms: ['react-hook-form', '@hookform/resolvers'],
+        },
+      },
+    },
+    // Otimizações de assets
+    assetsInlineLimit: 4096, // 4kb
+    chunkSizeWarningLimit: 1000,
+  },
+  server: {
+    port: 3065,
+  },
+  // Otimizações de desenvolvimento
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom'],
+    exclude: ['@radix-ui/react-icons'],
+  },
+  // Configurações de CSS para melhor performance
+  css: {
+    devSourcemap: false,
   },
 });

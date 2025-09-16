@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -136,18 +136,34 @@ const mockConversations: Conversation[] = [
 ];
 
 interface ChatSidebarProps {
+  mode?: 'conversations' | 'users';
+  currentUserId?: number;
   selectedConversationId?: number;
   onConversationSelect: (conversation: Conversation) => void;
+  onSelectUser?: (user: { id: number; name: string; avatar?: string }) => void;
   onNewChat: () => void;
 }
 
 export const ChatSidebar = ({ 
+  mode = 'conversations',
+  currentUserId,
   selectedConversationId, 
   onConversationSelect, 
+  onSelectUser,
   onNewChat 
 }: ChatSidebarProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [allUsers, setAllUsers] = useState<Array<{ id: number; name: string; email?: string; profilePhoto?: string }>>([]);
+
+  useEffect(() => {
+    if (mode === 'users') {
+      fetch('/api/users')
+        .then(r => r.json())
+        .then((list: any[]) => setAllUsers(list))
+        .catch(() => setAllUsers([]));
+    }
+  }, [mode]);
 
   const filteredConversations = mockConversations.filter(conversation => {
     const matchesSearch = conversation.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -189,15 +205,21 @@ export const ChatSidebar = ({
   };
 
   const totalUnread = filteredConversations.reduce((sum, conv) => sum + conv.unreadCount, 0);
+  const filteredUsers = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return allUsers
+      .filter(u => u.id !== currentUserId)
+      .filter(u => u.name?.toLowerCase().includes(term) || u.email?.toLowerCase().includes(term));
+  }, [allUsers, currentUserId, searchTerm]);
 
   return (
-    <Card className="h-full flex flex-col">
+    <Card className="h-full min-h-0 flex flex-col">
       <CardHeader className="border-b p-4">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <MessageCircle className="h-5 w-5" />
-            Conversas
-            {totalUnread > 0 && (
+            {mode === 'users' ? 'Usuários' : 'Conversas'}
+            {mode !== 'users' && totalUnread > 0 && (
               <Badge variant="destructive" className="ml-2" data-testid="badge-total-unread">
                 {totalUnread}
               </Badge>
@@ -226,7 +248,7 @@ export const ChatSidebar = ({
         <div className="relative mt-3">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
           <Input
-            placeholder="Buscar conversas..."
+            placeholder={mode === 'users' ? 'Buscar usuários...' : 'Buscar conversas...'}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
@@ -235,9 +257,41 @@ export const ChatSidebar = ({
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 p-0 overflow-hidden">
+      <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
         <ScrollArea className="h-full">
           <div className="p-2 space-y-1">
+            {mode === 'users' ? (
+              <div className="space-y-1">
+                {filteredUsers.map(u => (
+                  <div
+                    key={u.id}
+                    className="flex items-center space-x-3 p-3 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => onSelectUser?.({ id: u.id, name: u.name, avatar: u.profilePhoto ? `/uploads/${u.profilePhoto}` : undefined })}
+                  >
+                    <Avatar className="h-12 w-12">
+                      <AvatarImage src={u.profilePhoto ? `/uploads/${u.profilePhoto}` : undefined} />
+                      <AvatarFallback>
+                        {u.name?.charAt(0) || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="font-medium truncate">{u.name}</h3>
+                      </div>
+                      <p className="text-sm text-muted-foreground truncate">{u.email}</p>
+                    </div>
+                  </div>
+                ))}
+                {filteredUsers.length === 0 && (
+                  <div className="text-center py-8" data-testid="empty-users">
+                    <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-foreground mb-2">Nenhum usuário encontrado</h3>
+                    <p className="text-muted-foreground">Tente ajustar os termos de busca.</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+            <>
             {/* Pinned Conversations */}
             {pinnedConversations.length > 0 && (
               <>
@@ -296,6 +350,8 @@ export const ChatSidebar = ({
                       : 'Inicie uma nova conversa para começar.'}
                 </p>
               </div>
+            )}
+            </>
             )}
           </div>
         </ScrollArea>

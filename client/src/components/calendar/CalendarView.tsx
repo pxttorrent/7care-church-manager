@@ -10,10 +10,19 @@ import {
   Clock,
   MapPin,
   Users,
-  Filter,
-  Download
+  Download,
+  Cake
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useBirthdays } from "@/hooks/useBirthdays";
+
+// Função utilitária para formatar datas sem problemas de fuso horário
+const formatDateSafe = (dateString: string): string => {
+  const [year, month, day] = dateString.split('-');
+  // CORRIGIDO: Usar data local em vez de UTC para evitar offset de um dia
+  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  return date.toLocaleDateString('pt-BR');
+};
 
 interface CalendarEvent {
   id: number;
@@ -29,6 +38,15 @@ interface CalendarEvent {
   status: 'scheduled' | 'confirmed' | 'cancelled';
   isRecurring?: boolean;
   organizer: string;
+}
+
+interface BirthdayUser {
+  id: number;
+  name: string;
+  phone?: string;
+  birthDate: string;
+  profilePhoto?: string;
+  church?: string | null;
 }
 
 const mockEvents: CalendarEvent[] = [
@@ -104,23 +122,53 @@ const mockEvents: CalendarEvent[] = [
 ];
 
 const eventTypeColors = {
-  culto: "bg-purple-100 text-purple-800 border-purple-200",
-  "escola-sabatina": "bg-blue-100 text-blue-800 border-blue-200",
-  jovens: "bg-green-100 text-green-800 border-green-200",
-  deaconato: "bg-orange-100 text-orange-800 border-orange-200",
-  reuniao: "bg-gray-100 text-gray-800 border-gray-200",
-  estudo: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  outro: "bg-pink-100 text-pink-800 border-pink-200"
+  "igreja-local": "bg-red-500 text-white border-red-600",
+  "asr-geral": "bg-orange-500 text-white border-orange-600",
+  "asr-administrativo": "bg-cyan-500 text-white border-cyan-600",
+  "asr-pastores": "bg-purple-500 text-white border-purple-600",
+  "visitas": "bg-green-500 text-white border-green-600",
+  "reunioes": "bg-blue-500 text-white border-blue-600",
+  "pregacoes": "bg-indigo-500 text-white border-indigo-600"
+};
+
+// Função para determinar a cor baseada no tipo do evento
+const getEventColor = (event: CalendarEvent) => {
+  // Primeiro, tentar usar o tipo do evento se estiver disponível
+  if (event.type && eventTypeColors[event.type]) {
+    return eventTypeColors[event.type];
+  }
+  
+  // Fallback: mapear cores baseado no conteúdo do título para as 7 categorias
+  const title = event.title.toLowerCase();
+  
+  if (title.includes('igreja') && title.includes('local')) {
+    return eventTypeColors['igreja-local'];
+  } else if (title.includes('asr') && title.includes('geral')) {
+    return eventTypeColors['asr-geral'];
+  } else if (title.includes('asr') && title.includes('administrativo')) {
+    return eventTypeColors['asr-administrativo'];
+  } else if (title.includes('asr') && title.includes('pastores')) {
+    return eventTypeColors['asr-pastores'];
+  } else if (title.includes('visita') || title.includes('evangelismo') || title.includes('missao')) {
+    return eventTypeColors.visitas;
+  } else if (title.includes('reuniao') || title.includes('reunião')) {
+    return eventTypeColors.reunioes;
+  } else if (title.includes('prega') || title.includes('sermao') || title.includes('culto')) {
+    return eventTypeColors.pregacoes;
+  } else {
+    // Cor padrão para reuniões genéricas
+    return eventTypeColors.reunioes;
+  }
 };
 
 const eventTypeLabels = {
-  culto: "Culto",
-  "escola-sabatina": "Escola Sabatina",
-  jovens: "Jovens",
-  deaconato: "Deaconato",
-  reuniao: "Reunião",
-  estudo: "Estudo Bíblico",
-  outro: "Outro"
+  "igreja-local": "Igreja Local",
+  "asr-geral": "ASR Geral",
+  "asr-administrativo": "ASR Administrativo",
+  "asr-pastores": "ASR Pastores",
+  "visitas": "Visitas",
+  "reunioes": "Reuniões",
+  "pregacoes": "Pregações"
 };
 
 interface CalendarViewProps {
@@ -131,10 +179,11 @@ interface CalendarViewProps {
 
 export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: CalendarViewProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedType, setSelectedType] = useState<string>('');
+  const [showBirthdays, setShowBirthdays] = useState(false);
+  const { birthdays, isLoading: birthdaysLoading } = useBirthdays();
 
   const getDaysInWeek = (date: Date) => {
-    const week = [];
+    const week: Date[] = [];
     const startOfWeek = new Date(date);
     startOfWeek.setDate(date.getDate() - date.getDay());
     
@@ -150,8 +199,36 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
     const dateStr = date.toISOString().split('T')[0];
     return mockEvents.filter(event => {
       const matchesDate = event.date === dateStr;
-      const matchesType = !selectedType || event.type === selectedType;
-      return matchesDate && matchesType;
+      return matchesDate;
+    });
+  };
+
+  const getBirthdaysForDate = (date: Date): BirthdayUser[] => {
+    if (!showBirthdays) return [];
+    
+    // CORRIGIDO: Usar UTC para evitar problemas de fuso horário
+    const currentMonth = date.getUTCMonth();
+    const currentDay = date.getUTCDate();
+    
+    return birthdays.thisMonth.filter(user => {
+      if (!user.birthDate) return false;
+      
+      // Parse da data de nascimento usando UTC para evitar problemas de fuso horário
+      let birthDate: Date | null = null;
+      
+      if (user.birthDate.includes('-')) {
+        const [year, month, day] = user.birthDate.split('-');
+        birthDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+      } else if (user.birthDate.includes('/')) {
+        const [day, month, year] = user.birthDate.split('/');
+        const parsedYear = parseInt(year) < 100 ? parseInt(year) + 2000 : parseInt(year);
+        birthDate = new Date(Date.UTC(parsedYear, parseInt(month) - 1, parseInt(day)));
+      }
+      
+      if (!birthDate || isNaN(birthDate.getTime())) return false;
+      
+      // Compara mês e dia usando UTC para evitar problemas de fuso horário
+      return birthDate.getUTCMonth() === currentMonth && birthDate.getUTCDate() === currentDay;
     });
   };
 
@@ -161,9 +238,10 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
     setCurrentDate(newDate);
   };
 
-  const weekDays = getDaysInWeek(currentDate);
+  const weekDays: Date[] = getDaysInWeek(currentDate);
+  // CORRIGIDO: Usar UTC para evitar problemas de fuso horário na comparação de "hoje"
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('pt-BR', { 
@@ -182,9 +260,7 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
     return date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
   };
 
-  const filteredEvents = selectedType 
-    ? mockEvents.filter(event => event.type === selectedType)
-    : mockEvents;
+  const filteredEvents = mockEvents;
 
   return (
     <div className="space-y-4">
@@ -216,6 +292,16 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
         
         <div className="flex items-center space-x-2">
           <Button
+            variant={showBirthdays ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowBirthdays(!showBirthdays)}
+            data-testid="button-birthdays-filter"
+            className="flex items-center gap-2"
+          >
+            <Cake className="h-4 w-4" />
+            {showBirthdays ? "Ocultar Aniversariantes" : "Mostrar Aniversariantes"}
+          </Button>
+          <Button
             variant="outline"
             size="sm"
             data-testid="button-export-calendar"
@@ -236,40 +322,18 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
       </div>
 
       {/* Type Filter */}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant={selectedType === '' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setSelectedType('')}
-          data-testid="filter-all"
-        >
-          Todos ({mockEvents.length})
-        </Button>
-        {Object.entries(eventTypeLabels).map(([type, label]) => {
-          const count = mockEvents.filter(e => e.type === type).length;
-          if (count === 0) return null;
-          
-          return (
-            <Button
-              key={type}
-              variant={selectedType === type ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setSelectedType(type)}
-              data-testid={`filter-${type}`}
-            >
-              {label} ({count})
-            </Button>
-          );
-        })}
-      </div>
+      {/* Removido: botões de filtro individuais - usando outro modo de filtro */}
 
       {/* Calendar Grid */}
       <Card>
         <CardContent className="p-0">
           <div className="grid grid-cols-7 border-b">
             {weekDays.map((day, index) => {
-              const isToday = day.getTime() === today.getTime();
+              // CORRIGIDO: Comparar usando UTC para evitar problemas de fuso horário
+              const dayUTC = new Date(Date.UTC(day.getFullYear(), day.getMonth(), day.getDate()));
+              const isToday = dayUTC.getTime() === todayUTC.getTime();
               const dayEvents = getEventsForDate(day);
+              const dayBirthdays = getBirthdaysForDate(day);
               
               return (
                 <div
@@ -293,12 +357,30 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
                   </div>
                   
                   <div className="space-y-1">
+                    {/* Aniversariantes */}
+                    {dayBirthdays.map((birthday) => (
+                      <div
+                        key={`birthday-${birthday.id}`}
+                        className="p-1 rounded text-xs bg-pink-100 text-pink-800 border border-pink-200 cursor-pointer hover:opacity-80 transition-opacity shadow-sm"
+                        data-testid={`birthday-${birthday.id}`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <Cake className="h-3 w-3" />
+                          <span className="font-medium truncate">{birthday.name}</span>
+                        </div>
+                        <div className="text-xs text-pink-600">
+                          Aniversário
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {/* Eventos */}
                     {dayEvents.map((event) => (
                       <div
                         key={event.id}
                         className={cn(
-                          "p-1 rounded text-xs cursor-pointer hover:opacity-80 transition-opacity",
-                          eventTypeColors[event.type]
+                          "p-1 rounded text-xs cursor-pointer hover:opacity-80 transition-opacity shadow-sm",
+                          getEventColor(event)
                         )}
                         onClick={() => onEventClick?.(event)}
                         data-testid={`event-${event.id}`}
@@ -337,7 +419,7 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
                   data-testid={`upcoming-event-${event.id}`}
                 >
                   <div className={cn(
-                    "w-3 h-3 rounded-full mt-1.5",
+                    "w-3 h-3 rounded-full mt-1.5 shadow-sm",
                     eventTypeColors[event.type].split(' ')[0].replace('bg-', 'bg-')
                   )} />
                   <div className="flex-1 min-w-0">
@@ -345,7 +427,7 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
                     <div className="text-xs text-muted-foreground space-y-1">
                       <div className="flex items-center gap-1">
                         <CalendarIcon className="h-3 w-3" />
-                        <span>{new Date(event.date).toLocaleDateString('pt-BR')}</span>
+                        <span>{formatDateSafe(event.date)}</span>
                         <Clock className="h-3 w-3 ml-1" />
                         <span>{event.time}</span>
                       </div>
@@ -410,6 +492,74 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
           </CardContent>
         </Card>
       </div>
+      
+      {/* Aniversariantes do Mês */}
+      {showBirthdays && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Cake className="h-4 w-4" />
+              Aniversariantes do Mês
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {birthdaysLoading ? (
+              <div className="text-center py-4 text-muted-foreground">
+                Carregando aniversariantes...
+              </div>
+            ) : birthdays.thisMonth.length === 0 ? (
+              <div className="text-center py-4 text-muted-foreground">
+                Nenhum aniversariante este mês
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {birthdays.thisMonth.map((birthday) => {
+                  const birthDate = birthday.birthDate;
+                  let day = '';
+                  let month = '';
+                  
+                                     // Parse da data usando data local para evitar problemas de fuso horário
+                  if (birthDate.includes('-')) {
+                    const [year, monthStr, dayStr] = birthDate.split('-');
+                    day = dayStr;
+                    month = monthStr;
+                  } else if (birthDate.includes('/')) {
+                    const [dayStr, monthStr, year] = birthDate.split('/');
+                    day = dayStr;
+                    month = monthStr;
+                  }
+                  
+                  const monthNames = [
+                    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+                  ];
+                  
+                  return (
+                    <div
+                      key={birthday.id}
+                      className="flex items-center gap-3 p-3 bg-pink-50 rounded-lg border border-pink-200"
+                      data-testid={`birthday-card-${birthday.id}`}
+                    >
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-pink-600">{day}</div>
+                        <div className="text-xs text-pink-500">{monthNames[parseInt(month) - 1]}</div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{birthday.name}</div>
+                        {birthday.church && (
+                          <div className="text-xs text-muted-foreground truncate">
+                            {birthday.church}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

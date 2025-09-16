@@ -186,7 +186,7 @@ export const ChatInterface = ({
       : `Visto por último ${chatUser?.lastSeen || 'há muito tempo'}`;
 
   return (
-    <Card className="h-full flex flex-col">
+    <Card className="h-full min-h-0 flex flex-col">
       {/* Chat Header */}
       <CardHeader className="border-b p-4">
         <div className="flex items-center justify-between">
@@ -243,9 +243,9 @@ export const ChatInterface = ({
       </CardHeader>
 
       {/* Messages Area */}
-      <CardContent className="flex-1 p-0 overflow-hidden">
+      <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
         <ScrollArea 
-          className="h-full px-4 py-2" 
+          className="h-full px-4 py-2"
           ref={scrollAreaRef}
           data-testid="messages-container"
         >

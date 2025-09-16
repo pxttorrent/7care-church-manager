@@ -12,6 +12,7 @@ import {
   FileText,
   Heart
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Sidebar,
@@ -26,7 +27,8 @@ import {
 } from '@/components/ui/sidebar';
 import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/types/auth';
-import logo from '@/assets/logo.png';
+
+import { useSystemLogo } from '@/hooks/useSystemLogo';
 
 // Navigation items with permissions
 const navigationItems = [
@@ -70,7 +72,7 @@ const navigationItems = [
     title: 'Meus Interessados',
     url: '/my-interested',
     icon: Heart,
-    roles: ['missionary'] as UserRole[]
+    roles: ['missionary', 'member'] as UserRole[]
   },
   {
     title: 'Mensagens',
@@ -109,6 +111,7 @@ export function AppSidebar() {
   const location = useLocation();
   const { user } = useAuth();
   const currentPath = location.pathname;
+  const { systemLogo } = useSystemLogo();
   
   const isCollapsed = state === 'collapsed';
 
@@ -129,15 +132,14 @@ export function AppSidebar() {
       <SidebarContent>
         {/* Logo Section */}
         <div className={`flex items-center gap-3 p-4 border-b ${isCollapsed ? 'justify-center' : ''}`}>
-          <img src={logo} alt="7Care Plus" className="w-8 h-8" />
-          {!isCollapsed && (
-            <div>
-              <h1 className="text-xl font-bold text-primary">
-                7Care Plus
-              </h1>
-              <p className="text-xs text-muted-foreground">Gestão Eclesiástica</p>
-            </div>
-          )}
+                                              {systemLogo && (
+                          <img 
+                            src={systemLogo} 
+                            alt="7care" 
+                            className="w-8 h-8 object-contain"
+                          />
+                        )}
+
         </div>
 
         {/* User Info */}

@@ -22,15 +22,35 @@ export const LoginForm = () => {
     e.preventDefault();
     setIsLoading(true);
 
+    // Limpa localStorage para garantir fluxo correto de primeiro acesso
+    localStorage.removeItem('tutorial_completed');
+    localStorage.removeItem('tutorial_skipped');
+
     try {
+      console.log('🔍 Debug LoginForm - Attempting login...');
       const success = await login(email, password);
       
       if (success) {
+        console.log('🔍 Debug LoginForm - Login successful, showing toast...');
         toast({
           title: "Login realizado com sucesso!",
-          description: "Bem-vindo ao 7Care Plus",
+          description: "Bem-vindo!",
         });
-        navigate('/dashboard');
+        // Verificar se precisa de primeiro acesso
+        const user = JSON.parse(localStorage.getItem('7care_auth') || '{}');
+        const needsFirstAccess = user.usingDefaultPassword || user.firstAccess || user.status === 'pending';
+        
+        console.log('🔍 Debug LoginForm - Login completed, checking redirect...');
+        console.log('  - user:', user);
+        console.log('  - needsFirstAccess:', needsFirstAccess);
+        
+        if (needsFirstAccess) {
+          console.log('🔍 Debug LoginForm - Redirecting to /first-access');
+          navigate('/first-access');
+        } else {
+          console.log('🔍 Debug LoginForm - Redirecting to /dashboard');
+          navigate('/dashboard');
+        }
       } else {
         toast({
           title: "Erro no login",
@@ -55,20 +75,18 @@ export const LoginForm = () => {
         <CardTitle className="text-2xl font-bold text-primary">
           Entre na sua conta
         </CardTitle>
-        <CardDescription>
-          Acesse o 7Care Plus para gerenciar sua igreja
-        </CardDescription>
+
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">Email ou Usuário</Label>
             <div className="relative">
               <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 id="email"
-                type="email"
-                placeholder="seu@email.com"
+                type="text"
+                placeholder="seu@email.com ou seu.usuario"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="pl-10"
@@ -115,11 +133,7 @@ export const LoginForm = () => {
           </Button>
         </form>
 
-        <div className="mt-4 text-center text-sm text-muted-foreground">
-          <p>Usuários demo:</p>
-          <p>admin@7care.com (Admin) | maria@7care.com (Missionário)</p>
-          <p>Senha: 123456</p>
-        </div>
+
       </CardContent>
     </Card>
   );

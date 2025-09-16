@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
 import { User, AuthState } from '@/types/auth';
 
-// Mock users for demonstration
+// Extend User type to include usingDefaultPassword
+interface ExtendedUser extends User {
+  usingDefaultPassword?: boolean;
+}
+
+// Mock users for demonstration (removed church field to use real data)
 const mockUsers: User[] = [
   {
     id: '1',
     name: 'Pastor João Silva',
     email: 'admin@7care.com',
     role: 'admin',
-    church: 'Igreja Central',
     isApproved: true,
     createdAt: '2024-01-01'
   },
@@ -17,7 +21,6 @@ const mockUsers: User[] = [
     name: 'Maria Santos',
     email: 'maria@7care.com',
     role: 'missionary',
-    church: 'Igreja Central',
     isApproved: true,
     createdAt: '2024-01-15'
   },
@@ -26,7 +29,6 @@ const mockUsers: User[] = [
     name: 'Carlos Oliveira',
     email: 'carlos@email.com',
     role: 'member',
-    church: 'Igreja Central',
     isApproved: true,
     createdAt: '2024-02-01'
   }
@@ -67,12 +69,54 @@ export const useAuth = () => {
       const data = await response.json();
       
       if (data.success && data.user) {
-        localStorage.setItem('7care_auth', JSON.stringify(data.user));
-        setAuthState({
-          user: data.user,
-          isAuthenticated: true,
-          isLoading: false
-        });
+        // Store the extended user data including usingDefaultPassword
+        const extendedUser: ExtendedUser = data.user;
+        console.log('🔍 Debug useAuth - Login successful:');
+        console.log('  - Extended user data:', extendedUser);
+        console.log('  - usingDefaultPassword:', extendedUser.usingDefaultPassword);
+        
+        // Fetch church information using the simple route
+        try {
+          const churchResponse = await fetch(`/api/user/church?userId=${extendedUser.id}`);
+          if (churchResponse.ok) {
+            const churchData = await churchResponse.json();
+            if (churchData.success && churchData.church) {
+              const userWithChurch = { ...extendedUser, church: churchData.church };
+              localStorage.setItem('7care_auth', JSON.stringify(userWithChurch));
+              setAuthState({
+                user: userWithChurch,
+                isAuthenticated: true,
+                isLoading: false
+              });
+            } else {
+              // Fallback to login data if church fetch fails
+              localStorage.setItem('7care_auth', JSON.stringify(extendedUser));
+              setAuthState({
+                user: extendedUser,
+                isAuthenticated: true,
+                isLoading: false
+              });
+            }
+          } else {
+            // Fallback to login data if church fetch fails
+            localStorage.setItem('7care_auth', JSON.stringify(extendedUser));
+            setAuthState({
+              user: extendedUser,
+              isAuthenticated: true,
+              isLoading: false
+            });
+          }
+        } catch (fetchError) {
+          console.warn('Failed to fetch church data, using login data:', fetchError);
+          // Fallback to login data if church fetch fails
+          localStorage.setItem('7care_auth', JSON.stringify(extendedUser));
+          setAuthState({
+            user: extendedUser,
+            isAuthenticated: true,
+            isLoading: false
+          });
+        }
+        
         return true;
       }
       
@@ -90,6 +134,40 @@ export const useAuth = () => {
       isAuthenticated: false,
       isLoading: false
     });
+  };
+
+  const refreshUserData = async () => {
+    if (!authState.user?.id) return false;
+    
+    try {
+      console.log('🔄 Refreshing user data for ID:', authState.user.id);
+      
+      // Buscar dados completos do usuário
+      const response = await fetch(`/api/users/${authState.user.id}`);
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('🔄 User data received:', { 
+          id: userData.id, 
+          name: userData.name, 
+          phone: userData.phone,
+          birthDate: userData.birthDate,
+          profilePhoto: userData.profilePhoto 
+        });
+        
+        const updatedUser = { ...authState.user, ...userData };
+        
+        localStorage.setItem('7care_auth', JSON.stringify(updatedUser));
+        setAuthState(prev => ({
+          ...prev,
+          user: updatedUser
+        }));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
+      return false;
+    }
   };
 
   const register = async (userData: Partial<User>): Promise<boolean> => {
@@ -113,6 +191,7 @@ export const useAuth = () => {
     ...authState,
     login,
     logout,
-    register
+    register,
+    refreshUserData
   };
 };

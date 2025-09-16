@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { ChatSidebar } from '@/components/chat/ChatSidebar';
 import { ChatInterface } from '@/components/chat/ChatInterface';
 import { Card, CardContent } from '@/components/ui/card';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ChatUser {
   id: number;
@@ -32,11 +33,15 @@ interface Conversation {
 }
 
 export default function Chat() {
+  const { user } = useAuth();
+  const isAdmin = useMemo(() => user?.role === 'admin', [user]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [selectedUser, setSelectedUser] = useState<{ id: number; name: string; avatar?: string } | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
 
   const handleConversationSelect = (conversation: Conversation) => {
     setSelectedConversation(conversation);
+    setSelectedUser(null);
     setShowNewChat(false);
   };
 
@@ -46,27 +51,66 @@ export default function Chat() {
   };
 
   const getChatUser = (conversation: Conversation): ChatUser | undefined => {
+    if (selectedUser) {
+      return {
+        id: selectedUser.id,
+        name: selectedUser.name,
+        avatar: selectedUser.avatar,
+        role: 'user',
+        isOnline: false,
+      };
+    }
     if (conversation.type === 'direct') {
       return conversation.participants[0];
     }
     return undefined;
   };
 
+  const handleSelectUserToChat = async (targetUser: { id: number; name: string; avatar?: string }) => {
+    if (!user?.id) return;
+    try {
+      const resp = await fetch('/api/conversations/direct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userAId: Number(user.id), userBId: targetUser.id })
+      });
+      if (!resp.ok) throw new Error('Falha ao abrir conversa');
+      const conv = await resp.json();
+      setSelectedConversation({
+        id: conv.id,
+        type: 'direct',
+        name: targetUser.name,
+        participants: [{ id: targetUser.id, name: targetUser.name, role: 'user', isOnline: false }],
+        lastMessage: { content: '', timestamp: new Date().toISOString(), senderId: 0, senderName: '' },
+        unreadCount: 0,
+        isPinned: false,
+        isArchived: false
+      } as any);
+      setSelectedUser(targetUser);
+      setShowNewChat(false);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
     <MobileLayout>
-      <div className="p-4 h-[calc(100vh-120px)]">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+      <div className="p-4 h-full min-h-0">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full min-h-0">
           {/* Sidebar */}
-          <div className="md:col-span-1">
+          <div className="md:col-span-1 h-full min-h-0">
             <ChatSidebar
+              mode={isAdmin ? 'users' : 'conversations'}
+              currentUserId={user?.id as any}
               selectedConversationId={selectedConversation?.id}
               onConversationSelect={handleConversationSelect}
+              onSelectUser={handleSelectUserToChat}
               onNewChat={handleNewChat}
             />
           </div>
 
           {/* Chat Interface */}
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 h-full min-h-0">
             {selectedConversation ? (
               <ChatInterface
                 conversationId={selectedConversation.id}

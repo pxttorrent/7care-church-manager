@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { 
   User, 
   Lock, 
@@ -13,9 +15,12 @@ import {
   CheckCircle, 
   ChevronRight,
   ChevronLeft,
-  Star
+  Star,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 
 interface TutorialStep {
@@ -80,9 +85,19 @@ const TUTORIAL_STEPS: TutorialStep[] = [
 
 export const FirstAccessWelcome = () => {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(0);
   const [steps, setSteps] = useState(TUTORIAL_STEPS);
   const [showWelcome, setShowWelcome] = useState(true);
+  
+  // Password change form state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // Load progress from localStorage
   useEffect(() => {
@@ -138,14 +153,96 @@ export const FirstAccessWelcome = () => {
   };
 
   const completeTutorial = () => {
+    // If user is using default password, force them to change it first
+    if (user?.usingDefaultPassword) {
+      setCurrentStep(1); // Go to password change step
+      return;
+    }
+    
     localStorage.setItem('tutorial_completed', 'true');
-    // In a real app, this would update the user's firstAccess flag
     window.location.href = '/dashboard';
   };
 
   const skipTutorial = () => {
     localStorage.setItem('tutorial_skipped', 'true');
     window.location.href = '/dashboard';
+  };
+
+  const handleChangePassword = async () => {
+    if (!user?.id) {
+      toast({
+        title: "Erro",
+        description: "Usuário não identificado",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: "Erro",
+        description: "As senhas não coincidem",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      toast({
+        title: "Erro",
+        description: "A nova senha deve ter pelo menos 8 caracteres",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsChangingPassword(true);
+
+    try {
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          currentPassword,
+          newPassword
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: "Sucesso!",
+          description: "Senha alterada com sucesso",
+        });
+        
+        // Update local auth state with the updated user data from server
+        localStorage.setItem('7care_auth', JSON.stringify(data.user));
+        
+        // Mark tutorial as completed and redirect to dashboard
+        localStorage.setItem('tutorial_completed', 'true');
+        
+        // Redirect to dashboard after password change
+        window.location.href = '/dashboard';
+      } else {
+        toast({
+          title: "Erro",
+          description: data.message || "Erro ao alterar senha",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro de conexão",
+        variant: "destructive",
+      });
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
   const getProgressPercentage = () => {
@@ -158,17 +255,23 @@ export const FirstAccessWelcome = () => {
   if (showWelcome) {
     return (
       <MobileLayout>
-        <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center p-4">
           <Card className="w-full max-w-md shadow-divine">
             <CardHeader className="text-center space-y-4">
               <div className="w-20 h-20 mx-auto bg-gradient-primary rounded-full flex items-center justify-center">
                 <Star className="w-10 h-10 text-white" />
               </div>
               <CardTitle className="text-2xl text-primary">
-                Bem-vindo ao 7Care Plus!
+                Bem-vindo!
               </CardTitle>
               <CardDescription className="text-base">
                 Olá <span className="font-semibold text-primary">{user?.name}</span>! 
+                {user?.usingDefaultPassword && (
+                  <span className="block mt-2 text-amber-600 font-medium">
+                    ⚠️ Detectamos que você está usando a senha padrão. 
+                    Por segurança, você deve alterá-la no próximo passo.
+                  </span>
+                )}
                 Vamos fazer um tour rápido para você conhecer todas as funcionalidades.
               </CardDescription>
             </CardHeader>
@@ -201,11 +304,19 @@ export const FirstAccessWelcome = () => {
 
               <div className="space-y-3">
                 <Button 
-                  onClick={() => setShowWelcome(false)}
+                  onClick={() => {
+                    // If user is using default password, start from password change step
+                    if (user?.usingDefaultPassword) {
+                      setCurrentStep(1);
+                      setShowWelcome(false);
+                    } else {
+                      setShowWelcome(false);
+                    }
+                  }}
                   className="w-full bg-gradient-primary hover:opacity-90"
                   data-testid="button-start-tutorial"
                 >
-                  Começar Tutorial
+                  {user?.usingDefaultPassword ? 'Alterar Senha Primeiro' : 'Começar Tutorial'}
                 </Button>
                 <Button 
                   variant="outline" 
@@ -228,7 +339,7 @@ export const FirstAccessWelcome = () => {
 
   return (
     <MobileLayout>
-      <div className="min-h-screen bg-gradient-hero p-4">
+              <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
         <div className="max-w-md mx-auto space-y-6">
           {/* Header */}
           <div className="text-center text-white space-y-2">
@@ -270,15 +381,108 @@ export const FirstAccessWelcome = () => {
                 )}
 
                 {currentStep === 1 && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Por segurança, recomendamos que você altere sua senha padrão.
-                      Escolha uma senha forte com pelo menos 8 caracteres.
-                    </p>
-                    <div className="bg-green-50 p-3 rounded-lg">
-                      <p className="text-sm font-medium text-green-800">
-                        🔒 Segurança: Use uma combinação de letras, números e símbolos
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Por segurança, você deve alterar sua senha padrão.
+                        Escolha uma senha forte com pelo menos 8 caracteres.
                       </p>
+                      <div className="bg-green-50 p-3 rounded-lg">
+                        <p className="text-sm font-medium text-green-800">
+                          🔒 Segurança: Use uma combinação de letras, números e símbolos
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="currentPassword">Senha Atual</Label>
+                        <div className="relative">
+                          <Input
+                            id="currentPassword"
+                            type={showCurrentPassword ? 'text' : 'password'}
+                            placeholder="Digite sua senha atual"
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            className="pr-10"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                          >
+                            {showCurrentPassword ? (
+                              <EyeOff className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <Eye className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="newPassword">Nova Senha</Label>
+                        <div className="relative">
+                          <Input
+                            id="newPassword"
+                            type={showNewPassword ? 'text' : 'password'}
+                            placeholder="Digite sua nova senha"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className="pr-10"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                          >
+                            {showNewPassword ? (
+                              <EyeOff className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <Eye className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="confirmPassword">Confirmar Nova Senha</Label>
+                        <div className="relative">
+                          <Input
+                            id="confirmPassword"
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            placeholder="Confirme sua nova senha"
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            className="pr-10"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          >
+                            {showConfirmPassword ? (
+                              <EyeOff className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <Eye className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <Button 
+                        onClick={handleChangePassword}
+                        disabled={!currentPassword || !newPassword || !confirmPassword || isChangingPassword}
+                        className="w-full"
+                      >
+                        {isChangingPassword ? 'Alterando...' : 'Alterar Senha'}
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -339,21 +543,23 @@ export const FirstAccessWelcome = () => {
                   </div>
                 )}
 
-                <Button 
-                  onClick={() => completeStep(currentStep + 1)}
-                  variant={currentStepData.completed ? "secondary" : "default"}
-                  className="w-full"
-                  data-testid={`button-complete-step-${currentStep + 1}`}
-                >
-                  {currentStepData.completed ? (
-                    <>
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      Etapa Concluída
-                    </>
-                  ) : (
-                    "Marcar como Concluída"
-                  )}
-                </Button>
+                {currentStep !== 1 && (
+                  <Button 
+                    onClick={() => completeStep(currentStep + 1)}
+                    variant={currentStepData.completed ? "secondary" : "default"}
+                    className="w-full"
+                    data-testid={`button-complete-step-${currentStep + 1}`}
+                  >
+                    {currentStepData.completed ? (
+                      <>
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Etapa Concluída
+                      </>
+                    ) : (
+                      "Marcar como Concluída"
+                    )}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
