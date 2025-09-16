@@ -398,11 +398,33 @@ exports.handler = async (event, context) => {
     // Rota para buscar usuários com pontos
     if (path === '/api/users/with-points' && method === 'GET') {
       try {
+        console.log('🔍 Fetching users with points...');
+        
+        // Primeiro, verificar se a tabela existe e tem dados
+        const tableCheck = await sql`SELECT COUNT(*) as count FROM users`;
+        console.log('🔍 Users table count:', tableCheck[0]?.count);
+        
+        if (tableCheck[0]?.count === 0) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify([])
+          };
+        }
+        
         const users = await sql`SELECT * FROM users ORDER BY points DESC LIMIT 50`;
+        console.log('🔍 Users found:', users.length);
+        
+        // Garantir que todos os usuários tenham pontos definidos
+        const usersWithPoints = users.map(user => ({
+          ...user,
+          points: user.points || 0
+        }));
+        
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify(users)
+          body: JSON.stringify(usersWithPoints)
         };
       } catch (error) {
         console.error('❌ Users with points error:', error);
@@ -417,18 +439,31 @@ exports.handler = async (event, context) => {
     // Rota para relacionamentos
     if (path === '/api/relationships' && method === 'GET') {
       try {
+        console.log('🔍 Fetching relationships...');
         const relationships = await sql`SELECT * FROM relationships ORDER BY created_at DESC LIMIT 50`;
+        console.log('🔍 Relationships found:', relationships.length);
+        
+        // Garantir que todos os relacionamentos tenham dados válidos
+        const safeRelationships = (relationships || []).map(rel => ({
+          id: rel.id || 0,
+          missionaryId: rel.missionaryId || 0,
+          interestedId: rel.interestedId || 0,
+          status: rel.status || 'pending',
+          created_at: rel.created_at || new Date().toISOString(),
+          updated_at: rel.updated_at || new Date().toISOString()
+        }));
+        
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify(relationships)
+          body: JSON.stringify(safeRelationships)
         };
       } catch (error) {
         console.error('❌ Relationships error:', error);
         return {
-          statusCode: 500,
+          statusCode: 200,
           headers,
-          body: JSON.stringify({ error: 'Erro ao buscar relacionamentos' })
+          body: JSON.stringify([])
         };
       }
     }
