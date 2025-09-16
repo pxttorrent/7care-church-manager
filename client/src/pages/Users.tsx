@@ -404,8 +404,8 @@ export default function Users() {
   // Filtrar e ordenar usuários
   const filteredAndSortedUsers = usersWithDiscipleRequests
     .filter((u: any) => {
-      const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           u.email.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = (u.name && typeof u.name === 'string' && u.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                           (u.email && typeof u.email === 'string' && u.email.toLowerCase().includes(searchTerm.toLowerCase()));
       const matchesRole = !roleFilter || roleFilter === 'all' || u.role === roleFilter;
       const matchesStatus = !statusFilter || statusFilter === 'all' || u.status === statusFilter;
       const matchesChurch = churchFilter === 'all' || u.church === churchFilter;

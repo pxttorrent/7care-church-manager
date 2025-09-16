@@ -97,18 +97,18 @@ export const useUserPoints = () => {
         
         // Criar breakdown baseado nos pontos da API
         const breakdown = {
-          engajamento: result.userData.engajamento ? 
+          engajamento: result.userData.engajamento && typeof result.userData.engajamento === 'string' ? 
             (result.userData.engajamento.toLowerCase().includes('baixo') ? pointsConfig.engajamento.baixo :
              result.userData.engajamento.toLowerCase().includes('médio') || result.userData.engajamento.toLowerCase().includes('medio') ? pointsConfig.engajamento.medio :
              result.userData.engajamento.toLowerCase().includes('alto') ? pointsConfig.engajamento.alto : 0) : 0,
-          classificacao: result.userData.classificacao ? 
+          classificacao: result.userData.classificacao && typeof result.userData.classificacao === 'string' ? 
             (result.userData.classificacao.toLowerCase().includes('frequente') ? pointsConfig.classificacao.frequente : pointsConfig.classificacao.naoFrequente) : 0,
-          dizimista: result.userData.dizimista ? 
+          dizimista: result.userData.dizimista && typeof result.userData.dizimista === 'string' ? 
             (result.userData.dizimista.toLowerCase().includes('não dizimista') || result.userData.dizimista.toLowerCase().includes('nao dizimista') ? pointsConfig.dizimista.naoDizimista :
              result.userData.dizimista.toLowerCase().includes('pontual') ? pointsConfig.dizimista.pontual :
              result.userData.dizimista.toLowerCase().includes('sazonal') ? pointsConfig.dizimista.sazonal :
              result.userData.dizimista.toLowerCase().includes('recorrente') ? pointsConfig.dizimista.recorrente : 0) : 0,
-          ofertante: result.userData.ofertante ? 
+          ofertante: result.userData.ofertante && typeof result.userData.ofertante === 'string' ? 
             (result.userData.ofertante.toLowerCase().includes('não ofertante') || result.userData.ofertante.toLowerCase().includes('nao ofertante') ? pointsConfig.ofertante.naoOfertante :
              result.userData.ofertante.toLowerCase().includes('pontual') ? pointsConfig.ofertante.pontual :
              result.userData.ofertante.toLowerCase().includes('sazonal') ? pointsConfig.ofertante.sazonal :

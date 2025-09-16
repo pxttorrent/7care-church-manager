@@ -83,7 +83,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
     
     switch (categoryName) {
       case 'Engajamento':
-        if (userData.engajamento) {
+        if (userData.engajamento && typeof userData.engajamento === 'string') {
           const engajamento = userData.engajamento.toLowerCase();
           if (engajamento.includes('baixo')) {
             tips.push(`🔸 Participe mais ativamente dos cultos e eventos`);
@@ -101,7 +101,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
         break;
         
       case 'Classificação':
-        if (userData.classificacao) {
+        if (userData.classificacao && typeof userData.classificacao === 'string') {
           const classificacao = userData.classificacao.toLowerCase();
           if (!classificacao.includes('frequente')) {
             tips.push(`🔸 Aumente sua frequência nos cultos`);
@@ -114,7 +114,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
         break;
         
       case 'Fidelidade Regular com Dízimo':
-        if (userData.dizimista) {
+        if (userData.dizimista && typeof userData.dizimista === 'string') {
           const dizimista = userData.dizimista.toLowerCase();
           if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) {
             tips.push(`🔸 Comece a contribuir com dízimo`);
@@ -132,7 +132,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
         break;
         
       case 'Fidelidade Regular com Ofertas':
-        if (userData.ofertante) {
+        if (userData.ofertante && typeof userData.ofertante === 'string') {
           const ofertante = userData.ofertante.toLowerCase();
           if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) {
             tips.push(`🔸 Comece a contribuir com ofertas`);
@@ -304,7 +304,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
     try {
       switch (categoryName) {
         case 'Engajamento':
-          if (userData.engajamento) {
+          if (userData.engajamento && typeof userData.engajamento === 'string') {
             const engajamento = userData.engajamento.toLowerCase();
             if (engajamento.includes('baixo')) return pointsConfig.engajamento.baixo;
             if (engajamento.includes('médio') || engajamento.includes('medio')) return pointsConfig.engajamento.medio;
@@ -313,7 +313,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
           return 0;
           
         case 'Classificação':
-          if (userData.classificacao) {
+          if (userData.classificacao && typeof userData.classificacao === 'string') {
             const classificacao = userData.classificacao.toLowerCase();
             if (classificacao.includes('frequente')) return pointsConfig.classificacao.frequente;
             else return pointsConfig.classificacao.naoFrequente;
@@ -321,7 +321,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
           return 0;
           
         case 'Dizimista':
-          if (userData.dizimista) {
+          if (userData.dizimista && typeof userData.dizimista === 'string') {
             const dizimista = userData.dizimista.toLowerCase();
             if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) return pointsConfig.dizimista.naoDizimista;
             if (dizimista.includes('pontual')) return pointsConfig.dizimista.pontual;
@@ -331,7 +331,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
           return 0;
           
         case 'Ofertante':
-          if (userData.ofertante) {
+          if (userData.ofertante && typeof userData.ofertante === 'string') {
             const ofertante = userData.ofertante.toLowerCase();
             if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) return pointsConfig.ofertante.naoOfertante;
             if (ofertante.includes('pontual')) return pointsConfig.ofertante.pontual;
@@ -342,7 +342,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
           
         case 'Tempo de Batismo':
           if (userData.tempoBatismo) {
-            if (typeof userData.tempoBatismo === 'string') {
+            if (typeof userData.tempoBatismo === 'string' && userData.tempoBatismo.length > 0) {
               if (userData.tempoBatismo.includes('2 a 4')) return pointsConfig.tempoBatismo.doisAnos;
               if (userData.tempoBatismo.includes('5 a 9')) return pointsConfig.tempoBatismo.cincoAnos;
               if (userData.tempoBatismo.includes('10 a 14')) return pointsConfig.tempoBatismo.dezAnos;
