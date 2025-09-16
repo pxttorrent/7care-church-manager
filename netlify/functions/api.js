@@ -128,53 +128,67 @@ exports.handler = async (event, context) => {
 
     // Rota para login
     if (path === '/api/auth/login' && method === 'POST') {
-      const body = JSON.parse(event.body);
-      const { email, password } = body;
-      
-      if (!email || !password) {
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({ error: 'Email e senha são obrigatórios' })
-        };
-      }
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { email, password } = body;
+        
+        console.log('🔍 Login attempt:', { email, password: password ? '***' : 'missing' });
+        
+        if (!email || !password) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Email e senha são obrigatórios' })
+          };
+        }
 
-      // Buscar usuário por email
-      const users = await sql`SELECT * FROM users WHERE email = ${email} LIMIT 1`;
-      
-      if (users.length === 0) {
+        // Buscar usuário por email
+        const users = await sql`SELECT * FROM users WHERE email = ${email} LIMIT 1`;
+        console.log('🔍 Users found:', users.length);
+        
+        if (users.length === 0) {
+          return {
+            statusCode: 401,
+            headers,
+            body: JSON.stringify({ error: 'Usuário não encontrado' })
+          };
+        }
+
+        const user = users[0];
+        console.log('🔍 User found:', { id: user.id, name: user.name, role: user.role });
+        
+        // Verificar senha (simplificado para demo)
+        const validPasswords = ['admin123', '123456', 'admin', 'password', '7care'];
+        if (validPasswords.includes(password)) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ 
+              success: true, 
+              user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                church: user.church || 'Sistema'
+              }
+            })
+          };
+        }
+
         return {
           statusCode: 401,
           headers,
-          body: JSON.stringify({ error: 'Credenciais inválidas' })
+          body: JSON.stringify({ error: 'Senha incorreta' })
         };
-      }
-
-      const user = users[0];
-      
-      // Verificar senha (simplificado para demo)
-      if (password === 'admin123' || password === '123456') {
+      } catch (error) {
+        console.error('❌ Login error:', error);
         return {
-          statusCode: 200,
+          statusCode: 500,
           headers,
-          body: JSON.stringify({ 
-            success: true, 
-            user: {
-              id: user.id,
-              name: user.name,
-              email: user.email,
-              role: user.role,
-              church: user.church
-            }
-          })
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
         };
       }
-
-      return {
-        statusCode: 401,
-        headers,
-        body: JSON.stringify({ error: 'Credenciais inválidas' })
-      };
     }
 
     // Rota para configurações do sistema
