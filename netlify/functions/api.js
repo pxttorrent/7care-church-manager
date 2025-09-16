@@ -399,12 +399,14 @@ exports.handler = async (event, context) => {
     if (path === '/api/users/with-points' && method === 'GET') {
       try {
         console.log('🔍 Fetching users with points...');
+        console.log('🔍 Database URL available:', !!process.env.DATABASE_URL);
         
         // Primeiro, verificar se a tabela existe e tem dados
         const tableCheck = await sql`SELECT COUNT(*) as count FROM users`;
         console.log('🔍 Users table count:', tableCheck[0]?.count);
         
         if (tableCheck[0]?.count === 0) {
+          console.log('🔍 No users found, returning empty array');
           return {
             statusCode: 200,
             headers,
@@ -414,6 +416,7 @@ exports.handler = async (event, context) => {
         
         const users = await sql`SELECT * FROM users ORDER BY points DESC LIMIT 50`;
         console.log('🔍 Users found:', users.length);
+        console.log('🔍 First user sample:', users[0] ? Object.keys(users[0]) : 'No users');
         
         // Garantir que todos os usuários tenham pontos definidos
         const usersWithPoints = users.map(user => ({
@@ -421,6 +424,7 @@ exports.handler = async (event, context) => {
           points: user.points || 0
         }));
         
+        console.log('🔍 Returning users with points:', usersWithPoints.length);
         return {
           statusCode: 200,
           headers,
@@ -428,10 +432,12 @@ exports.handler = async (event, context) => {
         };
       } catch (error) {
         console.error('❌ Users with points error:', error);
+        console.error('❌ Error details:', error.message);
+        console.error('❌ Error stack:', error.stack);
         return {
-          statusCode: 500,
+          statusCode: 200,
           headers,
-          body: JSON.stringify({ error: 'Erro ao buscar usuários' })
+          body: JSON.stringify([])
         };
       }
     }
