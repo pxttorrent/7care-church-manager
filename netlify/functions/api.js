@@ -19,11 +19,21 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    // Conectar ao banco Neon - remover prefixo psql se existir
+    // Conectar ao banco Neon - limpar string de conexão
     let dbUrl = process.env.DATABASE_URL;
+    
+    // Remover prefixo psql e aspas se existirem
     if (dbUrl.startsWith('psql ')) {
       dbUrl = dbUrl.replace('psql ', '');
     }
+    if (dbUrl.startsWith("'") && dbUrl.endsWith("'")) {
+      dbUrl = dbUrl.slice(1, -1);
+    }
+    if (dbUrl.startsWith('"') && dbUrl.endsWith('"')) {
+      dbUrl = dbUrl.slice(1, -1);
+    }
+    
+    console.log('🔍 Database URL cleaned:', dbUrl.substring(0, 50) + '...');
     const sql = neon(dbUrl);
     
     const path = event.path;
