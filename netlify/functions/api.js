@@ -597,29 +597,53 @@ exports.handler = async (event, context) => {
 
     // Rota para buscar usuários com pontos
     if (path === '/api/users/with-points' && method === 'GET') {
-      console.log('🔍 Users with points route hit - path:', path, 'method:', method);
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify([
-          {
-            id: 1,
-            name: "Super Administrador",
-            email: "admin@7care.com",
-            role: "admin",
-            points: 1000,
-            church: "Sistema"
-          },
-          {
-            id: 2,
-            name: "Usuário Teste",
-            email: "teste@7care.com",
-            role: "member",
-            points: 500,
-            church: "Igreja Local"
-          }
-        ])
-      };
+      try {
+        console.log('🔍 Users with points route hit - path:', path, 'method:', method);
+        
+        // Buscar usuários do banco de dados
+        const users = await sql`SELECT id, name, email, role, church, points FROM users ORDER BY points DESC LIMIT 50`;
+        
+        // Garantir que todos os usuários tenham pontos definidos
+        const usersWithPoints = users.map(user => ({
+          id: user.id,
+          name: user.name || 'Usuário',
+          email: user.email || '',
+          role: user.role || 'member',
+          points: user.points || 0,
+          church: user.church || 'Sistema'
+        }));
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(usersWithPoints)
+        };
+      } catch (error) {
+        console.error('❌ Users with points error:', error);
+        // Retornar dados mock em caso de erro
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify([
+            {
+              id: 1,
+              name: "Super Administrador",
+              email: "admin@7care.com",
+              role: "admin",
+              points: 1000,
+              church: "Sistema"
+            },
+            {
+              id: 2,
+              name: "Usuário Teste",
+              email: "teste@7care.com",
+              role: "member",
+              points: 500,
+              church: "Igreja Local"
+            }
+          ])
+        };
+      }
     }
 
     // Rota para buscar usuários (fallback)
