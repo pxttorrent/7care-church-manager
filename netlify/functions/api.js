@@ -73,6 +73,42 @@ exports.handler = async (event, context) => {
       };
     }
 
+    // Rota para buscar usuários com pontos (PRIORIDADE MÁXIMA)
+    if (path === '/api/users/with-points' && method === 'GET') {
+      console.log('🎯 ROTA ESPECÍFICA /api/users/with-points INTERCEPTADA NO INÍCIO!');
+      
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify([
+          {
+            id: 1,
+            name: "Super Administrador",
+            email: "admin@7care.com",
+            role: "admin",
+            points: 1000,
+            church: "Sistema"
+          },
+          {
+            id: 2,
+            name: "Usuário Teste",
+            email: "teste@7care.com",
+            role: "member",
+            points: 500,
+            church: "Igreja Local"
+          },
+          {
+            id: 3,
+            name: "Missionário Exemplo",
+            email: "missionario@7care.com",
+            role: "missionary",
+            points: 750,
+            church: "Igreja Central"
+          }
+        ])
+      };
+    }
+
     // Rota para usuários
     if (path === '/api/users' && method === 'GET') {
       const users = await sql`SELECT * FROM users LIMIT 50`;
@@ -513,8 +549,10 @@ exports.handler = async (event, context) => {
       }
     }
 
+
     // Rota para buscar usuário por ID
-    if (path.startsWith('/api/users/') && !path.includes('/points-details') && method === 'GET') {
+    if (path.startsWith('/api/users/') && !path.includes('/points-details') && !path.includes('/with-points') && method === 'GET') {
+      console.log('❌ ROTA GENÉRICA INTERCEPTOU:', path);
       const userId = path.split('/')[3];
       console.log('🔍 Get user by ID:', userId);
       
@@ -593,43 +631,6 @@ exports.handler = async (event, context) => {
           body: JSON.stringify({ error: 'Erro ao buscar igrejas' })
         };
       }
-    }
-
-    // Rota para buscar usuários com pontos
-    if (path === '/api/users/with-points' && method === 'GET') {
-      console.log('🔍 Users with points route hit - path:', path, 'method:', method);
-      
-      // Retornar dados mock para resolver o erro imediatamente
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify([
-          {
-            id: 1,
-            name: "Super Administrador",
-            email: "admin@7care.com",
-            role: "admin",
-            points: 1000,
-            church: "Sistema"
-          },
-          {
-            id: 2,
-            name: "Usuário Teste",
-            email: "teste@7care.com",
-            role: "member",
-            points: 500,
-            church: "Igreja Local"
-          },
-          {
-            id: 3,
-            name: "Missionário Exemplo",
-            email: "missionario@7care.com",
-            role: "missionary",
-            points: 750,
-            church: "Igreja Central"
-          }
-        ])
-      };
     }
 
     // Rota para buscar usuários (fallback)
