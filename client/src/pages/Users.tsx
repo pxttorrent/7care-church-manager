@@ -195,7 +195,8 @@ export default function Users() {
     queryKey: ['/api/users/with-points'],
     queryFn: async () => {
       try {
-        const response = await fetch('/api/users/with-points');
+        // WORKAROUND: Usar /api/users até resolver problema do /api/users/with-points
+        const response = await fetch('/api/users');
         if (!response.ok) {
           throw new Error('Falha ao carregar usuários');
         }
