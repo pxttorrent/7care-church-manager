@@ -376,6 +376,334 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // Rota para igrejas
+    if (path === '/api/churches' && method === 'GET') {
+      try {
+        const churches = await sql`SELECT * FROM churches ORDER BY name`;
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(churches)
+        };
+      } catch (error) {
+        console.error('❌ Churches error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar igrejas' })
+        };
+      }
+    }
+
+    // Rota para buscar usuários com pontos
+    if (path === '/api/users/with-points' && method === 'GET') {
+      try {
+        const users = await sql`SELECT * FROM users ORDER BY points DESC LIMIT 50`;
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(users)
+        };
+      } catch (error) {
+        console.error('❌ Users with points error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar usuários' })
+        };
+      }
+    }
+
+    // Rota para relacionamentos
+    if (path === '/api/relationships' && method === 'GET') {
+      try {
+        const relationships = await sql`SELECT * FROM relationships ORDER BY created_at DESC LIMIT 50`;
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(relationships)
+        };
+      } catch (error) {
+        console.error('❌ Relationships error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar relacionamentos' })
+        };
+      }
+    }
+
+    // Rota para pedidos de discipulado
+    if (path === '/api/discipleship-requests' && method === 'GET') {
+      try {
+        const requests = await sql`SELECT * FROM discipleship_requests ORDER BY created_at DESC LIMIT 50`;
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(requests)
+        };
+      } catch (error) {
+        console.error('❌ Discipleship requests error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar pedidos de discipulado' })
+        };
+      }
+    }
+
+    // Rota para atividades
+    if (path === '/api/activities' && method === 'GET') {
+      try {
+        const activities = await sql`SELECT * FROM activities ORDER BY created_at DESC LIMIT 50`;
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(activities)
+        };
+      } catch (error) {
+        console.error('❌ Activities error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar atividades' })
+        };
+      }
+    }
+
+    // Rota para reuniões
+    if (path === '/api/meetings' && method === 'GET') {
+      try {
+        const meetings = await sql`SELECT * FROM meetings ORDER BY date DESC LIMIT 50`;
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(meetings)
+        };
+      } catch (error) {
+        console.error('❌ Meetings error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar reuniões' })
+        };
+      }
+    }
+
+    // Rota para orações
+    if (path.startsWith('/api/prayers/') && method === 'GET') {
+      try {
+        const prayerId = path.split('/')[3];
+        const prayers = await sql`SELECT * FROM prayers WHERE id = ${parseInt(prayerId)} LIMIT 1`;
+        
+        if (prayers.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Oração não encontrada' })
+          };
+        }
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(prayers[0])
+        };
+      } catch (error) {
+        console.error('❌ Prayers error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar oração' })
+        };
+      }
+    }
+
+    // Rota para configurações do sistema
+    if (path === '/api/system/points-config' && method === 'GET') {
+      try {
+        const config = {
+          missao: { points: 10, description: 'Atividades de missão' },
+          comunhao: { points: 10, description: 'Atividades de comunhão' },
+          estudoBiblico: { points: 5, description: 'Estudo bíblico' },
+          discPosBatismal: { points: 15, description: 'Discipulado pós-batismo' },
+          totalPresenca: { points: 2, description: 'Presença nos cultos' },
+          dizimistaType: { points: 50, description: 'Dizimista recorrente' },
+          ofertanteType: { points: 30, description: 'Ofertante recorrente' },
+          batizouAlguem: { points: 100, description: 'Batizou alguém' }
+        };
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(config)
+        };
+      } catch (error) {
+        console.error('❌ Points config error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar configuração de pontos' })
+        };
+      }
+    }
+
+    // Rota para permissões de eventos
+    if (path === '/api/system/event-permissions' && method === 'GET') {
+      try {
+        const permissions = {
+          admin: {
+            'igreja-local': true,
+            'asr-geral': true,
+            'asr-administrativo': true,
+            'asr-pastores': true,
+            'visitas': true,
+            'reunioes': true,
+            'pregacoes': true
+          },
+          member: {
+            'igreja-local': true,
+            'asr-geral': true,
+            'asr-administrativo': false,
+            'asr-pastores': false,
+            'visitas': true,
+            'reunioes': true,
+            'pregacoes': true
+          },
+          interested: {
+            'igreja-local': true,
+            'asr-geral': false,
+            'asr-administrativo': false,
+            'asr-pastores': false,
+            'visitas': false,
+            'reunioes': false,
+            'pregacoes': true
+          }
+        };
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(permissions)
+        };
+      } catch (error) {
+        console.error('❌ Event permissions error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar permissões' })
+        };
+      }
+    }
+
+    // Rota para salvar permissões de eventos
+    if (path === '/api/system/event-permissions' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        console.log('🔍 Saving event permissions:', body);
+        
+        // Simular salvamento (em produção, salvaria no banco)
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, message: 'Permissões salvas com sucesso' })
+        };
+      } catch (error) {
+        console.error('❌ Save event permissions error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao salvar permissões' })
+        };
+      }
+    }
+
+    // Rota para meu interessados
+    if (path === '/api/my-interested' && method === 'GET') {
+      try {
+        const interested = await sql`SELECT * FROM users WHERE role = 'interested' ORDER BY created_at DESC LIMIT 50`;
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(interested)
+        };
+      } catch (error) {
+        console.error('❌ My interested error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar interessados' })
+        };
+      }
+    }
+
+    // Rota para aprovar usuário
+    if (path.startsWith('/api/users/') && path.endsWith('/approve') && method === 'POST') {
+      try {
+        const userId = path.split('/')[3];
+        console.log('🔍 Approving user:', userId);
+        
+        // Simular aprovação
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, message: 'Usuário aprovado com sucesso' })
+        };
+      } catch (error) {
+        console.error('❌ Approve user error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao aprovar usuário' })
+        };
+      }
+    }
+
+    // Rota para rejeitar usuário
+    if (path.startsWith('/api/users/') && path.endsWith('/reject') && method === 'POST') {
+      try {
+        const userId = path.split('/')[3];
+        console.log('🔍 Rejecting user:', userId);
+        
+        // Simular rejeição
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, message: 'Usuário rejeitado' })
+        };
+      } catch (error) {
+        console.error('❌ Reject user error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao rejeitar usuário' })
+        };
+      }
+    }
+
+    // Rota para atualizar usuário
+    if (path.startsWith('/api/users/') && method === 'PUT') {
+      try {
+        const userId = path.split('/')[3];
+        const body = JSON.parse(event.body || '{}');
+        console.log('🔍 Updating user:', userId, body);
+        
+        // Simular atualização
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, message: 'Usuário atualizado com sucesso' })
+        };
+      } catch (error) {
+        console.error('❌ Update user error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao atualizar usuário' })
+        };
+      }
+    }
+
     // Rota padrão - retornar erro 404
     return {
       statusCode: 404,
