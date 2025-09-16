@@ -19,8 +19,12 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    // Conectar ao banco Neon
-    const sql = neon(process.env.DATABASE_URL);
+    // Conectar ao banco Neon - remover prefixo psql se existir
+    let dbUrl = process.env.DATABASE_URL;
+    if (dbUrl.startsWith('psql ')) {
+      dbUrl = dbUrl.replace('psql ', '');
+    }
+    const sql = neon(dbUrl);
     
     const path = event.path;
     const method = event.httpMethod;
