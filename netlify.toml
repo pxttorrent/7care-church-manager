@@ -6,10 +6,17 @@
   NODE_ENV = "production"
 
 [[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
+[functions]
+  directory = "netlify/functions"
+
 # Configuração para Neon Database
-# Adicione a variável DATABASE_URL nas configurações do Netlify
-# Exemplo: postgresql://username:password@ep-xxx-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require
+# A variável DATABASE_URL já está configurada no Netlify
