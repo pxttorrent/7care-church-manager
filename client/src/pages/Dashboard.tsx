@@ -147,12 +147,13 @@ const Dashboard = React.memo(() => {
 
   // Contagem de eventos deste mês visíveis ao usuário logado
   const eventsThisMonthCount = useMemo(() => {
-    if (!userEvents || userEvents.length === 0) return 0;
+    if (!userEvents || !Array.isArray(userEvents) || userEvents.length === 0) return 0;
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
     const parse = (v: any) => {
+      if (!v) return null;
       const d = new Date(v);
       return isNaN(d.getTime()) ? null : d;
     };
@@ -164,18 +165,25 @@ const Dashboard = React.memo(() => {
       return s < b && e >= a;
     };
 
-    return userEvents.filter((e: any) =>
-      intersects(parse(e.startDate), parse(e.endDate), monthStart, nextMonthStart)
-    ).length;
+    return userEvents.filter((e: any) => {
+      if (!e || typeof e !== 'object') return false;
+      return intersects(parse(e.startDate), parse(e.endDate), monthStart, nextMonthStart);
+    }).length;
   }, [userEvents]);
 
   // Componente auxiliar para exibir próximo evento (ordenando pela data futura mais próxima)
   const NextEventDisplay: React.FC<{ events: any[] }> = ({ events }) => {
+    if (!events || !Array.isArray(events)) {
+      return <p className="text-xs text-gray-500">Sem próximos eventos</p>;
+    }
+    
     const parse = (v: any) => {
+      if (!v) return null;
       const d = new Date(v);
       return isNaN(d.getTime()) ? null : d;
     };
     const upcoming = [...events]
+      .filter(e => e && typeof e === 'object')
       .map(e => ({ ...e, _start: parse(e.startDate) }))
       .filter(e => e._start && e._start >= new Date())
       .sort((a, b) => (a._start as Date).getTime() - (b._start as Date).getTime());
@@ -509,26 +517,28 @@ const Dashboard = React.memo(() => {
 
   // Função para encontrar o próximo aniversário
   const getNextBirthday = (birthdays: any) => {
-    if (!birthdays.all || birthdays.all.length === 0) return null;
+    if (!birthdays || !birthdays.all || !Array.isArray(birthdays.all) || birthdays.all.length === 0) return null;
     
     const today = new Date();
     const currentYear = today.getFullYear();
     
     // Criar datas de aniversário para este ano
-    const birthdaysThisYear = birthdays.all.map((user: any) => {
-      const birthDate = new Date(user.birthDate);
-      const birthdayThisYear = new Date(currentYear, birthDate.getMonth(), birthDate.getDate());
-      
-      // Se o aniversário já passou este ano, considerar para o próximo ano
-      if (birthdayThisYear < today) {
-        birthdayThisYear.setFullYear(currentYear + 1);
-      }
-      
-      return {
-        ...user,
-        nextBirthday: birthdayThisYear
-      };
-    });
+    const birthdaysThisYear = birthdays.all
+      .filter((user: any) => user && typeof user === 'object' && user.birthDate)
+      .map((user: any) => {
+        const birthDate = new Date(user.birthDate);
+        const birthdayThisYear = new Date(currentYear, birthDate.getMonth(), birthDate.getDate());
+        
+        // Se o aniversário já passou este ano, considerar para o próximo ano
+        if (birthdayThisYear < today) {
+          birthdayThisYear.setFullYear(currentYear + 1);
+        }
+        
+        return {
+          ...user,
+          nextBirthday: birthdayThisYear
+        };
+      });
     
     // Ordenar por data do próximo aniversário
     birthdaysThisYear.sort((a: any, b: any) => a.nextBirthday - b.nextBirthday);
@@ -678,13 +688,13 @@ const Dashboard = React.memo(() => {
 
   const renderMissionaryDashboard = () => {
     // Calcular estatísticas de interessados para missionários
-    const totalChurchInterested = churchInterested?.length || 0;
-    const userActiveRelationships = userRelationships?.filter((rel: any) => 
-      rel.missionaryId === user?.id && rel.status === 'active'
-    ) || [];
-    const userPendingRelationships = userRelationships?.filter((rel: any) => 
-      rel.missionaryId === user?.id && rel.status === 'pending'
-    ) || [];
+    const totalChurchInterested = (churchInterested && Array.isArray(churchInterested)) ? churchInterested.length : 0;
+    const userActiveRelationships = (userRelationships && Array.isArray(userRelationships)) ? userRelationships.filter((rel: any) => 
+      rel && typeof rel === 'object' && rel.missionaryId === user?.id && rel.status === 'active'
+    ) : [];
+    const userPendingRelationships = (userRelationships && Array.isArray(userRelationships)) ? userRelationships.filter((rel: any) => 
+      rel && typeof rel === 'object' && rel.missionaryId === user?.id && rel.status === 'pending'
+    ) : [];
     const totalUserInterested = userActiveRelationships.length + userPendingRelationships.length;
 
     return (
@@ -852,13 +862,13 @@ const Dashboard = React.memo(() => {
 
   const renderMemberDashboard = () => {
     // Calcular estatísticas de interessados
-    const totalChurchInterested = churchInterested?.length || 0;
-    const userActiveRelationships = userRelationships?.filter((rel: any) => 
-      rel.missionaryId === user?.id && rel.status === 'active'
-    ) || [];
-    const userPendingRelationships = userRelationships?.filter((rel: any) => 
-      rel.missionaryId === user?.id && rel.status === 'pending'
-    ) || [];
+    const totalChurchInterested = (churchInterested && Array.isArray(churchInterested)) ? churchInterested.length : 0;
+    const userActiveRelationships = (userRelationships && Array.isArray(userRelationships)) ? userRelationships.filter((rel: any) => 
+      rel && typeof rel === 'object' && rel.missionaryId === user?.id && rel.status === 'active'
+    ) : [];
+    const userPendingRelationships = (userRelationships && Array.isArray(userRelationships)) ? userRelationships.filter((rel: any) => 
+      rel && typeof rel === 'object' && rel.missionaryId === user?.id && rel.status === 'pending'
+    ) : [];
     const totalUserInterested = userActiveRelationships.length + userPendingRelationships.length;
 
     return (
