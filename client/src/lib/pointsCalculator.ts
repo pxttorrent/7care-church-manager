@@ -163,7 +163,7 @@ export class PointsCalculator {
     if (!tempoBatismo) return 0;
     
     // Se for string, tentar extrair o número
-    if (typeof tempoBatismo === 'string') {
+    if (typeof tempoBatismo === 'string' && tempoBatismo.length > 0) {
       if (tempoBatismo.includes('2 a 4')) return 25;
       if (tempoBatismo.includes('5 a 9')) return 50;
       if (tempoBatismo.includes('10 a 14')) return 100;

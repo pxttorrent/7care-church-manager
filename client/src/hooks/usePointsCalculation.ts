@@ -100,7 +100,7 @@ export const usePointsCalculation = () => {
     let totalPoints = 0;
     
     // Engajamento
-    if (user.engajamento) {
+    if (user.engajamento && typeof user.engajamento === 'string') {
       const engajamento = user.engajamento.toLowerCase();
       if (engajamento.includes('baixo')) totalPoints += pointsConfig.engajamento.baixo;
       else if (engajamento.includes('médio') || engajamento.includes('medio')) totalPoints += pointsConfig.engajamento.medio;
@@ -108,14 +108,14 @@ export const usePointsCalculation = () => {
     }
     
     // Classificação
-    if (user.classificacao) {
+    if (user.classificacao && typeof user.classificacao === 'string') {
       const classificacao = user.classificacao.toLowerCase();
       if (classificacao.includes('frequente')) totalPoints += pointsConfig.classificacao.frequente;
       else totalPoints += pointsConfig.classificacao.naoFrequente;
     }
     
     // Dizimista
-    if (user.dizimista) {
+    if (user.dizimista && typeof user.dizimista === 'string') {
       const dizimista = user.dizimista.toLowerCase();
       if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) totalPoints += pointsConfig.dizimista.naoDizimista;
       else if (dizimista.includes('pontual')) totalPoints += pointsConfig.dizimista.pontual;
@@ -124,7 +124,7 @@ export const usePointsCalculation = () => {
     }
     
     // Ofertante
-    if (user.ofertante) {
+    if (user.ofertante && typeof user.ofertante === 'string') {
       const ofertante = user.ofertante.toLowerCase();
       if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) totalPoints += pointsConfig.ofertante.naoOfertante;
       else if (ofertante.includes('pontual')) totalPoints += pointsConfig.ofertante.pontual;
