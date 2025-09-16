@@ -252,6 +252,130 @@ exports.handler = async (event, context) => {
       };
     }
 
+    // Rota para detalhes de pontos do usuário
+    if (path.startsWith('/api/users/') && path.endsWith('/points-details') && method === 'GET') {
+      const userId = path.split('/')[3];
+      console.log('🔍 Points details for user:', userId);
+      
+      try {
+        const user = await sql`SELECT * FROM users WHERE id = ${parseInt(userId)} LIMIT 1`;
+        
+        if (user.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Usuário não encontrado' })
+          };
+        }
+
+        const userData = user[0];
+        
+        // Calcular pontos baseado nos dados do usuário
+        let points = 0;
+        if (userData.extraData) {
+          const extraData = typeof userData.extraData === 'string' 
+            ? JSON.parse(userData.extraData) 
+            : userData.extraData;
+          
+          // Sistema de pontos simplificado
+          if (extraData.missao) points += extraData.missao * 10;
+          if (extraData.comunhao) points += extraData.comunhao * 10;
+          if (extraData.estudoBiblico) points += extraData.estudoBiblico * 5;
+          if (extraData.discPosBatismal) points += extraData.discPosBatismal * 15;
+          if (extraData.totalPresenca) points += extraData.totalPresenca * 2;
+          if (extraData.dizimistaType === 'recorrente') points += 50;
+          if (extraData.ofertanteType === 'recorrente') points += 30;
+          if (extraData.batizouAlguem) points += 100;
+        }
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            points: points,
+            userData: {
+              id: userData.id,
+              name: userData.name,
+              email: userData.email,
+              role: userData.role,
+              church: userData.church,
+              extraData: userData.extraData
+            }
+          })
+        };
+      } catch (error) {
+        console.error('❌ Points details error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar pontos do usuário' })
+        };
+      }
+    }
+
+    // Rota para buscar usuário por ID
+    if (path.startsWith('/api/users/') && !path.includes('/points-details') && method === 'GET') {
+      const userId = path.split('/')[3];
+      console.log('🔍 Get user by ID:', userId);
+      
+      try {
+        const user = await sql`SELECT * FROM users WHERE id = ${parseInt(userId)} LIMIT 1`;
+        
+        if (user.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Usuário não encontrado' })
+          };
+        }
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(user[0])
+        };
+      } catch (error) {
+        console.error('❌ Get user error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar usuário' })
+        };
+      }
+    }
+
+    // Rota para eventos com filtros
+    if (path === '/api/events' && method === 'GET') {
+      try {
+        const { role } = event.queryStringParameters || {};
+        console.log('🔍 Events request with role:', role);
+        
+        let events = await sql`SELECT * FROM events ORDER BY date DESC LIMIT 50`;
+        
+        // Aplicar filtros baseados no role (simplificado)
+        if (role && role !== 'admin') {
+          // Para não-admins, filtrar alguns eventos
+          events = events.filter(event => 
+            !event.title?.toLowerCase().includes('administrativo') ||
+            !event.title?.toLowerCase().includes('interno')
+          );
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(events)
+        };
+      } catch (error) {
+        console.error('❌ Events error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar eventos' })
+        };
+      }
+    }
+
     // Rota padrão - retornar erro 404
     return {
       statusCode: 404,
