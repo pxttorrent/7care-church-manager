@@ -73,6 +73,29 @@ exports.handler = async (event, context) => {
       };
     }
 
+    // Rota de teste para diagnosticar o problema
+    if (path === '/api/test-users-points' && method === 'GET') {
+      console.log('🎯 ROTA DE TESTE FUNCIONANDO!');
+      
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          message: "Rota de teste funcionando",
+          data: [
+            {
+              id: 1,
+              name: "Super Administrador",
+              email: "admin@7care.com",
+              role: "admin",
+              points: 1000,
+              church: "Sistema"
+            }
+          ]
+        })
+      };
+    }
+
     // Rota para buscar usuários com pontos (PRIORIDADE MÁXIMA)
     if (path === '/api/users/with-points' && method === 'GET') {
       console.log('🎯 ROTA ESPECÍFICA /api/users/with-points INTERCEPTADA NO INÍCIO!');
