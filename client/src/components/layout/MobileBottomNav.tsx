@@ -1,9 +1,10 @@
 import { LayoutDashboard, Calendar, MessageCircle, Users, Settings, Trophy, Heart } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 
 export const MobileBottomNav = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   
   const navItems = [
@@ -52,8 +53,8 @@ export const MobileBottomNav = () => {
   const handleNavigation = (path: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log('🔄 Navegação direta para:', path);
-    window.location.href = path;
+    console.log('🔄 Navegação para:', path);
+    navigate(path);
   };
 
   return (

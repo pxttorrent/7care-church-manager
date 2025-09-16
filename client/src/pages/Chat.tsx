@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { MessageCircle } from 'lucide-react';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { ChatSidebar } from '@/components/chat/ChatSidebar';
 import { ChatInterface } from '@/components/chat/ChatInterface';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
+import { useSearchParams } from 'react-router-dom';
 
 interface ChatUser {
   id: number;
@@ -34,9 +35,42 @@ interface Conversation {
 
 export default function Chat() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [selectedUser, setSelectedUser] = useState<{ id: number; name: string; avatar?: string } | null>(null);
+
+  // Handle query string parameters for direct chat
+  useEffect(() => {
+    const userId = searchParams.get('user');
+    const userName = searchParams.get('name');
+    
+    if (userId && userName && user?.id) {
+      // Create a conversation object for the user specified in query params
+      const targetUserId = parseInt(userId);
+      const conversation: Conversation = {
+        id: targetUserId, // Use userId as conversation ID for direct chat
+        type: 'direct',
+        name: decodeURIComponent(userName),
+        participants: [{ 
+          id: targetUserId, 
+          name: decodeURIComponent(userName), 
+          role: 'user', 
+          isOnline: false 
+        }],
+        lastMessage: { 
+          content: '', 
+          timestamp: new Date().toISOString(), 
+          senderId: 0, 
+          senderName: '' 
+        },
+        unreadCount: 0,
+        isPinned: false,
+        isArchived: false
+      };
+      setSelectedConversation(conversation);
+    }
+  }, [searchParams, user?.id]);
   const [showNewChat, setShowNewChat] = useState(false);
 
   const handleConversationSelect = (conversation: Conversation) => {
