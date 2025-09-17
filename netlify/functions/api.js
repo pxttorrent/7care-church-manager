@@ -1,4 +1,5 @@
 const { neon } = require('@neondatabase/serverless');
+const bcrypt = require('bcryptjs');
 
 exports.handler = async (event, context) => {
   // Configurar CORS
