@@ -340,9 +340,6 @@ export const usePointsConfig = () => {
       const result = await response.json();
       
       if (result.success) {
-        // Recarregar a configuração atualizada
-        await loadConfig();
-        
         toast({
           title: "Média do Distrito Ajustada!",
           description: `Nova média dos usuários: ${result.newUserAverage} pontos. ${result.updatedUsers} usuários atualizados automaticamente.`,

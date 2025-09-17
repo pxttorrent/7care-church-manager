@@ -1867,19 +1867,37 @@ exports.handler = async (event, context) => {
     // Rota para média de parâmetros
     if (path === '/api/system/parameter-average' && method === 'GET') {
       try {
-        const averages = await sql`
-          SELECT 
-            AVG(CASE WHEN role = 'member' THEN points ELSE NULL END) as member_avg,
-            AVG(CASE WHEN role = 'missionary' THEN points ELSE NULL END) as missionary_avg,
-            AVG(CASE WHEN role = 'interested' THEN points ELSE NULL END) as interested_avg
+        // Buscar todos os usuários (exceto admin) e calcular média
+        const users = await sql`
+          SELECT points, role 
           FROM users 
-          WHERE points IS NOT NULL
+          WHERE email != 'admin@7care.com' AND points IS NOT NULL
         `;
+        
+        if (users.length === 0) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ 
+              success: true,
+              currentAverage: 0,
+              totalUsers: 0
+            })
+          };
+        }
+        
+        // Calcular média geral
+        const totalPoints = users.reduce((sum, user) => sum + (user.points || 0), 0);
+        const currentAverage = totalPoints / users.length;
         
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify(averages[0])
+          body: JSON.stringify({ 
+            success: true,
+            currentAverage: currentAverage,
+            totalUsers: users.length
+          })
         };
       } catch (error) {
         console.error('Erro ao calcular média de parâmetros:', error);
@@ -1895,23 +1913,79 @@ exports.handler = async (event, context) => {
     if (path === '/api/system/district-average' && method === 'POST') {
       try {
         const body = JSON.parse(event.body);
-        const { district } = body;
+        const { targetAverage } = body;
         
-        const averages = await sql`
-          SELECT 
-            AVG(points) as district_avg,
-            COUNT(*) as total_users
+        console.log('🎯 Calculando média do distrito para:', targetAverage);
+        
+        // Buscar usuários atuais (exceto admin)
+        const users = await sql`
+          SELECT id, points, role 
           FROM users 
-          WHERE church = ${district} AND points IS NOT NULL
+          WHERE email != 'admin@7care.com' AND points IS NOT NULL
         `;
+        
+        if (users.length === 0) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              success: true,
+              message: 'Nenhum usuário encontrado para ajuste',
+              currentUserAverage: 0,
+              newUserAverage: targetAverage,
+              adjustmentFactor: 1,
+              updatedUsers: 0
+            })
+          };
+        }
+        
+        // Calcular média atual
+        const currentTotalPoints = users.reduce((sum, user) => sum + (user.points || 0), 0);
+        const currentUserAverage = currentTotalPoints / users.length;
+        
+        // Calcular fator de ajuste
+        const adjustmentFactor = currentUserAverage > 0 ? targetAverage / currentUserAverage : 1;
+        
+        console.log('📊 Dados atuais:', {
+          currentUserAverage,
+          targetAverage,
+          adjustmentFactor,
+          totalUsers: users.length
+        });
+        
+        // Aplicar ajuste aos pontos dos usuários
+        let updatedUsers = 0;
+        for (const user of users) {
+          const newPoints = Math.round((user.points || 0) * adjustmentFactor);
+          
+          await sql`
+            UPDATE users 
+            SET points = ${newPoints}, updated_at = NOW()
+            WHERE id = ${user.id}
+          `;
+          
+          updatedUsers++;
+        }
+        
+        // Calcular nova média
+        const newUserAverage = targetAverage;
+        
+        console.log('✅ Ajuste concluído:', {
+          updatedUsers,
+          newUserAverage,
+          adjustmentFactor
+        });
         
         return {
           statusCode: 200,
           headers,
           body: JSON.stringify({
-            district,
-            average: averages[0].district_avg,
-            totalUsers: averages[0].total_users
+            success: true,
+            message: `Média ajustada com sucesso! ${updatedUsers} usuários atualizados.`,
+            currentUserAverage: currentUserAverage,
+            newUserAverage: newUserAverage,
+            adjustmentFactor: adjustmentFactor,
+            updatedUsers: updatedUsers
           })
         };
       } catch (error) {
@@ -1919,7 +1993,11 @@ exports.handler = async (event, context) => {
         return {
           statusCode: 500,
           headers,
-          body: JSON.stringify({ error: 'Erro interno do servidor' })
+          body: JSON.stringify({ 
+            success: false,
+            error: 'Erro interno do servidor',
+            details: error.message
+          })
         };
       }
     }
