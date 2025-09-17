@@ -2040,6 +2040,66 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // Rota para testar limpeza (dry run)
+    if (path === '/api/system/test-cleanup' && method === 'GET') {
+      try {
+        console.log('🧪 Testando estrutura de limpeza...');
+        
+        // Lista de todas as tabelas que serão limpas
+        const tablesToClean = [
+          'prayer_intercessors',
+          'prayers',
+          'video_call_participants',
+          'video_call_sessions',
+          'conversation_participants',
+          'user_achievements',
+          'user_points_history',
+          'event_participants',
+          'event_filter_permissions',
+          'system_settings',
+          'system_config',
+          'point_activities',
+          'achievements',
+          'point_configs',
+          'emotional_checkins',
+          'discipleship_requests',
+          'relationships',
+          'missionary_profiles',
+          'notifications',
+          'messages',
+          'conversations',
+          'meetings',
+          'meeting_types',
+          'events',
+          'churches',
+          'users (exceto admin)'
+        ];
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: 'Estrutura de limpeza verificada',
+            tablesToClean: tablesToClean,
+            totalTables: tablesToClean.length,
+            note: 'Esta é apenas uma verificação. Use POST /api/system/clear-all para executar a limpeza real.'
+          })
+        };
+      } catch (error) {
+        console.error('❌ Erro no teste de limpeza:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            success: false, 
+            error: 'Erro ao verificar estrutura de limpeza',
+            details: error.message
+          })
+        };
+      }
+    }
+
     // Rota para calcular pontos
     if (path === '/api/system/calculate-points' && method === 'POST') {
       return {
