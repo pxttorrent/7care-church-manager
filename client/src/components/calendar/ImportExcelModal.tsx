@@ -36,7 +36,7 @@ export function ImportExcelModal({ isOpen, onClose, onImportComplete }: ImportEx
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/calendar/import-simple', {
+      const response = await fetch('/api/calendar/import-excel', {
         method: 'POST',
         body: formData,
       });
