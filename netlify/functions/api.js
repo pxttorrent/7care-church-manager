@@ -2072,21 +2072,21 @@ exports.handler = async (event, context) => {
           {
             title: 'Culto de Sábado',
             type: 'igreja-local',
-            startDate: new Date().toISOString(),
+            date: new Date().toISOString(),
             endDate: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
             description: 'Culto semanal da igreja'
           },
           {
             title: 'Reunião Administrativa',
             type: 'asr-administrativo',
-            startDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
             endDate: new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString(),
             description: 'Reunião da administração'
           },
           {
             title: 'Visita Pastoral',
             type: 'visitas',
-            startDate: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+            date: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
             endDate: new Date(Date.now() + 50 * 60 * 60 * 1000).toISOString(),
             description: 'Visita pastoral programada'
           }
@@ -2097,8 +2097,8 @@ exports.handler = async (event, context) => {
         for (const eventData of mockEvents) {
           try {
             await sql`
-              INSERT INTO events (title, type, start_date, end_date, description, created_at, updated_at)
-              VALUES (${eventData.title}, ${eventData.type}, ${eventData.startDate}, ${eventData.endDate}, ${eventData.description}, NOW(), NOW())
+              INSERT INTO events (title, type, date, end_date, description, created_at, updated_at)
+              VALUES (${eventData.title}, ${eventData.type}, ${eventData.date}, ${eventData.endDate}, ${eventData.description}, NOW(), NOW())
             `;
             importedCount++;
             console.log(`✅ Evento inserido: ${eventData.title}`);
