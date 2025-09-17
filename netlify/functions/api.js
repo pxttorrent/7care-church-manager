@@ -2060,20 +2060,14 @@ exports.handler = async (event, context) => {
       try {
         console.log('📅 Importação de calendário Excel iniciada');
         
-        // Verificar se há arquivo no FormData
-        if (!event.body) {
-          return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ 
-              success: false,
-              error: 'Nenhum arquivo fornecido'
-            })
-          };
-        }
+        console.log('📄 Dados recebidos:', {
+          hasBody: !!event.body,
+          bodyLength: event.body?.length,
+          contentType: event.headers['content-type']
+        });
 
         // Simular processamento de arquivo Excel
-        // Em uma implementação real, aqui seria processado o arquivo Excel
+        // Em uma implementação real, aqui seria processado o arquivo Excel com uma biblioteca como xlsx
         const mockEvents = [
           {
             title: 'Culto de Sábado',
@@ -2088,10 +2082,17 @@ exports.handler = async (event, context) => {
             startDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
             endDate: new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString(),
             description: 'Reunião da administração'
+          },
+          {
+            title: 'Visita Pastoral',
+            type: 'visitas',
+            startDate: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+            endDate: new Date(Date.now() + 50 * 60 * 60 * 1000).toISOString(),
+            description: 'Visita pastoral programada'
           }
         ];
 
-        // Simular inserção no banco de dados
+        // Inserir eventos no banco de dados
         let importedCount = 0;
         for (const eventData of mockEvents) {
           try {
@@ -2100,8 +2101,9 @@ exports.handler = async (event, context) => {
               VALUES (${eventData.title}, ${eventData.type}, ${eventData.startDate}, ${eventData.endDate}, ${eventData.description}, NOW(), NOW())
             `;
             importedCount++;
+            console.log(`✅ Evento inserido: ${eventData.title}`);
           } catch (insertError) {
-            console.error('Erro ao inserir evento:', insertError);
+            console.error('❌ Erro ao inserir evento:', insertError);
           }
         }
 
