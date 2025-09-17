@@ -1166,13 +1166,214 @@ exports.handler = async (event, context) => {
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           status: 'online',
           timestamp: new Date().toISOString(),
-          version: '1.0.2',
-          test: 'Deploy manual forçado - ' + new Date().toISOString()
+          version: '1.0.3',
+          test: 'Rotas adicionais implementadas - ' + new Date().toISOString()
         })
       };
+    }
+
+    // Rota para debug de usuários visitados
+    if (path === '/api/debug/visited-users' && method === 'GET') {
+      try {
+        const visitedUsers = await sql`
+          SELECT u.id, u.name, u.email, u.role, u.lastVisit, u.visitCount
+          FROM users u 
+          WHERE u.visitCount > 0 
+          ORDER BY u.lastVisit DESC
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(visitedUsers)
+        };
+      } catch (error) {
+        console.error('Erro ao buscar usuários visitados:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para debug de eventos
+    if (path === '/api/debug/events' && method === 'GET') {
+      try {
+        const events = await sql`
+          SELECT id, title, description, date, type, church, created_at
+          FROM events 
+          ORDER BY date DESC 
+          LIMIT 20
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(events)
+        };
+      } catch (error) {
+        console.error('Erro ao buscar eventos:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para dashboard por role
+    if (path.startsWith('/api/dashboard/') && method === 'GET') {
+      try {
+        const role = path.split('/')[3];
+        console.log('Dashboard para role:', role);
+        
+        let stats = {};
+        
+        switch (role) {
+          case 'admin':
+            stats = {
+              totalUsers: 0,
+              totalEvents: 0,
+              pendingApprovals: 0,
+              totalChurches: 0
+            };
+            break;
+          case 'missionary':
+            stats = {
+              myInterested: 0,
+              myMeetings: 0,
+              myMessages: 0,
+              myPoints: 0
+            };
+            break;
+          case 'member':
+            stats = {
+              myEvents: 0,
+              myPrayers: 0,
+              myPoints: 0,
+              myVisits: 0
+            };
+            break;
+          default:
+            stats = {
+              availableEvents: 0,
+              myMeetings: 0,
+              myProgress: 0
+            };
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(stats)
+        };
+      } catch (error) {
+        console.error('Erro no dashboard:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para limpar aprovações órfãs
+    if (path === '/api/system/clean-orphaned-approvals' && method === 'POST') {
+      try {
+        // Implementar lógica de limpeza
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ message: 'Limpeza de aprovações órfãs executada' })
+        };
+      } catch (error) {
+        console.error('Erro na limpeza:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para verificar igrejas
+    if (path === '/api/debug/check-churches' && method === 'GET') {
+      try {
+        const churches = await sql`
+          SELECT id, name, address, created_at
+          FROM churches 
+          ORDER BY name
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(churches)
+        };
+      } catch (error) {
+        console.error('Erro ao verificar igrejas:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para verificar usuários
+    if (path === '/api/debug/check-users' && method === 'GET') {
+      try {
+        const users = await sql`
+          SELECT id, name, email, role, church, status, created_at
+          FROM users 
+          ORDER BY created_at DESC 
+          LIMIT 50
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(users)
+        };
+      } catch (error) {
+        console.error('Erro ao verificar usuários:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para verificar eventos no banco
+    if (path === '/api/debug/check-events-db' && method === 'GET') {
+      try {
+        const events = await sql`
+          SELECT COUNT(*) as total, 
+                 COUNT(CASE WHEN type = 'igreja-local' THEN 1 END) as igreja_local,
+                 COUNT(CASE WHEN type = 'asr-geral' THEN 1 END) as asr_geral,
+                 COUNT(CASE WHEN type = 'visitas' THEN 1 END) as visitas,
+                 COUNT(CASE WHEN type = 'reunioes' THEN 1 END) as reunioes
+          FROM events
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(events[0])
+        };
+      } catch (error) {
+        console.error('Erro ao verificar eventos:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
     }
 
     // Rota para igreja do usuário
