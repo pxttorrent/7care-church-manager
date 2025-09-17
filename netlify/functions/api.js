@@ -1939,12 +1939,18 @@ exports.handler = async (event, context) => {
           };
         }
         
-        // Calcular média atual
+        // Calcular média atual (tratar null como 0)
         const currentTotalPoints = users.reduce((sum, user) => sum + (user.points || 0), 0);
         const currentUserAverage = currentTotalPoints / users.length;
         
         // Calcular fator de ajuste
-        const adjustmentFactor = currentUserAverage > 0 ? targetAverage / currentUserAverage : 1;
+        let adjustmentFactor = 1;
+        if (currentUserAverage > 0) {
+          adjustmentFactor = targetAverage / currentUserAverage;
+        } else {
+          // Se todos os usuários têm 0 pontos, definir pontos baseados no role
+          adjustmentFactor = 1;
+        }
         
         console.log('📊 Dados atuais:', {
           currentUserAverage,
@@ -1956,7 +1962,21 @@ exports.handler = async (event, context) => {
         // Aplicar ajuste aos pontos dos usuários
         let updatedUsers = 0;
         for (const user of users) {
-          const newPoints = Math.round((user.points || 0) * adjustmentFactor);
+          let newPoints;
+          
+          if (currentUserAverage === 0) {
+            // Se todos têm 0 pontos, definir pontos baseados no role
+            const basePoints = {
+              'admin': 1000,
+              'missionary': 750,
+              'member': 500,
+              'interested': 250
+            };
+            newPoints = basePoints[user.role] || 300;
+          } else {
+            // Aplicar fator de ajuste
+            newPoints = Math.round((user.points || 0) * adjustmentFactor);
+          }
           
           await sql`
             UPDATE users 
