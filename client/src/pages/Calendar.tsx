@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar as CalendarIcon, Filter, Upload, Trash2, Shield, Cake } from 'lucide-react';
+import { Calendar as CalendarIcon, Filter, Upload, Trash2, Cake } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -11,7 +11,6 @@ import {
 import { MonthlyCalendarView } from '@/components/calendar/MonthlyCalendarView';
 import { EventModal } from '@/components/calendar/EventModal';
 import { ImportExcelModal } from '@/components/calendar/ImportExcelModal';
-import { EventPermissionsModal } from '@/components/calendar/EventPermissionsModal';
 import { useEventFilterPermissions } from '@/hooks/useEventFilterPermissions';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,7 +25,6 @@ export default function Calendar() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [showBirthdays, setShowBirthdays] = useState(false);
@@ -320,15 +318,6 @@ export default function Calendar() {
           {isAdmin && (
             <div className="flex flex-wrap gap-2 items-center pt-2 border-t">
               <span className="text-sm text-muted-foreground mr-2">Ações:</span>
-              <Button 
-                onClick={() => setShowPermissionsModal(true)} 
-                variant="outline" 
-                size="sm" 
-                className="h-8 bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
-              >
-                <Shield className="h-4 w-4 mr-2" />
-                Gerenciar Permissões
-              </Button>
               
               
               <Button 
@@ -400,11 +389,6 @@ export default function Calendar() {
           onImportComplete={handleImportComplete}
         />
 
-        {/* Event Permissions Modal */}
-        <EventPermissionsModal
-          isOpen={showPermissionsModal}
-          onClose={() => setShowPermissionsModal(false)}
-        />
 
       </div>
     </MobileLayout>
