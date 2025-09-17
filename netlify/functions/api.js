@@ -1353,8 +1353,6 @@ exports.handler = async (event, context) => {
                     role = ${userData.role || 'member'},
                     church = ${userData.church || null},
                     church_code = ${userData.churchCode || null},
-                    phone = ${userData.phone || null},
-                    cpf = ${userData.cpf || null},
                     address = ${userData.address || null},
                     birth_date = ${userData.birthDate || null},
                     baptism_date = ${userData.baptismDate || null},
@@ -1381,7 +1379,7 @@ exports.handler = async (event, context) => {
               
               await sql`
                 INSERT INTO users (
-                  name, email, password, role, church, church_code, phone, cpf, 
+                  name, email, password, role, church, church_code, 
                   address, birth_date, baptism_date, civil_status, occupation, 
                   education, is_donor, is_tither, extra_data, observations, 
                   is_approved, status, created_at, updated_at
@@ -1392,8 +1390,6 @@ exports.handler = async (event, context) => {
                   ${userData.role || 'member'},
                   ${userData.church || null},
                   ${userData.churchCode || null},
-                  ${userData.phone || null},
-                  ${userData.cpf || null},
                   ${userData.address || null},
                   ${userData.birthDate || null},
                   ${userData.baptismDate || null},
