@@ -1612,7 +1612,7 @@ exports.handler = async (event, context) => {
     if (path === '/api/debug/check-users' && method === 'GET') {
       try {
         const users = await sql`
-          SELECT id, name, email, role, church, status, created_at
+          SELECT id, name, email, role, church, status, points, created_at
           FROM users 
           ORDER BY created_at DESC 
           LIMIT 50
