@@ -2096,14 +2096,24 @@ exports.handler = async (event, context) => {
         let importedCount = 0;
         for (const eventData of mockEvents) {
           try {
-            await sql`
-              INSERT INTO events (title, type, date, end_date, description, created_at, updated_at)
-              VALUES (${eventData.title}, ${eventData.type}, ${eventData.date}, ${eventData.endDate}, ${eventData.description}, NOW(), NOW())
+            // Usar uma query mais simples primeiro
+            const result = await sql`
+              INSERT INTO events (title, type, date, description, created_at)
+              VALUES (${eventData.title}, ${eventData.type}, ${eventData.date}, ${eventData.description}, NOW())
+              RETURNING id
             `;
-            importedCount++;
-            console.log(`✅ Evento inserido: ${eventData.title}`);
+            
+            if (result && result.length > 0) {
+              importedCount++;
+              console.log(`✅ Evento inserido: ${eventData.title} (ID: ${result[0].id})`);
+            }
           } catch (insertError) {
             console.error('❌ Erro ao inserir evento:', insertError);
+            console.error('❌ Detalhes do erro:', {
+              message: insertError.message,
+              code: insertError.code,
+              detail: insertError.detail
+            });
           }
         }
 
