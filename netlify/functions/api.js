@@ -1871,7 +1871,7 @@ exports.handler = async (event, context) => {
         const users = await sql`
           SELECT points, role 
           FROM users 
-          WHERE email != 'admin@7care.com' AND points IS NOT NULL
+          WHERE email != 'admin@7care.com'
         `;
         
         if (users.length === 0) {
@@ -1921,7 +1921,7 @@ exports.handler = async (event, context) => {
         const users = await sql`
           SELECT id, points, role 
           FROM users 
-          WHERE email != 'admin@7care.com' AND points IS NOT NULL
+          WHERE email != 'admin@7care.com'
         `;
         
         if (users.length === 0) {
