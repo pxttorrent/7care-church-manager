@@ -1273,8 +1273,8 @@ exports.handler = async (event, context) => {
         body: JSON.stringify({
           status: 'online',
           timestamp: new Date().toISOString(),
-          version: '1.0.6',
-          test: 'Gamificação corrigida - configuração de pontos - ' + new Date().toISOString()
+          version: '1.0.7',
+          test: 'Limpeza de dados completa - todas as tabelas - ' + new Date().toISOString()
         })
       };
     }
@@ -1961,11 +1961,83 @@ exports.handler = async (event, context) => {
 
     // Rota para limpar tudo
     if (path === '/api/system/clear-all' && method === 'POST') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true, message: 'Sistema limpo com sucesso' })
-      };
+      try {
+        console.log('🧹 Iniciando limpeza completa de todos os dados...');
+        
+        // Limpar todas as tabelas na ordem correta (respeitando foreign keys)
+        const queries = [
+          // Tabelas dependentes primeiro
+          'DELETE FROM prayer_intercessors',
+          'DELETE FROM prayers',
+          'DELETE FROM video_call_participants',
+          'DELETE FROM video_call_sessions',
+          'DELETE FROM conversation_participants',
+          'DELETE FROM user_achievements',
+          'DELETE FROM user_points_history',
+          'DELETE FROM event_participants',
+          'DELETE FROM event_filter_permissions',
+          'DELETE FROM system_settings',
+          'DELETE FROM system_config',
+          'DELETE FROM point_activities',
+          'DELETE FROM achievements',
+          'DELETE FROM point_configs',
+          'DELETE FROM emotional_checkins',
+          'DELETE FROM discipleship_requests',
+          'DELETE FROM relationships',
+          'DELETE FROM missionary_profiles',
+          'DELETE FROM notifications',
+          'DELETE FROM messages',
+          'DELETE FROM conversations',
+          'DELETE FROM meetings',
+          'DELETE FROM meeting_types',
+          'DELETE FROM events',
+          'DELETE FROM churches',
+          // Usuários por último (exceto admin)
+          "DELETE FROM users WHERE email != 'admin@7care.com'"
+        ];
+        
+        let successCount = 0;
+        let errorCount = 0;
+        
+        for (const query of queries) {
+          try {
+            await sql`${sql.unsafe(query)}`;
+            console.log(`✅ Executado: ${query}`);
+            successCount++;
+          } catch (error) {
+            console.log(`⚠️ Aviso ao executar ${query}:`, error.message);
+            errorCount++;
+            // Continuar mesmo se uma tabela não existir
+          }
+        }
+        
+        console.log(`🎉 Limpeza concluída: ${successCount} tabelas limpas, ${errorCount} avisos`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: `Sistema limpo com sucesso! ${successCount} tabelas processadas.`,
+            details: {
+              tablesCleaned: successCount,
+              warnings: errorCount,
+              timestamp: new Date().toISOString()
+            }
+          })
+        };
+      } catch (error) {
+        console.error('❌ Erro na limpeza de dados:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            success: false, 
+            error: 'Erro interno do servidor durante a limpeza',
+            details: error.message
+          })
+        };
+      }
     }
 
     // Rota para calcular pontos
