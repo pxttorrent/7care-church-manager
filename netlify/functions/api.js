@@ -1239,20 +1239,199 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Rota para importação em massa
-    if (path === '/api/users/bulk-import' && method === 'POST') {
+    // Rota para testar importação (dry run)
+    if (path === '/api/users/test-import' && method === 'POST') {
       try {
         const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Bulk import users:', body);
+        const { users } = body;
+        
+        console.log('🧪 Test import users:', {
+          totalUsers: users?.length || 0,
+          sampleUser: users?.[0]
+        });
+        
+        if (!users || !Array.isArray(users) || users.length === 0) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ 
+              success: false, 
+              error: 'Nenhum usuário fornecido para teste' 
+            })
+          };
+        }
+        
+        let validUsers = 0;
+        let invalidUsers = 0;
+        const validationErrors = [];
+        
+        // Validar cada usuário sem salvar
+        for (const userData of users) {
+          if (!userData.name || !userData.email) {
+            invalidUsers++;
+            validationErrors.push(`Usuário sem nome ou email: ${JSON.stringify(userData)}`);
+          } else {
+            validUsers++;
+          }
+        }
         
         return {
           statusCode: 200,
           headers,
           body: JSON.stringify({ 
             success: true, 
-            message: 'Usuários importados com sucesso',
-            imported: 10,
-            errors: 0
+            message: 'Teste de validação concluído',
+            validUsers,
+            invalidUsers,
+            validationErrors: validationErrors.slice(0, 10),
+            totalUsers: users.length,
+            note: 'Este é apenas um teste. Use POST /api/users/bulk-import para executar a importação real.'
+          })
+        };
+      } catch (error) {
+        console.error('❌ Test import error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            success: false,
+            error: 'Erro no teste de importação',
+            details: error.message
+          })
+        };
+      }
+    }
+
+    // Rota para importação em massa
+    if (path === '/api/users/bulk-import' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { users, allowUpdates = false } = body;
+        
+        console.log('🔍 Bulk import users:', {
+          totalUsers: users?.length || 0,
+          allowUpdates,
+          sampleUser: users?.[0]
+        });
+        
+        if (!users || !Array.isArray(users) || users.length === 0) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ 
+              success: false, 
+              error: 'Nenhum usuário fornecido para importação' 
+            })
+          };
+        }
+        
+        let imported = 0;
+        let updated = 0;
+        let errors = 0;
+        const errorDetails = [];
+        
+        // Processar cada usuário
+        for (const userData of users) {
+          try {
+            // Validar dados obrigatórios
+            if (!userData.name || !userData.email) {
+              errors++;
+              errorDetails.push(`Usuário sem nome ou email: ${JSON.stringify(userData)}`);
+              continue;
+            }
+            
+            // Verificar se usuário já existe
+            const existingUser = await sql`SELECT id FROM users WHERE email = ${userData.email} LIMIT 1`;
+            
+            if (existingUser.length > 0) {
+              if (allowUpdates) {
+                // Atualizar usuário existente
+                await sql`
+                  UPDATE users SET 
+                    name = ${userData.name},
+                    role = ${userData.role || 'member'},
+                    church = ${userData.church || null},
+                    church_code = ${userData.churchCode || null},
+                    phone = ${userData.phone || null},
+                    cpf = ${userData.cpf || null},
+                    address = ${userData.address || null},
+                    birth_date = ${userData.birthDate || null},
+                    baptism_date = ${userData.baptismDate || null},
+                    civil_status = ${userData.civilStatus || null},
+                    occupation = ${userData.occupation || null},
+                    education = ${userData.education || null},
+                    is_donor = ${userData.isDonor || false},
+                    is_tither = ${userData.isTither || false},
+                    extra_data = ${userData.extraData ? JSON.stringify(userData.extraData) : null},
+                    observations = ${userData.observations || null},
+                    updated_at = NOW()
+                  WHERE email = ${userData.email}
+                `;
+                updated++;
+                console.log(`✅ Usuário atualizado: ${userData.email}`);
+              } else {
+                errors++;
+                errorDetails.push(`Usuário já existe: ${userData.email}`);
+                continue;
+              }
+            } else {
+              // Criar novo usuário
+              const hashedPassword = await bcrypt.hash(userData.password || '123456', 10);
+              
+              await sql`
+                INSERT INTO users (
+                  name, email, password, role, church, church_code, phone, cpf, 
+                  address, birth_date, baptism_date, civil_status, occupation, 
+                  education, is_donor, is_tither, extra_data, observations, 
+                  is_approved, status, created_at, updated_at
+                ) VALUES (
+                  ${userData.name},
+                  ${userData.email},
+                  ${hashedPassword},
+                  ${userData.role || 'member'},
+                  ${userData.church || null},
+                  ${userData.churchCode || null},
+                  ${userData.phone || null},
+                  ${userData.cpf || null},
+                  ${userData.address || null},
+                  ${userData.birthDate || null},
+                  ${userData.baptismDate || null},
+                  ${userData.civilStatus || null},
+                  ${userData.occupation || null},
+                  ${userData.education || null},
+                  ${userData.isDonor || false},
+                  ${userData.isTither || false},
+                  ${userData.extraData ? JSON.stringify(userData.extraData) : null},
+                  ${userData.observations || null},
+                  ${userData.isApproved || false},
+                  ${userData.status || 'pending'},
+                  NOW(),
+                  NOW()
+                )
+              `;
+              imported++;
+              console.log(`✅ Usuário criado: ${userData.email}`);
+            }
+          } catch (userError) {
+            errors++;
+            errorDetails.push(`Erro ao processar ${userData.email}: ${userError.message}`);
+            console.error(`❌ Erro ao processar usuário ${userData.email}:`, userError);
+          }
+        }
+        
+        console.log(`🎉 Importação concluída: ${imported} criados, ${updated} atualizados, ${errors} erros`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: `Importação concluída: ${imported} usuários criados, ${updated} atualizados`,
+            imported,
+            updated,
+            errors,
+            errorDetails: errorDetails.slice(0, 10), // Limitar detalhes de erro
+            totalProcessed: users.length
           })
         };
       } catch (error) {
@@ -1260,7 +1439,11 @@ exports.handler = async (event, context) => {
         return {
           statusCode: 500,
           headers,
-          body: JSON.stringify({ error: 'Erro na importação em massa' })
+          body: JSON.stringify({ 
+            success: false,
+            error: 'Erro interno na importação em massa',
+            details: error.message
+          })
         };
       }
     }
@@ -1273,8 +1456,8 @@ exports.handler = async (event, context) => {
         body: JSON.stringify({
           status: 'online',
           timestamp: new Date().toISOString(),
-          version: '1.0.7',
-          test: 'Limpeza de dados completa - todas as tabelas - ' + new Date().toISOString()
+          version: '1.0.8',
+          test: 'Importação de dados funcional - bulk import real - ' + new Date().toISOString()
         })
       };
     }
