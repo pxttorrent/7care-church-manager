@@ -852,14 +852,63 @@ exports.handler = async (event, context) => {
     if (path === '/api/system/points-config' && method === 'GET') {
       try {
         const config = {
-          missao: { points: 10, description: 'Atividades de missão' },
-          comunhao: { points: 10, description: 'Atividades de comunhão' },
-          estudoBiblico: { points: 5, description: 'Estudo bíblico' },
-          discPosBatismal: { points: 15, description: 'Discipulado pós-batismo' },
-          totalPresenca: { points: 2, description: 'Presença nos cultos' },
-          dizimistaType: { points: 50, description: 'Dizimista recorrente' },
-          ofertanteType: { points: 30, description: 'Ofertante recorrente' },
-          batizouAlguem: { points: 100, description: 'Batizou alguém' }
+          engajamento: {
+            baixo: 50,
+            medio: 100,
+            alto: 200
+          },
+          classificacao: {
+            frequente: 100,
+            naoFrequente: 50
+          },
+          dizimista: {
+            naoDizimista: 0,
+            pontual: 25,
+            sazonal: 50,
+            recorrente: 100
+          },
+          ofertante: {
+            naoOfertante: 0,
+            pontual: 15,
+            sazonal: 30,
+            recorrente: 60
+          },
+          tempoBatismo: {
+            doisAnos: 25,
+            cincoAnos: 50,
+            dezAnos: 100,
+            vinteAnos: 150,
+            maisVinte: 200
+          },
+          cargos: {
+            umCargo: 50,
+            doisCargos: 100,
+            tresOuMais: 150
+          },
+          nomeUnidade: {
+            comUnidade: 25
+          },
+          temLicao: {
+            comLicao: 30
+          },
+          totalPresenca: {
+            zeroATres: 0,
+            quatroASete: 50,
+            oitoATreze: 100
+          },
+          escolaSabatina: {
+            comunhao: 10,
+            missao: 15,
+            estudoBiblico: 5,
+            batizouAlguem: 100,
+            discipuladoPosBatismo: 20
+          },
+          cpfValido: {
+            valido: 25
+          },
+          camposVaziosACMS: {
+            completos: 50
+          }
         };
         
         return {
@@ -1224,8 +1273,8 @@ exports.handler = async (event, context) => {
         body: JSON.stringify({
           status: 'online',
           timestamp: new Date().toISOString(),
-          version: '1.0.5',
-          test: 'Gamificação corrigida - dados completos - ' + new Date().toISOString()
+          version: '1.0.6',
+          test: 'Gamificação corrigida - configuração de pontos - ' + new Date().toISOString()
         })
       };
     }
