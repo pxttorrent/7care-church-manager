@@ -97,40 +97,196 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Rota para buscar usuários com pontos (PRIORIDADE MÁXIMA)
+
+    // Rota para usuários com pontos calculados em tempo real
     if (path === '/api/users/with-points' && method === 'GET') {
-      console.log('🎯 ROTA ESPECÍFICA /api/users/with-points INTERCEPTADA NO INÍCIO!');
-      
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify([
-          {
-            id: 1,
-            name: "Super Administrador",
-            email: "admin@7care.com",
-            role: "admin",
-            points: 1000,
-            church: "Sistema"
-          },
-          {
-            id: 2,
-            name: "Usuário Teste",
-            email: "teste@7care.com",
-            role: "member",
-            points: 500,
-            church: "Igreja Local"
-          },
-          {
-            id: 3,
-            name: "Missionário Exemplo",
-            email: "missionario@7care.com",
-            role: "missionary",
-            points: 750,
-            church: "Igreja Central"
+      try {
+        const { role, status } = event.queryStringParameters || {};
+        
+        console.log('🔄 Rota /api/users/with-points chamada');
+        
+        // Calcular pontos para todos os usuários usando a lógica corrigida
+        try {
+          // Buscar todos os usuários
+          const users = await sql`SELECT * FROM users`;
+          console.log(`📊 Total de usuários encontrados: ${users.length}`);
+          
+          // Buscar configuração de pontos
+          const pointsConfigResult = await sql`SELECT * FROM points_configuration LIMIT 1`;
+          const pointsConfig = pointsConfigResult.length > 0 ? pointsConfigResult[0] : {};
+          
+          let updatedCount = 0;
+          
+          for (const user of users) {
+            // Pular Super Admin - não deve ter pontos
+            if (user.email === 'admin@7care.com' || user.role === 'admin') {
+              continue;
+            }
+            
+            // Buscar dados detalhados do usuário
+            let userData = {};
+            try {
+              const userDataResult = await sql`
+                SELECT engajamento, classificacao, dizimista, ofertante, tempo_batismo, 
+                       cargos, nome_unidade, tem_licao, total_presenca, escola_sabatina,
+                       batizou_alguem, discipulado_pos_batismo, cpf_valido, campos_vazios_acms
+                FROM users 
+                WHERE id = ${user.id}
+              `;
+              if (userDataResult.length > 0) {
+                userData = userDataResult[0];
+              }
+            } catch (err) {
+              console.log(`⚠️ Erro ao buscar dados detalhados para ${user.name}:`, err.message);
+              continue;
+            }
+            
+            // Calcular pontos usando a mesma lógica da rota points-details
+            let totalPoints = 0;
+            
+            // Engajamento
+            if (userData.engajamento) {
+              const engajamento = userData.engajamento.toLowerCase();
+              if (engajamento.includes('baixo')) totalPoints += pointsConfig.engajamento?.baixo || 0;
+              else if (engajamento.includes('médio') || engajamento.includes('medio')) totalPoints += pointsConfig.engajamento?.medio || 0;
+              else if (engajamento.includes('alto')) totalPoints += pointsConfig.engajamento?.alto || 0;
+            }
+            
+            // Classificação
+            if (userData.classificacao) {
+              const classificacao = userData.classificacao.toLowerCase();
+              if (classificacao.includes('frequente')) {
+                totalPoints += pointsConfig.classificacao?.frequente || 0;
+              } else {
+                totalPoints += pointsConfig.classificacao?.naoFrequente || 0;
+              }
+            }
+            
+            // Dizimista
+            if (userData.dizimista) {
+              const dizimista = userData.dizimista.toLowerCase();
+              if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) totalPoints += pointsConfig.dizimista?.naoDizimista || 0;
+              else if (dizimista.includes('pontual')) totalPoints += pointsConfig.dizimista?.pontual || 0;
+              else if (dizimista.includes('sazonal')) totalPoints += pointsConfig.dizimista?.sazonal || 0;
+              else if (dizimista.includes('recorrente')) totalPoints += pointsConfig.dizimista?.recorrente || 0;
+            }
+            
+            // Ofertante
+            if (userData.ofertante) {
+              const ofertante = userData.ofertante.toLowerCase();
+              if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) totalPoints += pointsConfig.ofertante?.naoOfertante || 0;
+              else if (ofertante.includes('pontual')) totalPoints += pointsConfig.ofertante?.pontual || 0;
+              else if (ofertante.includes('sazonal')) totalPoints += pointsConfig.ofertante?.sazonal || 0;
+              else if (ofertante.includes('recorrente')) totalPoints += pointsConfig.ofertante?.recorrente || 0;
+            }
+            
+            // Tempo de batismo
+            if (userData.tempo_batismo && typeof userData.tempo_batismo === 'number') {
+              const tempo = userData.tempo_batismo;
+              if (tempo >= 2 && tempo < 5) totalPoints += pointsConfig.tempoBatismo?.doisAnos || 0;
+              else if (tempo >= 5 && tempo < 10) totalPoints += pointsConfig.tempoBatismo?.cincoAnos || 0;
+              else if (tempo >= 10 && tempo < 20) totalPoints += pointsConfig.tempoBatismo?.dezAnos || 0;
+              else if (tempo >= 20 && tempo < 30) totalPoints += pointsConfig.tempoBatismo?.vinteAnos || 0;
+              else if (tempo >= 30) totalPoints += pointsConfig.tempoBatismo?.maisVinte || 0;
+            }
+            
+            // Cargos
+            if (userData.cargos && Array.isArray(userData.cargos)) {
+              const numCargos = userData.cargos.length;
+              if (numCargos === 1) totalPoints += pointsConfig.cargos?.umCargo || 0;
+              else if (numCargos === 2) totalPoints += pointsConfig.cargos?.doisCargos || 0;
+              else if (numCargos >= 3) totalPoints += pointsConfig.cargos?.tresOuMais || 0;
+            }
+            
+            // Nome da unidade
+            if (userData.nome_unidade && userData.nome_unidade.trim()) {
+              totalPoints += pointsConfig.nomeUnidade?.comUnidade || 0;
+            }
+            
+            // Tem lição
+            if (userData.tem_licao) {
+              totalPoints += pointsConfig.temLicao?.comLicao || 0;
+            }
+            
+            // Total de presença
+            if (userData.total_presenca !== undefined) {
+              const presenca = userData.total_presenca;
+              if (presenca >= 0 && presenca <= 3) totalPoints += pointsConfig.totalPresenca?.zeroATres || 0;
+              else if (presenca >= 4 && presenca <= 7) totalPoints += pointsConfig.totalPresenca?.quatroASete || 0;
+              else if (presenca >= 8 && presenca <= 13) totalPoints += pointsConfig.totalPresenca?.oitoATreze || 0;
+            }
+            
+            // Escola sabatina
+            if (userData.escola_sabatina) {
+              const escola = userData.escola_sabatina;
+              if (escola.comunhao) totalPoints += (escola.comunhao * (pointsConfig.escolaSabatina?.comunhao || 0));
+              if (escola.missao) totalPoints += (escola.missao * (pointsConfig.escolaSabatina?.missao || 0));
+              if (escola.estudoBiblico) totalPoints += (escola.estudoBiblico * (pointsConfig.escolaSabatina?.estudoBiblico || 0));
+              if (escola.batizouAlguem) totalPoints += pointsConfig.escolaSabatina?.batizouAlguem || 0;
+              if (escola.discipuladoPosBatismo) totalPoints += (escola.discipuladoPosBatismo * (pointsConfig.escolaSabatina?.discipuladoPosBatismo || 0));
+            }
+            
+            // CPF válido
+            if (userData.cpf_valido === 'Sim' || userData.cpf_valido === true) {
+              totalPoints += pointsConfig.cpfValido?.valido || 0;
+            }
+            
+            // Campos vazios ACMS
+            if (userData.campos_vazios_acms === false) {
+              totalPoints += pointsConfig.camposVaziosACMS?.completos || 0;
+            }
+            
+            // Verificar se os pontos mudaram e atualizar
+            const roundedTotalPoints = Math.round(totalPoints);
+            if (user.points !== roundedTotalPoints) {
+              await sql`
+                UPDATE users 
+                SET points = ${roundedTotalPoints}, updated_at = NOW()
+                WHERE id = ${user.id}
+              `;
+              updatedCount++;
+            }
           }
-        ])
-      };
+          
+          console.log(`✅ Processamento concluído: ${updatedCount} usuários atualizados`);
+        } catch (calcError) {
+          console.error('⚠️ Erro ao calcular pontos, continuando sem cálculo:', calcError);
+        }
+        
+        // Buscar usuários com pontos atualizados
+        let users = await sql`SELECT * FROM users ORDER BY points DESC`;
+        console.log(`📊 Usuários carregados: ${users.length}`);
+        
+        // Garantir que users seja sempre um array
+        if (!Array.isArray(users)) {
+          console.error('❌ Query não retornou um array:', typeof users, users);
+          users = [];
+        }
+        
+        // Aplicar filtros se fornecidos
+        if (role) {
+          users = users.filter(u => u.role === role);
+        }
+        if (status) {
+          users = users.filter(u => u.status === status);
+        }
+        
+        // Remove password from response
+        const safeUsers = users.map(({ password, ...user }) => user);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(safeUsers)
+        };
+      } catch (error) {
+        console.error("Get users with points error:", error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: "Internal server error" })
+        };
+      }
     }
 
     // Rota para usuários
@@ -500,16 +656,76 @@ exports.handler = async (event, context) => {
 
     // Rota para visitas
     if (path === '/api/dashboard/visits' && method === 'GET') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          completed: 7,
-          expected: 265,
-          totalVisits: 9,
-          percentage: 3
-        })
-      };
+      try {
+        console.log('🔍 Buscando dados do visitômetro...');
+        
+        // Buscar usuários que devem ser visitados (member ou missionary)
+        const targetUsers = await sql`
+          SELECT id, name, email, role, extraData
+          FROM users 
+          WHERE role = 'member' OR role = 'missionary'
+          ORDER BY name ASC
+        `;
+        
+        console.log(`🎯 Usuários target (member/missionary): ${targetUsers.length}`);
+        
+        let visitedPeople = 0;
+        let totalVisits = 0;
+        const visitedUsersList = [];
+        
+        // Processar cada usuário target
+        targetUsers.forEach(user => {
+          try {
+            let extraData = {};
+            if (user.extraData && typeof user.extraData === 'object') {
+              extraData = user.extraData;
+            }
+            
+            // Verificar se foi visitado
+            if (extraData.visited === true) {
+              visitedPeople++;
+              const visitCount = extraData.visitCount || 1;
+              totalVisits += visitCount;
+              
+              visitedUsersList.push({
+                id: user.id,
+                name: user.name,
+                visitCount: visitCount,
+                lastVisitDate: extraData.lastVisitDate
+              });
+              
+              console.log(`✅ ${user.name}: ${visitCount} visitas`);
+            }
+          } catch (error) {
+            console.log(`⚠️ Erro ao processar usuário ${user.name}:`, error.message);
+          }
+        });
+        
+        const expectedVisits = targetUsers.length;
+        const percentage = expectedVisits > 0 ? Math.round((visitedPeople / expectedVisits) * 100) : 0;
+        
+        console.log(`📊 Visitômetro: ${visitedPeople}/${expectedVisits} pessoas visitadas (${percentage}%), ${totalVisits} visitas totais`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            completed: visitedPeople,
+            expected: expectedVisits,
+            totalVisits: totalVisits,
+            visitedPeople: visitedPeople,
+            percentage: percentage,
+            visitedUsersList: visitedUsersList
+          })
+        };
+      } catch (error) {
+        console.error('❌ Erro ao buscar dados do visitômetro:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
     }
 
     // Rota para detalhes de pontos do usuário
@@ -930,7 +1146,73 @@ exports.handler = async (event, context) => {
     // Rota para permissões de eventos
     if (path === '/api/system/event-permissions' && method === 'GET') {
       try {
-        const permissions = {
+        // Buscar permissões do banco de dados
+        const permissionsData = await sql`
+          SELECT profile_id, event_type, can_view 
+          FROM event_permissions 
+          ORDER BY profile_id, event_type
+        `;
+        
+        // Se não há permissões salvas, usar as padrão
+        if (permissionsData.length === 0) {
+          const defaultPermissions = {
+            admin: {
+              'igreja-local': true,
+              'asr-geral': true,
+              'asr-administrativo': true,
+              'asr-pastores': true,
+              'visitas': true,
+              'reunioes': true,
+              'pregacoes': true
+            },
+            member: {
+              'igreja-local': true,
+              'asr-geral': true,
+              'asr-administrativo': false,
+              'asr-pastores': false,
+              'visitas': true,
+              'reunioes': true,
+              'pregacoes': true
+            },
+            interested: {
+              'igreja-local': true,
+              'asr-geral': false,
+              'asr-administrativo': false,
+              'asr-pastores': false,
+              'visitas': false,
+              'reunioes': false,
+              'pregacoes': true
+            }
+          };
+          
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify(defaultPermissions)
+          };
+        }
+        
+        // Converter dados do banco para o formato esperado
+        const permissions = {};
+        permissionsData.forEach(row => {
+          if (!permissions[row.profile_id]) {
+            permissions[row.profile_id] = {};
+          }
+          permissions[row.profile_id][row.event_type] = row.can_view;
+        });
+        
+        console.log('✅ Event permissions loaded from database:', permissions);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(permissions)
+        };
+      } catch (error) {
+        console.error('❌ Event permissions error:', error);
+        
+        // Fallback para permissões padrão em caso de erro
+        const defaultPermissions = {
           admin: {
             'igreja-local': true,
             'asr-geral': true,
@@ -963,14 +1245,7 @@ exports.handler = async (event, context) => {
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify(permissions)
-        };
-      } catch (error) {
-        console.error('❌ Event permissions error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar permissões' })
+          body: JSON.stringify(defaultPermissions)
         };
       }
     }
@@ -981,7 +1256,39 @@ exports.handler = async (event, context) => {
         const body = JSON.parse(event.body || '{}');
         console.log('🔍 Saving event permissions:', body);
         
-        // Simular salvamento (em produção, salvaria no banco)
+        // Salvar permissões no banco de dados
+        if (body.permissions) {
+          // Criar tabela de permissões se não existir
+          await sql`
+            CREATE TABLE IF NOT EXISTS event_permissions (
+              id SERIAL PRIMARY KEY,
+              profile_id VARCHAR(50) NOT NULL,
+              event_type VARCHAR(50) NOT NULL,
+              can_view BOOLEAN NOT NULL DEFAULT false,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(profile_id, event_type)
+            )
+          `;
+          
+          // Limpar permissões existentes
+          await sql`DELETE FROM event_permissions`;
+          
+          // Inserir novas permissões
+          for (const [profileId, eventTypes] of Object.entries(body.permissions)) {
+            for (const [eventType, canView] of Object.entries(eventTypes)) {
+              await sql`
+                INSERT INTO event_permissions (profile_id, event_type, can_view)
+                VALUES (${profileId}, ${eventType}, ${canView})
+                ON CONFLICT (profile_id, event_type) 
+                DO UPDATE SET can_view = ${canView}, updated_at = CURRENT_TIMESTAMP
+              `;
+            }
+          }
+          
+          console.log('✅ Event permissions saved successfully');
+        }
+        
         return {
           statusCode: 200,
           headers,
@@ -1063,11 +1370,91 @@ exports.handler = async (event, context) => {
     // Rota para atualizar usuário
     if (path.startsWith('/api/users/') && method === 'PUT') {
       try {
-        const userId = path.split('/')[3];
+        const userId = parseInt(path.split('/')[3]);
         const body = JSON.parse(event.body || '{}');
         console.log('🔍 Updating user:', userId, body);
         
-        // Simular atualização
+        if (isNaN(userId)) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID de usuário inválido' })
+          };
+        }
+        
+        // Verificar se usuário existe
+        const existingUser = await sql`SELECT * FROM users WHERE id = ${userId} LIMIT 1`;
+        if (existingUser.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Usuário não encontrado' })
+          };
+        }
+        
+        // Atualizar campos permitidos
+        const updateFields = [];
+        const updateValues = [];
+        
+        if (body.points !== undefined) {
+          updateFields.push('points = $' + (updateValues.length + 1));
+          updateValues.push(body.points);
+        }
+        
+        if (body.name !== undefined) {
+          updateFields.push('name = $' + (updateValues.length + 1));
+          updateValues.push(body.name);
+        }
+        
+        if (body.email !== undefined) {
+          updateFields.push('email = $' + (updateValues.length + 1));
+          updateValues.push(body.email);
+        }
+        
+        if (body.role !== undefined) {
+          updateFields.push('role = $' + (updateValues.length + 1));
+          updateValues.push(body.role);
+        }
+        
+        if (body.status !== undefined) {
+          updateFields.push('status = $' + (updateValues.length + 1));
+          updateValues.push(body.status);
+        }
+        
+        if (body.church !== undefined) {
+          updateFields.push('church = $' + (updateValues.length + 1));
+          updateValues.push(body.church);
+        }
+        
+        if (body.level !== undefined) {
+          updateFields.push('level = $' + (updateValues.length + 1));
+          updateValues.push(body.level);
+        }
+        
+        if (body.attendance !== undefined) {
+          updateFields.push('attendance = $' + (updateValues.length + 1));
+          updateValues.push(body.attendance);
+        }
+        
+        if (updateFields.length === 0) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Nenhum campo válido para atualização' })
+          };
+        }
+        
+        // Adicionar updated_at
+        updateFields.push('updated_at = NOW()');
+        
+        // Executar atualização
+        const query = `UPDATE users SET ${updateFields.join(', ')} WHERE id = $${updateValues.length + 1}`;
+        updateValues.push(userId);
+        
+        await sql.unsafe(query, updateValues);
+        
+        console.log(`✅ Usuário ${userId} atualizado com sucesso`);
+        
         return {
           statusCode: 200,
           headers,
@@ -1909,118 +2296,6 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Rota para média de distrito
-    if (path === '/api/system/district-average' && method === 'POST') {
-      try {
-        const body = JSON.parse(event.body);
-        const { targetAverage } = body;
-        
-        console.log('🎯 Calculando média do distrito para:', targetAverage);
-        
-        // Buscar usuários atuais (exceto admin)
-        const users = await sql`
-          SELECT id, points, role 
-          FROM users 
-          WHERE email != 'admin@7care.com'
-        `;
-        
-        if (users.length === 0) {
-          return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({
-              success: true,
-              message: 'Nenhum usuário encontrado para ajuste',
-              currentUserAverage: 0,
-              newUserAverage: targetAverage,
-              adjustmentFactor: 1,
-              updatedUsers: 0
-            })
-          };
-        }
-        
-        // Calcular média atual (tratar null como 0)
-        const currentTotalPoints = users.reduce((sum, user) => sum + (user.points || 0), 0);
-        const currentUserAverage = currentTotalPoints / users.length;
-        
-        // Calcular fator de ajuste
-        let adjustmentFactor = 1;
-        if (currentUserAverage > 0) {
-          adjustmentFactor = targetAverage / currentUserAverage;
-        } else {
-          // Se todos os usuários têm 0 pontos, definir pontos baseados no role
-          adjustmentFactor = 1;
-        }
-        
-        console.log('📊 Dados atuais:', {
-          currentUserAverage,
-          targetAverage,
-          adjustmentFactor,
-          totalUsers: users.length
-        });
-        
-        // Aplicar ajuste aos pontos dos usuários
-        let updatedUsers = 0;
-        for (const user of users) {
-          let newPoints;
-          
-          if (currentUserAverage === 0) {
-            // Se todos têm 0 pontos, definir pontos baseados no role
-            const basePoints = {
-              'admin': 1000,
-              'missionary': 750,
-              'member': 500,
-              'interested': 250
-            };
-            newPoints = basePoints[user.role] || 300;
-          } else {
-            // Aplicar fator de ajuste
-            newPoints = Math.round((user.points || 0) * adjustmentFactor);
-          }
-          
-          await sql`
-            UPDATE users 
-            SET points = ${newPoints}, updated_at = NOW()
-            WHERE id = ${user.id}
-          `;
-          
-          updatedUsers++;
-        }
-        
-        // Calcular nova média
-        const newUserAverage = targetAverage;
-        
-        console.log('✅ Ajuste concluído:', {
-          updatedUsers,
-          newUserAverage,
-          adjustmentFactor
-        });
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({
-            success: true,
-            message: `Média ajustada com sucesso! ${updatedUsers} usuários atualizados.`,
-            currentUserAverage: currentUserAverage,
-            newUserAverage: newUserAverage,
-            adjustmentFactor: adjustmentFactor,
-            updatedUsers: updatedUsers
-          })
-        };
-      } catch (error) {
-        console.error('Erro ao calcular média de distrito:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ 
-            success: false,
-            error: 'Erro interno do servidor',
-            details: error.message
-          })
-        };
-      }
-    }
 
     // Rota para atualizar perfis por estudo bíblico
     if (path === '/api/system/update-profiles-by-bible-study' && method === 'POST') {
@@ -2055,82 +2330,148 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Rota para importação de Excel
-    if (path === '/api/calendar/import-excel' && method === 'POST') {
+
+    // Rota para adicionar coluna end_date à tabela events
+    if (path === '/api/events/add-end-date-column' && method === 'POST') {
       try {
-        console.log('📅 Importação de calendário Excel iniciada');
+        console.log('🔧 Adicionando coluna end_date à tabela events...');
         
-        console.log('📄 Dados recebidos:', {
-          hasBody: !!event.body,
-          bodyLength: event.body?.length,
-          contentType: event.headers['content-type']
-        });
+        // Verificar se a coluna já existe
+        const checkColumn = await sql`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'events' AND column_name = 'end_date'
+        `;
+        
+        if (checkColumn.length > 0) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ 
+              success: true,
+              message: 'Coluna end_date já existe na tabela events'
+            })
+          };
+        }
+        
+        // Adicionar a coluna end_date
+        await sql`ALTER TABLE events ADD COLUMN end_date TIMESTAMP`;
+        console.log('✅ Coluna end_date adicionada com sucesso');
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true,
+            message: 'Coluna end_date adicionada à tabela events com sucesso'
+          })
+        };
+      } catch (error) {
+        console.error('❌ Erro ao adicionar coluna end_date:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            success: false,
+            error: 'Erro ao adicionar coluna end_date',
+            details: error.message
+          })
+        };
+      }
+    }
 
-        // Simular processamento de arquivo Excel
-        // Em uma implementação real, aqui seria processado o arquivo Excel com uma biblioteca como xlsx
-        const mockEvents = [
-          {
-            title: 'Culto de Sábado',
-            type: 'igreja-local',
-            date: new Date().toISOString(),
-            endDate: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-            description: 'Culto semanal da igreja'
-          },
-          {
-            title: 'Reunião Administrativa',
-            type: 'asr-administrativo',
-            date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-            endDate: new Date(Date.now() + 26 * 60 * 60 * 1000).toISOString(),
-            description: 'Reunião da administração'
-          },
-          {
-            title: 'Visita Pastoral',
-            type: 'visitas',
-            date: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-            endDate: new Date(Date.now() + 50 * 60 * 60 * 1000).toISOString(),
-            description: 'Visita pastoral programada'
-          }
-        ];
+    // Rota para importação direta de eventos (como Gestão de Dados)
+    if (path === '/api/events/import' && method === 'POST') {
+      try {
+        console.log('📅 Importação direta de eventos iniciada');
+        
+        const body = JSON.parse(event.body || '{}');
+        const events = body.events || [];
+        
+        console.log(`📊 Recebidos ${events.length} eventos para importação`);
+        
+        if (events.length === 0) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ 
+              success: false,
+              error: 'Nenhum evento fornecido'
+            })
+          };
+        }
 
-        // Inserir eventos no banco de dados
+        // Limpar eventos existentes primeiro
+        await sql`DELETE FROM events`;
+        console.log('🗑️ Eventos existentes removidos');
+
+        // Inserir novos eventos
         let importedCount = 0;
-        for (const eventData of mockEvents) {
+        let errorCount = 0;
+        const errors = [];
+        
+        for (let i = 0; i < events.length; i++) {
+          const eventData = events[i];
           try {
-            // Usar uma query mais simples primeiro
-            const result = await sql`
-              INSERT INTO events (title, type, date, description, created_at)
-              VALUES (${eventData.title}, ${eventData.type}, ${eventData.date}, ${eventData.description}, NOW())
-              RETURNING id
-            `;
+            console.log(`🔄 Inserindo evento ${i + 1}/${events.length}: ${eventData.title}`);
+            console.log(`📋 Dados do evento:`, {
+              title: eventData.title,
+              type: eventData.type,
+              date: eventData.date,
+              endDate: eventData.endDate,
+              description: eventData.description
+            });
             
-            if (result && result.length > 0) {
-              importedCount++;
-              console.log(`✅ Evento inserido: ${eventData.title} (ID: ${result[0].id})`);
+            if (eventData.endDate && eventData.endDate !== eventData.date) {
+              // Evento com período
+              console.log(`📅 Inserindo evento com período: ${eventData.title} (${eventData.date} - ${eventData.endDate})`);
+              await sql`
+                INSERT INTO events (title, type, date, end_date, description, created_at)
+                VALUES (${eventData.title}, ${eventData.type || 'geral'}, ${eventData.date}, ${eventData.endDate}, ${eventData.description || ''}, NOW())
+              `;
+            } else {
+              // Evento de um dia
+              console.log(`📅 Inserindo evento de um dia: ${eventData.title}`);
+              await sql`
+                INSERT INTO events (title, type, date, description, created_at)
+                VALUES (${eventData.title}, ${eventData.type || 'geral'}, ${eventData.date}, ${eventData.description || ''}, NOW())
+              `;
             }
+            
+            importedCount++;
+            console.log(`✅ Evento inserido com sucesso: ${eventData.title} (${importedCount}/${events.length})`);
           } catch (insertError) {
-            console.error('❌ Erro ao inserir evento:', insertError);
-            console.error('❌ Detalhes do erro:', {
-              message: insertError.message,
-              code: insertError.code,
-              detail: insertError.detail
+            errorCount++;
+            const errorMsg = `Erro ao inserir "${eventData.title}": ${insertError.message}`;
+            console.error(`❌ ${errorMsg}`);
+            console.error('❌ Detalhes do erro:', insertError);
+            errors.push({
+              event: eventData.title,
+              error: insertError.message,
+              index: i + 1
             });
           }
         }
 
-        console.log(`✅ Importação concluída: ${importedCount} eventos importados`);
+        console.log(`✅ Importação concluída: ${importedCount}/${events.length} eventos importados`);
+        if (errorCount > 0) {
+          console.log(`⚠️ ${errorCount} eventos falharam na importação`);
+        }
 
         return {
           statusCode: 200,
           headers,
           body: JSON.stringify({ 
             success: true,
-            message: `Importação concluída com sucesso! ${importedCount} eventos foram importados.`,
+            message: `Importação concluída! ${importedCount} de ${events.length} eventos importados.${errorCount > 0 ? ` ${errorCount} eventos falharam.` : ''}`,
             importedEvents: importedCount,
-            errors: []
+            totalEvents: events.length,
+            errorCount: errorCount,
+            errors: errors
           })
         };
       } catch (error) {
-        console.error('❌ Erro na importação de Excel:', error);
+        console.error('❌ Erro na importação:', error);
         return {
           statusCode: 500,
           headers,
@@ -2319,6 +2660,7 @@ exports.handler = async (event, context) => {
           'DELETE FROM user_points_history',
           'DELETE FROM event_participants',
           'DELETE FROM event_filter_permissions',
+          'DELETE FROM event_permissions',
           'DELETE FROM system_settings',
           'DELETE FROM system_config',
           'DELETE FROM point_activities',
@@ -2335,7 +2677,7 @@ exports.handler = async (event, context) => {
           'DELETE FROM meeting_types',
           'DELETE FROM events',
           'DELETE FROM churches',
-          // Usuários por último (exceto admin)
+          // Usuários por último (exceto admin) - isso já limpa o visitômetro
           "DELETE FROM users WHERE email != 'admin@7care.com'"
         ];
         
@@ -2361,11 +2703,16 @@ exports.handler = async (event, context) => {
           headers,
           body: JSON.stringify({ 
             success: true, 
-            message: `Sistema limpo com sucesso! ${successCount} tabelas processadas.`,
+            message: `Sistema limpo com sucesso! ${successCount} operações executadas. Todos os dados foram removidos, incluindo o visitômetro.`,
             details: {
-              tablesCleaned: successCount,
+              operationsExecuted: successCount,
               warnings: errorCount,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              clearedData: {
+                tables: ['prayers', 'events', 'users', 'meetings', 'churches', 'relationships', 'notifications', 'messages', 'conversations'],
+                visitometer: ['visited', 'visitCount', 'lastVisitDate'],
+                systemData: ['settings', 'configurations', 'permissions', 'achievements', 'points']
+              }
             }
           })
         };
@@ -2452,909 +2799,7 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Rota para recalcular todos os pontos
-    if (path === '/api/system/recalculate-all-points' && method === 'POST') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true, message: 'Todos os pontos recalculados com sucesso' })
-      };
-    }
 
-    // Rota para verificar perfis missionários
-    if (path === '/api/system/check-missionary-profiles' && method === 'POST') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ 
-          success: true, 
-          message: 'Perfis missionários verificados',
-          correctedCount: 0
-        })
-      };
-    }
-
-    // Rota para criar igreja
-    if (path === '/api/churches' && method === 'POST') {
-      try {
-        const body = JSON.parse(event.body || '{}');
-        const { name, code, address, email, phone, pastor } = body;
-        
-        if (!name || !code) {
-          return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ error: 'Nome e código são obrigatórios' })
-          };
-        }
-
-        return {
-          statusCode: 201,
-          headers,
-          body: JSON.stringify({ 
-            success: true, 
-            message: 'Igreja criada com sucesso',
-            church: {
-              id: Date.now(),
-              name,
-              code,
-              address: address || '',
-              email: email || '',
-              phone: phone || '',
-              pastor: pastor || ''
-            }
-          })
-        };
-      } catch (error) {
-        console.error('❌ Create church error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao criar igreja' })
-        };
-      }
-    }
-
-    // Rota para criar reunião
-    if (path === '/api/meetings' && method === 'POST') {
-      try {
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Creating meeting:', body);
-        
-        return {
-          statusCode: 201,
-          headers,
-          body: JSON.stringify({ 
-            success: true, 
-            message: 'Reunião criada com sucesso',
-            meeting: {
-              id: Date.now(),
-              ...body,
-              created_at: new Date().toISOString()
-            }
-          })
-        };
-      } catch (error) {
-        console.error('❌ Create meeting error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao criar reunião' })
-        };
-      }
-    }
-
-    // Rota para atualizar reunião
-    if (path.startsWith('/api/meetings/') && method === 'PUT') {
-      try {
-        const meetingId = path.split('/')[3];
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Updating meeting:', meetingId, body);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Reunião atualizada com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Update meeting error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao atualizar reunião' })
-        };
-      }
-    }
-
-    // Rota para deletar reunião
-    if (path.startsWith('/api/meetings/') && method === 'DELETE') {
-      try {
-        const meetingId = path.split('/')[3];
-        console.log('🔍 Deleting meeting:', meetingId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Reunião deletada com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Delete meeting error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao deletar reunião' })
-        };
-      }
-    }
-
-    // Rota para criar evento
-    if (path === '/api/events' && method === 'POST') {
-      try {
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Creating event:', body);
-        
-        return {
-          statusCode: 201,
-          headers,
-          body: JSON.stringify({ 
-            success: true, 
-            message: 'Evento criado com sucesso',
-            event: {
-              id: Date.now(),
-              ...body,
-              created_at: new Date().toISOString()
-            }
-          })
-        };
-      } catch (error) {
-        console.error('❌ Create event error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao criar evento' })
-        };
-      }
-    }
-
-    // Rota para deletar evento
-    if (path === '/api/events' && method === 'DELETE') {
-      try {
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Deleting event:', body);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Evento deletado com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Delete event error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao deletar evento' })
-        };
-      }
-    }
-
-    // Rota para criar atividade
-    if (path === '/api/activities' && method === 'POST') {
-      try {
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Creating activity:', body);
-        
-        return {
-          statusCode: 201,
-          headers,
-          body: JSON.stringify({ 
-            success: true, 
-            message: 'Atividade criada com sucesso',
-            activity: {
-              id: Date.now(),
-              ...body,
-              created_at: new Date().toISOString()
-            }
-          })
-        };
-      } catch (error) {
-        console.error('❌ Create activity error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao criar atividade' })
-        };
-      }
-    }
-
-    // Rota para atualizar atividade
-    if (path.startsWith('/api/activities/') && method === 'PUT') {
-      try {
-        const activityId = path.split('/')[3];
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Updating activity:', activityId, body);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Atividade atualizada com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Update activity error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao atualizar atividade' })
-        };
-      }
-    }
-
-    // Rota para deletar atividade
-    if (path.startsWith('/api/activities/') && method === 'DELETE') {
-      try {
-        const activityId = path.split('/')[3];
-        console.log('🔍 Deleting activity:', activityId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Atividade deletada com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Delete activity error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao deletar atividade' })
-        };
-      }
-    }
-
-    // Rota para listar orações
-    if (path === '/api/prayers' && method === 'GET') {
-      try {
-        const prayers = await sql`SELECT * FROM prayers ORDER BY created_at DESC LIMIT 50`;
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify(prayers)
-        };
-      } catch (error) {
-        console.error('❌ Get prayers error:', error);
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify([])
-        };
-      }
-    }
-
-    // Rota para responder oração
-    if (path.startsWith('/api/prayers/') && path.endsWith('/answer') && method === 'POST') {
-      try {
-        const prayerId = path.split('/')[3];
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Answering prayer:', prayerId, body);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Oração respondida com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Answer prayer error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao responder oração' })
-        };
-      }
-    }
-
-    // Rota para deletar oração
-    if (path.startsWith('/api/prayers/') && method === 'DELETE') {
-      try {
-        const prayerId = path.split('/')[3];
-        console.log('🔍 Deleting prayer:', prayerId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Oração deletada com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Delete prayer error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao deletar oração' })
-        };
-      }
-    }
-
-    // Rota para adicionar intercessor
-    if (path.startsWith('/api/prayers/') && path.endsWith('/intercessor') && method === 'POST') {
-      try {
-        const prayerId = path.split('/')[3];
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Adding intercessor to prayer:', prayerId, body);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Intercessor adicionado com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Add intercessor error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao adicionar intercessor' })
-        };
-      }
-    }
-
-    // Rota para remover intercessor
-    if (path.includes('/intercessor/') && method === 'DELETE') {
-      try {
-        const parts = path.split('/');
-        const prayerId = parts[3];
-        const intercessorId = parts[5];
-        console.log('🔍 Removing intercessor:', prayerId, intercessorId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Intercessor removido com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Remove intercessor error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao remover intercessor' })
-        };
-      }
-    }
-
-    // Rota para listar intercessores
-    if (path.startsWith('/api/prayers/') && path.endsWith('/intercessors') && method === 'GET') {
-      try {
-        const prayerId = path.split('/')[3];
-        console.log('🔍 Getting intercessors for prayer:', prayerId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify([])
-        };
-      } catch (error) {
-        console.error('❌ Get intercessors error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar intercessores' })
-        };
-      }
-    }
-
-    // Rota para orações que o usuário intercede
-    if (path.startsWith('/api/prayers/user/') && path.endsWith('/interceding') && method === 'GET') {
-      try {
-        const userId = path.split('/')[4];
-        console.log('🔍 Getting prayers user is interceding:', userId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify([])
-        };
-      } catch (error) {
-        console.error('❌ Get interceding prayers error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar orações' })
-        };
-      }
-    }
-
-    // Rota para conversas do usuário
-    if (path.startsWith('/api/conversations/') && method === 'GET') {
-      try {
-        const userId = path.split('/')[3];
-        console.log('🔍 Getting conversations for user:', userId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify([])
-        };
-      } catch (error) {
-        console.error('❌ Get conversations error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar conversas' })
-        };
-      }
-    }
-
-    // Rota para criar conversa direta
-    if (path === '/api/conversations/direct' && method === 'POST') {
-      try {
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Creating direct conversation:', body);
-        
-        return {
-          statusCode: 201,
-          headers,
-          body: JSON.stringify({ 
-            success: true, 
-            message: 'Conversa criada com sucesso',
-            conversation: {
-              id: Date.now(),
-              ...body,
-              created_at: new Date().toISOString()
-            }
-          })
-        };
-      } catch (error) {
-        console.error('❌ Create conversation error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao criar conversa' })
-        };
-      }
-    }
-
-    // Rota para mensagens da conversa
-    if (path.startsWith('/api/conversations/') && path.endsWith('/messages') && method === 'GET') {
-      try {
-        const conversationId = path.split('/')[3];
-        console.log('🔍 Getting messages for conversation:', conversationId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify([])
-        };
-      } catch (error) {
-        console.error('❌ Get messages error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar mensagens' })
-        };
-      }
-    }
-
-    // Rota para enviar mensagem
-    if (path === '/api/messages' && method === 'POST') {
-      try {
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Sending message:', body);
-        
-        return {
-          statusCode: 201,
-          headers,
-          body: JSON.stringify({ 
-            success: true, 
-            message: 'Mensagem enviada com sucesso',
-            messageData: {
-              id: Date.now(),
-              ...body,
-              created_at: new Date().toISOString()
-            }
-          })
-        };
-      } catch (error) {
-        console.error('❌ Send message error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao enviar mensagem' })
-        };
-      }
-    }
-
-    // Rota para notificações do usuário
-    if (path.startsWith('/api/notifications/') && method === 'GET') {
-      try {
-        const userId = path.split('/')[3];
-        console.log('🔍 Getting notifications for user:', userId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify([])
-        };
-      } catch (error) {
-        console.error('❌ Get notifications error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar notificações' })
-        };
-      }
-    }
-
-    // Rota para marcar notificação como lida
-    if (path.startsWith('/api/notifications/') && path.endsWith('/read') && method === 'PUT') {
-      try {
-        const notificationId = path.split('/')[3];
-        console.log('🔍 Marking notification as read:', notificationId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Notificação marcada como lida' })
-        };
-      } catch (error) {
-        console.error('❌ Mark notification read error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao marcar notificação' })
-        };
-      }
-    }
-
-    // Rota para conquistas
-    if (path === '/api/achievements' && method === 'GET') {
-      try {
-        const achievements = [
-          { id: 1, name: 'Primeiro Login', description: 'Faça seu primeiro login', points: 10 },
-          { id: 2, name: 'Visitante Frequente', description: 'Visite 10 vezes', points: 50 },
-          { id: 3, name: 'Discipulador', description: 'Discipule 5 pessoas', points: 100 }
-        ];
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify(achievements)
-        };
-      } catch (error) {
-        console.error('❌ Get achievements error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar conquistas' })
-        };
-      }
-    }
-
-    // Rota para atividades de pontos
-    if (path === '/api/point-activities' && method === 'GET') {
-      try {
-        const activities = [
-          { id: 1, name: 'Presença no Culto', points: 10, description: 'Comparecer ao culto' },
-          { id: 2, name: 'Estudo Bíblico', points: 5, description: 'Participar do estudo bíblico' },
-          { id: 3, name: 'Evangelismo', points: 20, description: 'Compartilhar o evangelho' }
-        ];
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify(activities)
-        };
-      } catch (error) {
-        console.error('❌ Get point activities error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar atividades de pontos' })
-        };
-      }
-    }
-
-    // Rota para tipos de reunião
-    if (path === '/api/meeting-types' && method === 'GET') {
-      try {
-        const types = [
-          { id: 1, name: 'Culto de Adoração', description: 'Culto principal da igreja' },
-          { id: 2, name: 'Estudo Bíblico', description: 'Estudo da palavra' },
-          { id: 3, name: 'Oração', description: 'Momento de oração' },
-          { id: 4, name: 'Evangelismo', description: 'Atividade evangelística' }
-        ];
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify(types)
-        };
-      } catch (error) {
-        console.error('❌ Get meeting types error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar tipos de reunião' })
-        };
-      }
-    }
-
-    // Rota para tipos de evento por role
-    if (path.startsWith('/api/event-types/') && method === 'GET') {
-      try {
-        const role = path.split('/')[3];
-        console.log('🔍 Getting event types for role:', role);
-        
-        const eventTypes = {
-          admin: ['igreja-local', 'asr-geral', 'asr-administrativo', 'asr-pastores', 'visitas', 'reunioes', 'pregacoes'],
-          member: ['igreja-local', 'asr-geral', 'visitas', 'reunioes', 'pregacoes'],
-          interested: ['igreja-local', 'pregacoes']
-        };
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify(eventTypes[role] || [])
-        };
-      } catch (error) {
-        console.error('❌ Get event types error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar tipos de evento' })
-        };
-      }
-    }
-
-    // Rota para relacionamentos do missionário
-    if (path.startsWith('/api/relationships/missionary/') && method === 'GET') {
-      try {
-        const missionaryId = path.split('/')[3];
-        console.log('🔍 Getting relationships for missionary:', missionaryId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify([])
-        };
-      } catch (error) {
-        console.error('❌ Get missionary relationships error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar relacionamentos do missionário' })
-        };
-      }
-    }
-
-    // Rota para criar relacionamento
-    if (path === '/api/relationships' && method === 'POST') {
-      try {
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Creating relationship:', body);
-        
-        return {
-          statusCode: 201,
-          headers,
-          body: JSON.stringify({ 
-            success: true, 
-            message: 'Relacionamento criado com sucesso',
-            relationship: {
-              id: Date.now(),
-              ...body,
-              created_at: new Date().toISOString()
-            }
-          })
-        };
-      } catch (error) {
-        console.error('❌ Create relationship error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao criar relacionamento' })
-        };
-      }
-    }
-
-    // Rota para deletar relacionamento
-    if (path.startsWith('/api/relationships/') && method === 'DELETE') {
-      try {
-        const relationshipId = path.split('/')[3];
-        console.log('🔍 Deleting relationship:', relationshipId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Relacionamento deletado com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Delete relationship error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao deletar relacionamento' })
-        };
-      }
-    }
-
-    // Rota para deletar relacionamento ativo
-    if (path.startsWith('/api/relationships/active/') && method === 'DELETE') {
-      try {
-        const interestedId = path.split('/')[3];
-        console.log('🔍 Deleting active relationship for interested:', interestedId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Relacionamento ativo deletado com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Delete active relationship error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao deletar relacionamento ativo' })
-        };
-      }
-    }
-
-    // Rota para criar pedido de discipulado
-    if (path === '/api/discipleship-requests' && method === 'POST') {
-      try {
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Creating discipleship request:', body);
-        
-        return {
-          statusCode: 201,
-          headers,
-          body: JSON.stringify({ 
-            success: true, 
-            message: 'Pedido de discipulado criado com sucesso',
-            request: {
-              id: Date.now(),
-              ...body,
-              created_at: new Date().toISOString()
-            }
-          })
-        };
-      } catch (error) {
-        console.error('❌ Create discipleship request error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao criar pedido de discipulado' })
-        };
-      }
-    }
-
-    // Rota para atualizar pedido de discipulado
-    if (path.startsWith('/api/discipleship-requests/') && method === 'PUT') {
-      try {
-        const requestId = path.split('/')[3];
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Updating discipleship request:', requestId, body);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Pedido de discipulado atualizado com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Update discipleship request error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao atualizar pedido de discipulado' })
-        };
-      }
-    }
-
-    // Rota para deletar pedido de discipulado
-    if (path.startsWith('/api/discipleship-requests/') && method === 'DELETE') {
-      try {
-        const requestId = path.split('/')[3];
-        console.log('🔍 Deleting discipleship request:', requestId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Pedido de discipulado deletado com sucesso' })
-        };
-      } catch (error) {
-        console.error('❌ Delete discipleship request error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao deletar pedido de discipulado' })
-        };
-      }
-    }
-
-    // Rota para eventos do calendário
-    if (path === '/api/calendar/events' && method === 'GET') {
-      try {
-        const events = await sql`SELECT * FROM events ORDER BY date DESC LIMIT 50`;
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify(events)
-        };
-      } catch (error) {
-        console.error('❌ Get calendar events error:', error);
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify([])
-        };
-      }
-    }
-
-    // Rota para criar evento no calendário
-    if (path === '/api/calendar/events' && method === 'POST') {
-      try {
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Creating calendar event:', body);
-        
-        return {
-          statusCode: 201,
-          headers,
-          body: JSON.stringify({ 
-            success: true, 
-            message: 'Evento do calendário criado com sucesso',
-            event: {
-              id: Date.now(),
-              ...body,
-              created_at: new Date().toISOString()
-            }
-          })
-        };
-      } catch (error) {
-        console.error('❌ Create calendar event error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao criar evento do calendário' })
-        };
-      }
-    }
-
-    // Rota para check-ins espirituais
-    if (path === '/api/spiritual-checkins/scores' && method === 'GET') {
-      try {
-        const scores = [
-          { id: 1, userId: 1, score: 8, date: new Date().toISOString() },
-          { id: 2, userId: 2, score: 7, date: new Date().toISOString() }
-        ];
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify(scores)
-        };
-      } catch (error) {
-        console.error('❌ Get spiritual check-ins scores error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar pontuações de check-ins espirituais' })
-        };
-      }
-    }
-
-    // Rota para check-ins emocionais do usuário
-    if (path.startsWith('/api/emotional-checkins/user/') && method === 'GET') {
-      try {
-        const userId = path.split('/')[4];
-        console.log('🔍 Getting emotional check-ins for user:', userId);
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify([])
-        };
-      } catch (error) {
-        console.error('❌ Get user emotional check-ins error:', error);
-        return {
-          statusCode: 500,
-          headers,
-          body: JSON.stringify({ error: 'Erro ao buscar check-ins emocionais do usuário' })
-        };
-      }
-    }
 
     // Rota padrão - retornar erro 404
     return {

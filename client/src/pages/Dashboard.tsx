@@ -394,34 +394,42 @@ const Dashboard = React.memo(() => {
 
   // Set up automatic invalidation when users are updated
   React.useEffect(() => {
+    let isMounted = true;
+    
     const handleUserUpdate = (event: CustomEvent) => {
-      console.log('🔄 Dashboard: User updated event received:', event.detail);
-      
-      // Invalidar queries relacionadas ao dashboard imediatamente
-      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/visits'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
-      
-      // Se foi uma mudança de missionário, invalidar também os relacionamentos
-      if (event.detail?.type === 'missionary-assigned' || event.detail?.type === 'missionary-removed') {
-        queryClient.invalidateQueries({ queryKey: ['/api/relationships'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/relationships/missionary'] });
-      }
-      
-      // Se foi uma reversão de role, invalidar tudo
-      if (event.detail?.type === 'role-reverted') {
+      try {
+        if (!isMounted) return;
+        
+        console.log('🔄 Dashboard: User updated event received:', event.detail);
+        
+        // Invalidar queries relacionadas ao dashboard imediatamente
         queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/dashboard/visits'] });
         queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+        
+        // Se foi uma mudança de missionário, invalidar também os relacionamentos
+        if (event.detail?.type === 'missionary-assigned' || event.detail?.type === 'missionary-removed') {
+          queryClient.invalidateQueries({ queryKey: ['/api/relationships'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/relationships/missionary'] });
+        }
+        
+        // Se foi uma reversão de role, invalidar tudo
+        if (event.detail?.type === 'role-reverted') {
+          queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+        }
+        
+        // Se foi uma desativação de perfil missionário, invalidar tudo
+        if (event.detail?.type === 'missionary-profile-deactivated') {
+          queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/missionary-profiles'] });
+        }
+        
+        console.log('✅ Dashboard: Cache invalidado');
+      } catch (error) {
+        console.error('❌ Erro no handleUserUpdate:', error);
       }
-      
-      // Se foi uma desativação de perfil missionário, invalidar tudo
-      if (event.detail?.type === 'missionary-profile-deactivated') {
-        queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/users'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/missionary-profiles'] });
-      }
-      
-      console.log('✅ Dashboard: Cache invalidado');
     };
 
     // Listen for custom events when users are updated
@@ -436,6 +444,7 @@ const Dashboard = React.memo(() => {
     window.addEventListener('relationship-deleted', handleUserUpdate as EventListener);
 
     return () => {
+      isMounted = false;
       window.removeEventListener('user-updated', handleUserUpdate as EventListener);
       window.removeEventListener('user-approved', handleUserUpdate as EventListener);
       window.removeEventListener('user-rejected', handleUserUpdate as EventListener);

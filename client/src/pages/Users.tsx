@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { User, Search, Filter, UserPlus, Shield, CheckCircle, XCircle, ArrowUpDown, ArrowUp, ArrowDown, Star, AlertTriangle, Clock, CheckCircle2, Heart, Mountain, ChevronDown, ChevronUp, EyeOff, Eye, TrendingUp, BarChart3, Trophy } from 'lucide-react';
+import { User, Search, Filter, UserPlus, Shield, CheckCircle, XCircle, ArrowUp, ArrowDown, Star, AlertTriangle, Clock, CheckCircle2, Heart, Mountain, ChevronDown, ChevronUp, EyeOff, Eye, TrendingUp, BarChart3, Trophy } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -195,8 +195,8 @@ export default function Users() {
     queryKey: ['/api/users/with-points'],
     queryFn: async () => {
       try {
-        // WORKAROUND: Usar /api/users até resolver problema do /api/users/with-points
-        const response = await fetch('/api/users');
+        // Usar a rota correta que calcula pontos em tempo real
+        const response = await fetch('/api/users/with-points');
         if (!response.ok) {
           throw new Error('Falha ao carregar usuários');
         }
@@ -936,42 +936,6 @@ export default function Users() {
           <div className="flex items-center gap-2">
             {user?.role === 'admin' && (
               <>
-                <Button 
-                  onClick={async () => {
-                    try {
-                      toast({
-                        title: "🔄 Recalculando...",
-                        description: "Calculando pontuação para todos os usuários. Isso pode levar alguns minutos.",
-                      });
-                      
-                      const response = await fetch('/api/system/recalculate-all-points', { method: 'POST' });
-                      const result = await response.json();
-                      
-                      if (result.success) {
-                        queryClient.invalidateQueries({ queryKey: ['/api/users/with-points'] });
-                        toast({
-                          title: "✅ Pontuação Atualizada",
-                          description: `${result.updatedUsers} usuários foram atualizados com sucesso!`,
-                        });
-                      } else {
-                        throw new Error(result.error || 'Erro desconhecido');
-                      }
-                    } catch (error) {
-                      toast({
-                        title: "❌ Erro",
-                        description: "Falha ao recalcular pontuação. Tente novamente.",
-                        variant: "destructive",
-                      });
-                    }
-                  }}
-                  size="sm"
-                  variant="outline"
-                  className="border-green-600 text-green-600 hover:bg-green-50"
-                >
-                  <ArrowUpDown className="h-4 w-4 mr-1" />
-                  Recalcular Todas as Pontuações
-                </Button>
-                
                 <Button 
                   onClick={async () => {
                     try {

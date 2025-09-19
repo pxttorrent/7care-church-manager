@@ -325,47 +325,6 @@ export const usePointsConfig = () => {
     }
   };
 
-  const calculateDistrictAverage = async (targetAverage: number) => {
-    try {
-      const response = await fetch('/api/system/district-average', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetAverage })
-      });
-
-      if (!response.ok) {
-        throw new Error('Erro ao calcular média do distrito');
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
-        toast({
-          title: "Média do Distrito Ajustada!",
-          description: `Nova média dos usuários: ${result.newUserAverage} pontos. ${result.updatedUsers} usuários atualizados automaticamente.`,
-        });
-        
-        return {
-          success: true,
-          currentAverage: result.currentUserAverage,
-          newAverage: result.newUserAverage,
-          adjustmentFactor: result.adjustmentFactor,
-          updatedUsers: result.updatedUsers
-        };
-      } else {
-        return {
-          success: false,
-          error: result.error || 'Erro desconhecido'
-        };
-      }
-    } catch (error) {
-      console.error('Erro ao calcular média do distrito:', error);
-      return {
-        success: false,
-        error: 'Erro ao conectar com o servidor'
-      };
-    }
-  };
 
   return {
     config,
@@ -376,7 +335,6 @@ export const usePointsConfig = () => {
     getTotalMaxPoints,
     getConfigSummary,
     getCurrentParameterAverage,
-    getCurrentUserAverage,
-    calculateDistrictAverage
+    getCurrentUserAverage
   };
 }; 

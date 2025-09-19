@@ -13,14 +13,18 @@ export const useLastImportDate = () => {
 
   useEffect(() => {
     const handleImportSuccess = (event: CustomEvent<ImportSuccessEvent>) => {
-      if (event.detail && event.detail.timestamp) {
-        const newTimestamp = event.detail.timestamp;
-        setLastImportDate(newTimestamp);
-        
-        // Salvar no localStorage para persistência
-        localStorage.setItem('lastImportDate', newTimestamp);
-        
-        console.log(`📅 Data da última importação atualizada: ${newTimestamp} (${event.detail.type})`);
+      try {
+        if (event.detail && event.detail.timestamp) {
+          const newTimestamp = event.detail.timestamp;
+          setLastImportDate(newTimestamp);
+          
+          // Salvar no localStorage para persistência
+          localStorage.setItem('lastImportDate', newTimestamp);
+          
+          console.log(`📅 Data da última importação atualizada: ${newTimestamp} (${event.detail.type})`);
+        }
+      } catch (error) {
+        console.error('❌ Erro no handleImportSuccess:', error);
       }
     };
 

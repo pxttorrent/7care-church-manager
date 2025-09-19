@@ -17,6 +17,11 @@ self.addEventListener('install', (event) => {
 
 // Fetch event
 self.addEventListener('fetch', (event) => {
+  // Não responder a requisições que não devem ser interceptadas
+  if (!event.request.url.startsWith(self.location.origin)) {
+    return;
+  }
+  
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
@@ -25,6 +30,11 @@ self.addEventListener('fetch', (event) => {
           return response;
         }
         return fetch(event.request);
+      })
+      .catch((error) => {
+        console.error('Fetch error:', error);
+        // Fallback para requisições que falharam
+        return new Response('Network error', { status: 408 });
       })
   );
 });
@@ -89,4 +99,27 @@ self.addEventListener('sync', (event) => {
 function doBackgroundSync() {
   // Implement background sync logic here
   console.log('Background sync triggered');
+  return Promise.resolve();
 }
+
+// Message event listener para comunicação com a página
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Activate event
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+});

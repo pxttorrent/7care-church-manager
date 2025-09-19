@@ -122,13 +122,13 @@ const mockEvents: CalendarEvent[] = [
 ];
 
 const eventTypeColors = {
-  "igreja-local": "bg-red-500 text-white border-red-600",
-  "asr-geral": "bg-orange-500 text-white border-orange-600",
-  "asr-administrativo": "bg-cyan-500 text-white border-cyan-600",
-  "asr-pastores": "bg-purple-500 text-white border-purple-600",
-  "visitas": "bg-green-500 text-white border-green-600",
-  "reunioes": "bg-blue-500 text-white border-blue-600",
-  "pregacoes": "bg-indigo-500 text-white border-indigo-600"
+  "igreja-local": "bg-gradient-to-r from-red-500 to-red-600 text-white border-red-700 shadow-red-200",
+  "asr-geral": "bg-gradient-to-r from-orange-500 to-orange-600 text-white border-orange-700 shadow-orange-200",
+  "asr-administrativo": "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white border-cyan-700 shadow-cyan-200",
+  "asr-pastores": "bg-gradient-to-r from-purple-500 to-purple-600 text-white border-purple-700 shadow-purple-200",
+  "visitas": "bg-gradient-to-r from-green-500 to-green-600 text-white border-green-700 shadow-green-200",
+  "reunioes": "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-700 shadow-blue-200",
+  "pregacoes": "bg-gradient-to-r from-indigo-500 to-indigo-600 text-white border-indigo-700 shadow-indigo-200"
 };
 
 // Função para determinar a cor baseada no tipo do evento
@@ -361,15 +361,21 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
                     {dayBirthdays.map((birthday) => (
                       <div
                         key={`birthday-${birthday.id}`}
-                        className="p-1 rounded text-xs bg-pink-100 text-pink-800 border border-pink-200 cursor-pointer hover:opacity-80 transition-opacity shadow-sm"
+                        className="p-1.5 rounded-lg text-xs bg-gradient-to-r from-pink-400 to-pink-500 text-white border-2 border-pink-600 cursor-pointer hover:scale-105 hover:shadow-lg transition-all duration-200 shadow-md group relative overflow-hidden"
                         data-testid={`birthday-${birthday.id}`}
                       >
-                        <div className="flex items-center gap-1">
-                          <Cake className="h-3 w-3" />
-                          <span className="font-medium truncate">{birthday.name}</span>
-                        </div>
-                        <div className="text-xs text-pink-600">
-                          Aniversário
+                        {/* Efeito de brilho sutil */}
+                        <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg"></div>
+                        
+                        <div className="relative z-10">
+                          <div className="flex items-center gap-1.5">
+                            <Cake className="h-3 w-3 flex-shrink-0" />
+                            <span className="font-semibold truncate text-xs">{birthday.name}</span>
+                          </div>
+                          <div className="text-xs opacity-90 mt-0.5 flex items-center gap-1">
+                            <div className="w-1 h-1 bg-white/60 rounded-full"></div>
+                            <span>Aniversário</span>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -379,16 +385,20 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
                       <div
                         key={event.id}
                         className={cn(
-                          "p-1 rounded text-xs cursor-pointer hover:opacity-80 transition-opacity shadow-sm",
+                          "p-1.5 rounded-lg text-xs cursor-pointer hover:scale-105 hover:shadow-lg transition-all duration-200 shadow-md border-2 group relative overflow-hidden min-h-[2.5rem] flex flex-col",
                           getEventColor(event)
                         )}
                         onClick={() => onEventClick?.(event)}
                         data-testid={`event-${event.id}`}
                       >
-                        <div className="font-medium truncate">{event.title}</div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          <span>{event.time}</span>
+                        {/* Efeito de brilho sutil */}
+                        <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg"></div>
+                        
+                        <div className="relative z-10">
+                          <div className="font-semibold break-words text-xs leading-tight min-h-[1.2em]">{event.title}</div>
+                          <div className="mt-1">
+                            <span className="text-xs opacity-90">{event.time}</span>
+                          </div>
                         </div>
                       </div>
                     ))}

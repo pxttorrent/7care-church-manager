@@ -301,7 +301,7 @@ export const EventModal = ({
             </div>
 
             <div>
-              <Label htmlFor="date" className="text-xs">Data</Label>
+              <Label htmlFor="date" className="text-xs">Data de Início</Label>
               {isEditing ? (
                 <Input
                   id="date"
@@ -316,6 +316,32 @@ export const EventModal = ({
                   <Calendar className="h-3 w-3 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">
                     {event?.startDate ? formatDateSafe(event.startDate) : ''}
+                    {event?.endDate && event.endDate !== event.startDate && (
+                      <span className="text-muted-foreground">
+                        {' - '}{formatDateSafe(event.endDate)}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <Label htmlFor="endDate" className="text-xs">Data de Fim (opcional)</Label>
+              {isEditing ? (
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={formData.endDate as string | undefined}
+                  onChange={(e) => setFormData({...formData, endDate: e.target.value})}
+                  data-testid="input-event-end-date"
+                  className="mt-1 h-6 text-xs"
+                />
+              ) : (
+                <div className="flex items-center gap-1 mt-1">
+                  <Calendar className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
+                    {event?.endDate ? formatDateSafe(event.endDate) : 'Evento de um dia'}
                   </span>
                 </div>
               )}

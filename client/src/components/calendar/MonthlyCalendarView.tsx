@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useEventFilterPermissions } from "@/hooks/useEventFilterPermissions";
-import { CalendarEvent, EventType } from "@/types/calendar";
+import { CalendarEvent, EventType, EVENT_TYPES } from "@/types/calendar";
 import { useBirthdays } from "@/hooks/useBirthdays";
 
 // Função utilitária para formatar datas sem problemas de fuso horário
@@ -72,11 +72,11 @@ const fetchEvents = async (userRole?: string): Promise<CalendarEvent[]> => {
   try {
     // Buscar reuniões da API
     const meetingsResponse = await fetch('/api/meetings');
-    const meetings = await meetingsResponse.json();
+    const meetings = meetingsResponse.ok ? await meetingsResponse.json() : [];
     
     // Buscar eventos da API com role do usuário
     const eventsResponse = await fetch(`/api/events?role=${userRole || 'interested'}`);
-    const eventsApi = await eventsResponse.json();
+    const eventsApi = eventsResponse.ok ? await eventsResponse.json() : [];
 
     // Converter reuniões para o formato de eventos da agenda
     const eventsFromMeetings = meetings.map((meeting: any) => ({
@@ -162,6 +162,8 @@ const fetchEvents = async (userRole?: string): Promise<CalendarEvent[]> => {
       meetingsCount: eventsFromMeetings.length,
       apiEventsCount: eventsFromApi.length,
       totalEvents: allEvents.length,
+      meetingsResponse: meetingsResponse.status,
+      eventsResponse: eventsResponse.status,
       apiEvents: eventsApi.slice(0, 2), // Mostrar apenas os primeiros 2 eventos da API
       convertedEvents: eventsFromApi.slice(0, 2) // Mostrar apenas os primeiros 2 eventos convertidos
     });
@@ -174,13 +176,13 @@ const fetchEvents = async (userRole?: string): Promise<CalendarEvent[]> => {
 };
 
 const eventTypeColors = {
-  "igreja-local": "bg-red-500 text-white border-red-600",
-  "asr-geral": "bg-orange-500 text-white border-orange-600",
-  "asr-administrativo": "bg-cyan-500 text-white border-cyan-600",
-  "asr-pastores": "bg-purple-500 text-white border-purple-600",
-  "visitas": "bg-green-500 text-white border-green-600",
-  "reunioes": "bg-blue-500 text-white border-blue-600",
-  "pregacoes": "bg-indigo-500 text-white border-indigo-600"
+  "igreja-local": "bg-gradient-to-r from-red-500 to-red-600 text-white border-red-700 shadow-red-200",
+  "asr-geral": "bg-gradient-to-r from-orange-500 to-orange-600 text-white border-orange-700 shadow-orange-200",
+  "asr-administrativo": "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white border-cyan-700 shadow-cyan-200",
+  "asr-pastores": "bg-gradient-to-r from-purple-500 to-purple-600 text-white border-purple-700 shadow-purple-200",
+  "visitas": "bg-gradient-to-r from-green-500 to-green-600 text-white border-green-700 shadow-green-200",
+  "reunioes": "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-700 shadow-blue-200",
+  "pregacoes": "bg-gradient-to-r from-indigo-500 to-indigo-600 text-white border-indigo-700 shadow-indigo-200"
 };
 
 // Função para determinar a cor baseada no tipo do evento
@@ -253,8 +255,22 @@ export function MonthlyCalendarView({
   const { user } = useAuth();
   const { canFilterEventType } = useEventFilterPermissions();
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const { birthdays, isLoading: birthdaysLoading } = useBirthdays();
+
+  // Função para alternar a expansão de um dia
+  const toggleDayExpansion = useCallback((dateString: string) => {
+    setExpandedDays(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(dateString)) {
+        newSet.delete(dateString);
+      } else {
+        newSet.add(dateString);
+      }
+      return newSet;
+    });
+  }, []);
   
   // Debug log para verificar o estado
   console.log('🎂 Estado dos aniversariantes:', { 
@@ -586,12 +602,172 @@ export function MonthlyCalendarView({
 
         {/* Calendar Grid */}
         <CardContent>
-          <div className="grid grid-cols-7 gap-1 mb-4">
+          {/* Mobile Layout - Calendário simplificado */}
+          <div className="block sm:hidden">
+            <div className="grid grid-cols-7 gap-1 mb-4">
+              {/* Day headers */}
+              {dayNames.map((day) => (
+                <div
+                  key={day}
+                  className="p-2 text-center text-sm font-medium text-muted-foreground border-b"
+                >
+                  {day}
+                </div>
+              ))}
+
+              {/* Calendar days - Mobile: apenas números */}
+              {monthDays.map((dateString, index) => {
+                const dayEvents = getEventsForDay(dateString);
+                const isCurrentDay = isToday(dateString);
+                const isSelected = selectedDate === dateString;
+                
+                return (
+                  <div
+                    key={index}
+                    className={cn(
+                      "min-h-[50px] p-2 border border-border cursor-pointer hover:bg-muted/50 transition-colors flex flex-col items-center justify-center",
+                      isCurrentDay && "bg-primary/10 border-primary text-primary font-bold",
+                      isSelected && "bg-primary/20 border-primary",
+                      !dateString && "bg-muted/20 cursor-not-allowed"
+                    )}
+                    onClick={() => handleDateClick(dateString)}
+                    data-testid={dateString ? `calendar-day-${dateString}` : `empty-day-${index}`}
+                  >
+                    {dateString && (
+                      <>
+                        <div className="text-base font-medium">
+                          {parseInt(dateString.split('-')[2])}
+                        </div>
+                        {/* Indicador de eventos - barras coloridas por categoria */}
+                        {dayEvents.length > 0 && (
+                          <div className="flex gap-0.5 mt-1 justify-center">
+                            {(() => {
+                              // Agrupar eventos por tipo para mostrar uma barra por categoria
+                              const eventsByType = dayEvents.reduce((acc, event) => {
+                                if (!acc[event.type]) {
+                                  acc[event.type] = [];
+                                }
+                                acc[event.type].push(event);
+                                return acc;
+                              }, {} as Record<string, CalendarEvent[]>);
+                              
+                              // Mostrar até 4 barras (uma por categoria)
+                              const eventTypes = Object.keys(eventsByType).slice(0, 4);
+                              
+                              return eventTypes.map((eventType, index) => {
+                                const eventTypeConfig = EVENT_TYPES.find(et => et.id === eventType);
+                                const colorClass = eventTypeConfig?.color || 'bg-gray-500';
+                                
+                                return (
+                                  <div
+                                    key={`${dateString}-${eventType}-${index}`}
+                                    className={`w-2 h-1 rounded-full ${colorClass}`}
+                                    title={`${eventTypeConfig?.label || eventType}: ${eventsByType[eventType].length} evento(s)`}
+                                  />
+                                );
+                              });
+                            })()}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Lista de eventos do dia selecionado - Mobile */}
+            {selectedDate && (
+              <div className="mt-4 space-y-1">
+                <h3 className="text-lg font-semibold text-center mb-3">
+                  Eventos do dia {parseInt(selectedDate.split('-')[2])}
+                </h3>
+                {getEventsForDay(selectedDate).map((event) => {
+                  const isMultiDay = isMultiDayEvent(event);
+                  const isFirstDay = isFirstDayOfMultiDayEvent(event, selectedDate);
+                  const isLastDay = isLastDayOfMultiDayEvent(event, selectedDate);
+                  const isMiddleDay = isMiddleDayOfMultiDayEvent(event, selectedDate);
+                  
+                  return (
+                    <div
+                      key={event.id}
+                      className={cn(
+                        "text-xs p-1.5 rounded-lg border-2 cursor-pointer hover:scale-105 hover:shadow-lg transition-all duration-200 shadow-md relative group overflow-hidden min-h-[2.5rem] flex flex-col",
+                        getEventColor(event),
+                        // Estilos especiais para eventos de múltiplos dias - barra contínua elegante
+                        isMultiDay && "border-2 shadow-lg",
+                        isFirstDay && "rounded-l-lg rounded-r-none border-l-4 border-r-0",
+                        isLastDay && "rounded-r-lg rounded-l-none border-r-4 border-l-0",
+                        isMiddleDay && "rounded-none border-l-0 border-r-0"
+                      )}
+                      onClick={() => onEventClick?.(event)}
+                      data-testid={`mobile-event-${event.id}`}
+                      title={isMultiDay ? `${event.title} (${event.startDate} - ${event.endDate})` : event.title}
+                    >
+                      {/* Efeito de brilho sutil */}
+                      <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg"></div>
+                      
+                      <div className="relative z-10">
+                        <div className="font-semibold flex items-start gap-1.5 text-xs leading-tight">
+                          {isMultiDay && <CalendarDays className="h-3 w-3 flex-shrink-0 mt-0.5" />}
+                          <span className="text-xs font-medium break-words leading-tight min-h-[1.2em]">
+                            {isMultiDay ? (
+                              isFirstDay ? `${event.title} (Início)` :
+                              isLastDay ? `${event.title} (Fim)` :
+                              event.title // Mostra o nome completo do evento nos dias intermediários
+                            ) : event.title}
+                          </span>
+                        </div>
+                        
+                        {event.time && (
+                          <div className="mt-1">
+                            <span className="text-xs opacity-90">
+                              {formatTime(event.time)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                
+                {/* Aniversariantes do dia selecionado */}
+                {(() => {
+                  const [year, month, day] = selectedDate.split('-');
+                  const date = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+                  const dayBirthdays = getBirthdaysForDate(date);
+                  
+                  return dayBirthdays.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-md font-semibold mb-2">Aniversariantes</h4>
+                      {dayBirthdays.map((birthday) => (
+                        <div
+                          key={`mobile-birthday-${birthday.id}`}
+                          className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-pink-400 to-pink-500 text-white border-2 border-pink-600 cursor-pointer hover:shadow-lg transition-all duration-200 shadow-md"
+                          data-testid={`mobile-birthday-${birthday.id}`}
+                        >
+                          <Cake className="h-5 w-5" />
+                          <div className="flex-1">
+                            <div className="font-medium">{birthday.name}</div>
+                            <div className="text-sm opacity-90">Aniversário</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Layout - Calendário completo */}
+          <div className="hidden sm:block">
+            <div className="grid grid-cols-7 gap-1 mb-4">
             {/* Day headers */}
             {dayNames.map((day) => (
               <div
                 key={day}
-                className="p-2 text-center text-sm font-medium text-muted-foreground border-b"
+                className="p-2 sm:p-2 p-3 text-center text-sm font-medium text-muted-foreground border-b"
               >
                 {day}
               </div>
@@ -623,7 +799,7 @@ export function MonthlyCalendarView({
                 <div
                   key={index}
                   className={cn(
-                    "min-h-[120px] p-1 border border-border cursor-pointer hover:bg-muted/50 transition-colors",
+                    "min-h-[120px] sm:min-h-[120px] min-h-[140px] p-1 sm:p-1 p-2 border border-border cursor-pointer hover:bg-muted/50 transition-colors",
                     isCurrentDay && "bg-primary/10 border-primary",
                     isSelected && "bg-primary/20",
                     !dateString && "bg-muted/20 cursor-not-allowed"
@@ -635,15 +811,15 @@ export function MonthlyCalendarView({
                     <>
                       {/* Day number */}
                       <div className={cn(
-                        "text-sm font-medium mb-1",
+                        "text-base sm:text-sm font-medium mb-1",
                         isCurrentDay && "text-primary font-bold"
                       )}>
                         {parseInt(dateString.split('-')[2])}
                       </div>
 
                       {/* Events - Prioridade alta para manter na mesma linha */}
-                      <div className="space-y-0.5 mb-1 flex flex-col">
-                        {dayEvents.slice(0, 3).map((event) => {
+                      <div className="space-y-1 sm:space-y-0.5 mb-1 flex flex-col">
+                        {(expandedDays.has(dateString) ? dayEvents : dayEvents.slice(0, 3)).map((event) => {
                           const isMultiDay = isMultiDayEvent(event);
                           const isFirstDay = isFirstDayOfMultiDayEvent(event, dateString);
                           const isLastDay = isLastDayOfMultiDayEvent(event, dateString);
@@ -653,12 +829,12 @@ export function MonthlyCalendarView({
                             <div
                               key={event.id}
                               className={cn(
-                                "text-xs p-0.5 rounded border cursor-pointer hover:opacity-80 shadow-sm relative",
+                                "text-xs sm:text-xs text-sm p-2 sm:p-1.5 rounded-lg border-2 cursor-pointer hover:scale-105 hover:shadow-lg transition-all duration-200 shadow-md relative group overflow-hidden min-h-[3rem] sm:min-h-[2.5rem] flex flex-col",
                                 getEventColor(event),
                                 // Estilos especiais para eventos de múltiplos dias - barra contínua elegante
-                                isMultiDay && "border-2",
-                                isFirstDay && "rounded-l-md rounded-r-none border-l-2 border-r-0",
-                                isLastDay && "rounded-r-md rounded-l-none border-r-2 border-l-0",
+                                isMultiDay && "border-2 shadow-lg",
+                                isFirstDay && "rounded-l-lg rounded-r-none border-l-4 border-r-0",
+                                isLastDay && "rounded-r-lg rounded-l-none border-r-4 border-l-0",
                                 isMiddleDay && "rounded-none border-l-0 border-r-0"
                               )}
                               onClick={(e) => {
@@ -668,22 +844,27 @@ export function MonthlyCalendarView({
                               data-testid={`event-${event.id}`}
                               title={isMultiDay ? `${event.title} (${event.startDate} - ${event.endDate})` : event.title}
                             >
-                              <div className="font-medium truncate flex items-center gap-1 text-xs">
-                                {isMultiDay && <CalendarDays className="h-2 w-2" />}
-                                <span className="text-xs">
-                                  {isMultiDay ? (
-                                    isFirstDay ? `${event.title} (Início)` :
-                                    isLastDay ? `${event.title} (Fim)` :
-                                    "..." // Mostra apenas pontos nos dias intermediários
-                                  ) : event.title}
-                                </span>
-                              </div>
-                              <div className="text-xs opacity-75 text-xs">
-                                {event.time ? formatTime(event.time) : ''}
-                                {isMultiDay && (
-                                  <span className="ml-1 text-xs">
-                                    {isMiddleDay && "Continua"}
+                              {/* Efeito de brilho sutil */}
+                              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg"></div>
+                              
+                              <div className="relative z-10">
+                                <div className="font-semibold flex items-start gap-1.5 text-sm sm:text-xs leading-tight">
+                                  {isMultiDay && <CalendarDays className="h-4 w-4 sm:h-3 sm:w-3 flex-shrink-0 mt-0.5" />}
+                                  <span className="text-sm sm:text-xs font-medium break-words leading-tight min-h-[1.2em]">
+                                    {isMultiDay ? (
+                                      isFirstDay ? `${event.title} (Início)` :
+                                      isLastDay ? `${event.title} (Fim)` :
+                                      event.title // Mostra o nome completo do evento nos dias intermediários
+                                    ) : event.title}
                                   </span>
+                                </div>
+                                
+                                {event.time && (
+                                  <div className="mt-1">
+                                    <span className="text-sm sm:text-xs opacity-90">
+                                      {formatTime(event.time)}
+                                    </span>
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -691,27 +872,52 @@ export function MonthlyCalendarView({
                         })}
                         
                         {/* Show "+X more" if there are more events */}
-                        {dayEvents.length > 3 && (
-                          <div className="text-xs text-muted-foreground text-center py-0.5">
-                            +{dayEvents.length - 3} mais
+                        {dayEvents.length > 3 && !expandedDays.has(dateString) && (
+                          <div 
+                            className="text-xs text-muted-foreground text-center py-1 px-2 bg-gray-100/80 rounded-md border border-gray-200 hover:bg-gray-200/80 transition-colors cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleDayExpansion(dateString);
+                            }}
+                          >
+                            <span className="font-medium">+{dayEvents.length - 3} mais eventos</span>
+                          </div>
+                        )}
+                        
+                        {/* Show "Ver menos" if day is expanded */}
+                        {dayEvents.length > 3 && expandedDays.has(dateString) && (
+                          <div 
+                            className="text-xs text-muted-foreground text-center py-1 px-2 bg-gray-100/80 rounded-md border border-gray-200 hover:bg-gray-200/80 transition-colors cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleDayExpansion(dateString);
+                            }}
+                          >
+                            <span className="font-medium">Ver menos</span>
                           </div>
                         )}
                       </div>
 
                       {/* Aniversariantes - Posicionados abaixo dos eventos */}
-                      <div className="flex flex-col space-y-0.5">
+                      <div className="flex flex-col space-y-1 sm:space-y-0.5">
                         {dayBirthdays.map((birthday) => (
                           <div
                             key={`birthday-${birthday.id}`}
-                            className="p-0.5 rounded text-xs cursor-pointer hover:opacity-80 transition-opacity shadow-sm bg-green-100 text-green-800 border border-green-200 flex-shrink-0"
+                            className="p-2 sm:p-1.5 rounded-lg text-sm sm:text-xs cursor-pointer hover:scale-105 hover:shadow-lg transition-all duration-200 shadow-md bg-gradient-to-r from-pink-400 to-pink-500 text-white border-2 border-pink-600 flex-shrink-0 group relative overflow-hidden min-h-[2.5rem] sm:min-h-[2rem]"
                             data-testid={`birthday-${birthday.id}`}
                           >
-                            <div className="flex items-center gap-1">
-                              <Cake className="h-2 w-2" />
-                              <span className="font-medium truncate text-xs">{birthday.name}</span>
-                            </div>
-                            <div className="text-xs text-green-600">
-                              Aniversário
+                            {/* Efeito de brilho sutil */}
+                            <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-lg"></div>
+                            
+                            <div className="relative z-10">
+                              <div className="flex items-center gap-1.5">
+                                <Cake className="h-4 w-4 sm:h-3 sm:w-3 flex-shrink-0" />
+                                <span className="font-semibold break-words text-sm sm:text-xs">{birthday.name}</span>
+                              </div>
+                              <div className="text-sm sm:text-xs opacity-90 mt-0.5 flex items-center gap-1">
+                                <div className="w-1 h-1 bg-white/60 rounded-full"></div>
+                                <span>Aniversário</span>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -722,12 +928,13 @@ export function MonthlyCalendarView({
               );
             })}
           </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Selected Date Events */}
+      {/* Selected Date Events - Desktop only */}
       {selectedDate && (
-        <Card>
+        <Card className="hidden sm:block">
           <CardHeader>
             <CardTitle className="text-lg">
               Eventos do dia {formatDateSafe(selectedDate)}

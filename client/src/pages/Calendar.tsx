@@ -11,6 +11,7 @@ import {
 import { MonthlyCalendarView } from '@/components/calendar/MonthlyCalendarView';
 import { EventModal } from '@/components/calendar/EventModal';
 import { ImportExcelModal } from '@/components/calendar/ImportExcelModal';
+import { EventPermissionsModal } from '@/components/calendar/EventPermissionsModal';
 import { useEventFilterPermissions } from '@/hooks/useEventFilterPermissions';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,6 +26,7 @@ export default function Calendar() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [showBirthdays, setShowBirthdays] = useState(false);
@@ -50,10 +52,18 @@ export default function Calendar() {
 
   // Effect para escutar eventos de importação bem-sucedida
   useEffect(() => {
+    let isMounted = true;
+    
     const handleImportSuccess = (event: CustomEvent) => {
-      if (event.detail && event.detail.type === 'calendar-events') {
-        console.log(`📅 Importação de eventos bem-sucedida: ${event.detail.count} eventos importados`);
-        // A data da última importação será atualizada automaticamente pelo Settings
+      try {
+        if (!isMounted) return;
+        
+        if (event.detail && event.detail.type === 'calendar-events') {
+          console.log(`📅 Importação de eventos bem-sucedida: ${event.detail.count} eventos importados`);
+          // A data da última importação será atualizada automaticamente pelo Settings
+        }
+      } catch (error) {
+        console.error('❌ Erro no handleImportSuccess:', error);
       }
     };
 
@@ -62,6 +72,7 @@ export default function Calendar() {
 
     // Cleanup do listener
     return () => {
+      isMounted = false;
       window.removeEventListener('import-success', handleImportSuccess as EventListener);
     };
   }, []);
@@ -226,9 +237,16 @@ export default function Calendar() {
       const result = await response.json();
 
       if (response.ok) {
-        // Invalidar cache e recarregar eventos
+        // Invalidar e remover cache de eventos
         queryClient.invalidateQueries({ queryKey: ['events'] });
         queryClient.invalidateQueries({ queryKey: ['events', user?.role] });
+        queryClient.removeQueries({ queryKey: ['events'] });
+        queryClient.removeQueries({ queryKey: ['events', user?.role] });
+        
+        // Forçar refetch imediato
+        queryClient.refetchQueries({ queryKey: ['events'] });
+        queryClient.refetchQueries({ queryKey: ['events', user?.role] });
+        
         toast({
           title: "Eventos removidos",
           description: result.message || "Todos os eventos foram removidos com sucesso.",
@@ -319,6 +337,15 @@ export default function Calendar() {
             <div className="flex flex-wrap gap-2 items-center pt-2 border-t">
               <span className="text-sm text-muted-foreground mr-2">Ações:</span>
               
+              <Button 
+                onClick={() => setShowPermissionsModal(true)} 
+                variant="outline" 
+                size="sm" 
+                className="h-8"
+              >
+                <Filter className="h-4 w-4 mr-2" />
+                Gerenciar Permissões
+              </Button>
               
               <Button 
                 onClick={() => setShowImportModal(true)} 
@@ -389,6 +416,11 @@ export default function Calendar() {
           onImportComplete={handleImportComplete}
         />
 
+        {/* Event Permissions Modal */}
+        <EventPermissionsModal
+          isOpen={showPermissionsModal}
+          onClose={() => setShowPermissionsModal(false)}
+        />
 
       </div>
     </MobileLayout>

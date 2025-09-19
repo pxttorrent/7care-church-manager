@@ -897,76 +897,101 @@ export class NeonAdapter implements IStorage {
           continue;
         }
         
-        // Calcular pontos usando a lógica existente
+        // Calcular pontos usando a mesma lógica da rota points-details
         const pointsConfig = await this.getPointsConfiguration();
         let totalPoints = 0;
         
-        // Pontos básicos
-        totalPoints += pointsConfig.basicPoints || 100;
-        
-        // Pontos de presença
-        const attendancePoints = (userData.attendance || 0) * (pointsConfig.attendancePoints || 10);
-        totalPoints += attendancePoints;
-        
-        // Pontos de engajamento
-        const engajamento = userData.engajamento || 'baixo';
-        totalPoints += pointsConfig.engajamento[engajamento] || 0;
-        
-        // Pontos de classificação
-        const classificacao = userData.classificacao || 'naoFrequente';
-        totalPoints += pointsConfig.classificacao[classificacao] || 0;
-        
-        // Pontos de dízimo
-        const dizimistaType = userData.dizimistaType || 'naoDizimista';
-        totalPoints += pointsConfig.dizimista[dizimistaType] || 0;
-        
-        // Pontos de oferta
-        const ofertanteType = userData.ofertanteType || 'naoOfertante';
-        totalPoints += pointsConfig.ofertante[ofertanteType] || 0;
-        
-        // Pontos de tempo de batismo
-        const tempoBatismoAnos = userData.tempoBatismoAnos || 0;
-        if (tempoBatismoAnos >= 20) {
-          totalPoints += pointsConfig.tempoBatismo.maisVinte || 50;
-        } else if (tempoBatismoAnos >= 10) {
-          totalPoints += pointsConfig.tempoBatismo.vinteAnos || 40;
-        } else if (tempoBatismoAnos >= 5) {
-          totalPoints += pointsConfig.tempoBatismo.cincoAnos || 20;
-        } else if (tempoBatismoAnos >= 2) {
-          totalPoints += pointsConfig.tempoBatismo.doisAnos || 10;
+        // Engajamento
+        if (userData.engajamento) {
+          const engajamento = userData.engajamento.toLowerCase();
+          if (engajamento.includes('baixo')) totalPoints += pointsConfig.engajamento.baixo;
+          else if (engajamento.includes('médio') || engajamento.includes('medio')) totalPoints += pointsConfig.engajamento.medio;
+          else if (engajamento.includes('alto')) totalPoints += pointsConfig.engajamento.alto;
         }
         
-        // Pontos de unidade
-        const nomeUnidade = userData.nomeUnidade || '';
-        if (nomeUnidade && nomeUnidade !== '') {
-          totalPoints += pointsConfig.nomeUnidade.comUnidade || 15;
+        // Classificação
+        if (userData.classificacao) {
+          const classificacao = userData.classificacao.toLowerCase();
+          if (classificacao.includes('frequente')) {
+            totalPoints += pointsConfig.classificacao.frequente;
+          } else {
+            totalPoints += pointsConfig.classificacao.naoFrequente;
+          }
         }
         
-        // Pontos de batismo
-        if (userData.batizouAlguem) {
-          totalPoints += pointsConfig.batizouAlguem.sim || 100;
+        // Dizimista
+        if (userData.dizimista) {
+          const dizimista = userData.dizimista.toLowerCase();
+          if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) totalPoints += pointsConfig.dizimista.naoDizimista;
+          else if (dizimista.includes('pontual')) totalPoints += pointsConfig.dizimista.pontual;
+          else if (dizimista.includes('sazonal')) totalPoints += pointsConfig.dizimista.sazonal;
+          else if (dizimista.includes('recorrente')) totalPoints += pointsConfig.dizimista.recorrente;
         }
         
-        // Pontos de discipulado pós-batismo
-        const discPosBatismal = userData.discPosBatismal || 0;
-        totalPoints += discPosBatismal * (pointsConfig.discipuladoPosBatismo.multiplicador || 10);
-        
-        // Pontos de CPF válido
-        if (userData.cpfValido) {
-          totalPoints += pointsConfig.cpfValido.valido || 20;
+        // Ofertante
+        if (userData.ofertante) {
+          const ofertante = userData.ofertante.toLowerCase();
+          if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) totalPoints += pointsConfig.ofertante.naoOfertante;
+          else if (ofertante.includes('pontual')) totalPoints += pointsConfig.ofertante.pontual;
+          else if (ofertante.includes('sazonal')) totalPoints += pointsConfig.ofertante.sazonal;
+          else if (ofertante.includes('recorrente')) totalPoints += pointsConfig.ofertante.recorrente;
         }
         
-        // Pontos de campos completos
-        if (!userData.camposVaziosACMS) {
-          totalPoints += pointsConfig.camposVaziosACMS.completos || 25;
+        // Tempo de batismo
+        if (userData.tempoBatismo && typeof userData.tempoBatismo === 'number') {
+          const tempo = userData.tempoBatismo;
+          if (tempo >= 2 && tempo < 5) totalPoints += pointsConfig.tempoBatismo.doisAnos;
+          else if (tempo >= 5 && tempo < 10) totalPoints += pointsConfig.tempoBatismo.cincoAnos;
+          else if (tempo >= 10 && tempo < 20) totalPoints += pointsConfig.tempoBatismo.dezAnos;
+          else if (tempo >= 20 && tempo < 30) totalPoints += pointsConfig.tempoBatismo.vinteAnos;
+          else if (tempo >= 30) totalPoints += pointsConfig.tempoBatismo.maisVinte;
         }
         
-        // Aplicar multiplicadores
-        const multiplicadorDinamico = pointsConfig.pontuacaoDinamica?.multiplicador || 5;
-        const multiplicadorPresenca = pointsConfig.presenca?.multiplicador || 2;
+        // Cargos
+        if (userData.cargos && Array.isArray(userData.cargos)) {
+          const numCargos = userData.cargos.length;
+          if (numCargos === 1) totalPoints += pointsConfig.cargos.umCargo;
+          else if (numCargos === 2) totalPoints += pointsConfig.cargos.doisCargos;
+          else if (numCargos >= 3) totalPoints += pointsConfig.cargos.tresOuMais;
+        }
         
-        totalPoints = totalPoints * multiplicadorDinamico;
-        totalPoints += (userData.attendance || 0) * multiplicadorPresenca;
+        // Nome da unidade
+        if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
+          totalPoints += pointsConfig.nomeUnidade.comUnidade;
+        }
+        
+        // Tem lição
+        if (userData.temLicao) {
+          totalPoints += pointsConfig.temLicao.comLicao;
+        }
+        
+        // Total de presença
+        if (userData.totalPresenca !== undefined) {
+          const presenca = userData.totalPresenca;
+          if (presenca >= 0 && presenca <= 3) totalPoints += pointsConfig.totalPresenca.zeroATres;
+          else if (presenca >= 4 && presenca <= 7) totalPoints += pointsConfig.totalPresenca.quatroASete;
+          else if (presenca >= 8 && presenca <= 13) totalPoints += pointsConfig.totalPresenca.oitoATreze;
+        }
+        
+        // Escola sabatina
+        if (userData.escolaSabatina) {
+          const escola = userData.escolaSabatina;
+          if (escola.comunhao) totalPoints += (escola.comunhao * pointsConfig.escolaSabatina.comunhao);
+          if (escola.missao) totalPoints += (escola.missao * pointsConfig.escolaSabatina.missao);
+          if (escola.estudoBiblico) totalPoints += (escola.estudoBiblico * pointsConfig.escolaSabatina.estudoBiblico);
+          if (escola.batizouAlguem) totalPoints += pointsConfig.escolaSabatina.batizouAlguem;
+          if (escola.discipuladoPosBatismo) totalPoints += (escola.discipuladoPosBatismo * pointsConfig.escolaSabatina.discipuladoPosBatismo);
+        }
+        
+        // CPF válido
+        if (userData.cpfValido === 'Sim' || userData.cpfValido === true) {
+          totalPoints += pointsConfig.cpfValido.valido;
+        }
+        
+        // Campos vazios ACMS
+        if (userData.camposVaziosACMS === false) {
+          totalPoints += pointsConfig.camposVaziosACMS.completos;
+        }
         
         // Verificar se os pontos mudaram
         const roundedTotalPoints = Math.round(totalPoints);

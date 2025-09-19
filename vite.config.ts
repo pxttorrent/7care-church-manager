@@ -35,6 +35,11 @@ export default defineConfig({
         drop_debugger: true,
       },
     },
+    // Configurações para melhor compatibilidade com módulos
+    target: 'esnext',
+    modulePreload: {
+      polyfill: false,
+    },
     rollupOptions: {
       output: {
         manualChunks: {
@@ -43,6 +48,10 @@ export default defineConfig({
           charts: ['recharts'],
           forms: ['react-hook-form', '@hookform/resolvers'],
         },
+        // Garantir que os chunks sejam gerados com extensão .js
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
       },
     },
     // Otimizações de assets

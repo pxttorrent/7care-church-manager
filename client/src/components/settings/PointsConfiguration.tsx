@@ -153,30 +153,9 @@ const defaultConfig: PointsConfig = {
 };
 
 export const PointsConfiguration = () => {
-  const { config, isLoading, saveConfig, resetConfig, updateConfig, getTotalMaxPoints, getConfigSummary, getCurrentParameterAverage, getCurrentUserAverage, calculateDistrictAverage } = usePointsConfig();
+  const { config, isLoading, saveConfig, resetConfig, updateConfig, getTotalMaxPoints, getConfigSummary, getCurrentParameterAverage, getCurrentUserAverage } = usePointsConfig();
   const { toast } = useToast();
   
-  // Recuperar a última média do distrito salva no localStorage
-  const [districtAverage, setDistrictAverage] = useState<number | null>(() => {
-    const saved = localStorage.getItem('lastDistrictAverage');
-    return saved ? Number(saved) : null;
-  });
-  const [currentSystemAverage, setCurrentSystemAverage] = useState<number>(0);
-  const [adjustmentFactor, setAdjustmentFactor] = useState<number>(1);
-  
-  // Recuperar a data da última execução
-  const [lastExecutionDate, setLastExecutionDate] = useState<string | null>(() => {
-    return localStorage.getItem('lastDistrictAverageDate');
-  });
-
-  // Carregar média atual dos usuários
-  useEffect(() => {
-    const loadCurrentAverage = async () => {
-      const average = await getCurrentUserAverage();
-      setCurrentSystemAverage(average);
-    };
-    loadCurrentAverage();
-  }, [getCurrentUserAverage]);
 
   // Ensure config is always defined
   if (!config) {
@@ -198,52 +177,6 @@ export const PointsConfiguration = () => {
     resetConfig();
   };
 
-  const handleCalculateDistrictAverage = async () => {
-    if (!districtAverage) return;
-    
-    try {
-      const result = await calculateDistrictAverage(districtAverage);
-      if (result.success) {
-        setCurrentSystemAverage(parseFloat(result.newAverage));
-        setAdjustmentFactor(parseFloat(result.adjustmentFactor));
-        
-        // Salvar a média do distrito no localStorage para manter fixa
-        localStorage.setItem('lastDistrictAverage', districtAverage.toString());
-        
-        // Salvar a data da execução
-        const now = new Date().toLocaleString('pt-BR');
-        localStorage.setItem('lastDistrictAverageDate', now);
-        setLastExecutionDate(now);
-        
-        toast({
-          title: "Média do distrito calculada!",
-          description: `Configurações ajustadas para atingir média de ${districtAverage} pontos.`,
-        });
-      } else {
-        toast({
-          title: "Erro ao calcular média",
-          description: result.error || "Erro desconhecido",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Erro ao calcular média",
-        description: "Erro inesperado ao processar a solicitação",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleResetDistrictAverage = () => {
-    setDistrictAverage(null);
-    setCurrentSystemAverage(0);
-    setAdjustmentFactor(1);
-    setLastExecutionDate(null);
-    // Remover a média do distrito do localStorage
-    localStorage.removeItem('lastDistrictAverage');
-    localStorage.removeItem('lastDistrictAverageDate');
-  };
 
   const renderSection = (
     title: string,
@@ -479,83 +412,6 @@ export const PointsConfiguration = () => {
         )}
       </div>
 
-      {/* Média do Distrito */}
-      <Card className="bg-gradient-to-br from-orange-50 to-yellow-50 border-orange-200">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5 text-orange-600" />
-            Média do Distrito
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <Label htmlFor="districtAverage" className="text-sm font-medium">
-                  Média Desejada
-                </Label>
-                <Input
-                  id="districtAverage"
-                  type="number"
-                  placeholder={districtAverage ? `Última média: ${districtAverage}` : "Ex: 608"}
-                  className="mt-1"
-                  value={districtAverage || ''}
-                  onChange={(e) => setDistrictAverage(e.target.value ? Number(e.target.value) : null)}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  {districtAverage 
-                    ? `Última média configurada: ${districtAverage} pontos` 
-                    : "Digite a média desejada para o distrito"
-                  }
-                </p>
-                {lastExecutionDate && (
-                  <p className="text-xs text-blue-600 mt-1">
-                    📅 Última execução: {lastExecutionDate}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleCalculateDistrictAverage}
-                  disabled={!districtAverage || isLoading}
-                  className="bg-orange-600 hover:bg-orange-700"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  {districtAverage && lastExecutionDate ? 'Recalcular' : 'Calcular'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleResetDistrictAverage}
-                  disabled={isLoading}
-                >
-                  Resetar
-                </Button>
-              </div>
-            </div>
-            
-            {districtAverage && (
-              <div className="bg-white p-4 rounded-lg border border-orange-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-orange-800">
-                      Média Atual dos Usuários: <span className="font-bold">{currentSystemAverage.toFixed(1)}</span>
-                    </p>
-                    <p className="text-sm text-orange-800">
-                      Média Desejada: <span className="font-bold">{districtAverage}</span>
-                    </p>
-                    <p className="text-sm text-orange-800">
-                      Fator de Ajuste: <span className="font-bold">{adjustmentFactor.toFixed(2)}x</span>
-                    </p>
-                  </div>
-                  <Badge variant={adjustmentFactor > 1 ? "default" : "secondary"} className="text-sm">
-                    {adjustmentFactor > 1 ? "Aumentar" : "Diminuir"} Pontuações
-                  </Badge>
-                </div>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Summary */}
       <Card className="bg-gradient-to-br from-purple-50 to-blue-50">

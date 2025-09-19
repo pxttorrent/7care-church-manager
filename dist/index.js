@@ -873,46 +873,74 @@ var NeonAdapter = class {
         }
         const pointsConfig = await this.getPointsConfiguration();
         let totalPoints = 0;
-        totalPoints += pointsConfig.basicPoints || 100;
-        const attendancePoints = (userData.attendance || 0) * (pointsConfig.attendancePoints || 10);
-        totalPoints += attendancePoints;
-        const engajamento = userData.engajamento || "baixo";
-        totalPoints += pointsConfig.engajamento[engajamento] || 0;
-        const classificacao = userData.classificacao || "naoFrequente";
-        totalPoints += pointsConfig.classificacao[classificacao] || 0;
-        const dizimistaType = userData.dizimistaType || "naoDizimista";
-        totalPoints += pointsConfig.dizimista[dizimistaType] || 0;
-        const ofertanteType = userData.ofertanteType || "naoOfertante";
-        totalPoints += pointsConfig.ofertante[ofertanteType] || 0;
-        const tempoBatismoAnos = userData.tempoBatismoAnos || 0;
-        if (tempoBatismoAnos >= 20) {
-          totalPoints += pointsConfig.tempoBatismo.maisVinte || 50;
-        } else if (tempoBatismoAnos >= 10) {
-          totalPoints += pointsConfig.tempoBatismo.vinteAnos || 40;
-        } else if (tempoBatismoAnos >= 5) {
-          totalPoints += pointsConfig.tempoBatismo.cincoAnos || 20;
-        } else if (tempoBatismoAnos >= 2) {
-          totalPoints += pointsConfig.tempoBatismo.doisAnos || 10;
+        if (userData.engajamento) {
+          const engajamento = userData.engajamento.toLowerCase();
+          if (engajamento.includes("baixo")) totalPoints += pointsConfig.engajamento.baixo;
+          else if (engajamento.includes("m\xE9dio") || engajamento.includes("medio")) totalPoints += pointsConfig.engajamento.medio;
+          else if (engajamento.includes("alto")) totalPoints += pointsConfig.engajamento.alto;
         }
-        const nomeUnidade = userData.nomeUnidade || "";
-        if (nomeUnidade && nomeUnidade !== "") {
-          totalPoints += pointsConfig.nomeUnidade.comUnidade || 15;
+        if (userData.classificacao) {
+          const classificacao = userData.classificacao.toLowerCase();
+          if (classificacao.includes("frequente")) {
+            totalPoints += pointsConfig.classificacao.frequente;
+          } else {
+            totalPoints += pointsConfig.classificacao.naoFrequente;
+          }
         }
-        if (userData.batizouAlguem) {
-          totalPoints += pointsConfig.batizouAlguem.sim || 100;
+        if (userData.dizimista) {
+          const dizimista = userData.dizimista.toLowerCase();
+          if (dizimista.includes("n\xE3o dizimista") || dizimista.includes("nao dizimista")) totalPoints += pointsConfig.dizimista.naoDizimista;
+          else if (dizimista.includes("pontual")) totalPoints += pointsConfig.dizimista.pontual;
+          else if (dizimista.includes("sazonal")) totalPoints += pointsConfig.dizimista.sazonal;
+          else if (dizimista.includes("recorrente")) totalPoints += pointsConfig.dizimista.recorrente;
         }
-        const discPosBatismal = userData.discPosBatismal || 0;
-        totalPoints += discPosBatismal * (pointsConfig.discipuladoPosBatismo.multiplicador || 10);
-        if (userData.cpfValido) {
-          totalPoints += pointsConfig.cpfValido.valido || 20;
+        if (userData.ofertante) {
+          const ofertante = userData.ofertante.toLowerCase();
+          if (ofertante.includes("n\xE3o ofertante") || ofertante.includes("nao ofertante")) totalPoints += pointsConfig.ofertante.naoOfertante;
+          else if (ofertante.includes("pontual")) totalPoints += pointsConfig.ofertante.pontual;
+          else if (ofertante.includes("sazonal")) totalPoints += pointsConfig.ofertante.sazonal;
+          else if (ofertante.includes("recorrente")) totalPoints += pointsConfig.ofertante.recorrente;
         }
-        if (!userData.camposVaziosACMS) {
-          totalPoints += pointsConfig.camposVaziosACMS.completos || 25;
+        if (userData.tempoBatismo && typeof userData.tempoBatismo === "number") {
+          const tempo = userData.tempoBatismo;
+          if (tempo >= 2 && tempo < 5) totalPoints += pointsConfig.tempoBatismo.doisAnos;
+          else if (tempo >= 5 && tempo < 10) totalPoints += pointsConfig.tempoBatismo.cincoAnos;
+          else if (tempo >= 10 && tempo < 20) totalPoints += pointsConfig.tempoBatismo.dezAnos;
+          else if (tempo >= 20 && tempo < 30) totalPoints += pointsConfig.tempoBatismo.vinteAnos;
+          else if (tempo >= 30) totalPoints += pointsConfig.tempoBatismo.maisVinte;
         }
-        const multiplicadorDinamico = pointsConfig.pontuacaoDinamica?.multiplicador || 5;
-        const multiplicadorPresenca = pointsConfig.presenca?.multiplicador || 2;
-        totalPoints = totalPoints * multiplicadorDinamico;
-        totalPoints += (userData.attendance || 0) * multiplicadorPresenca;
+        if (userData.cargos && Array.isArray(userData.cargos)) {
+          const numCargos = userData.cargos.length;
+          if (numCargos === 1) totalPoints += pointsConfig.cargos.umCargo;
+          else if (numCargos === 2) totalPoints += pointsConfig.cargos.doisCargos;
+          else if (numCargos >= 3) totalPoints += pointsConfig.cargos.tresOuMais;
+        }
+        if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
+          totalPoints += pointsConfig.nomeUnidade.comUnidade;
+        }
+        if (userData.temLicao) {
+          totalPoints += pointsConfig.temLicao.comLicao;
+        }
+        if (userData.totalPresenca !== void 0) {
+          const presenca = userData.totalPresenca;
+          if (presenca >= 0 && presenca <= 3) totalPoints += pointsConfig.totalPresenca.zeroATres;
+          else if (presenca >= 4 && presenca <= 7) totalPoints += pointsConfig.totalPresenca.quatroASete;
+          else if (presenca >= 8 && presenca <= 13) totalPoints += pointsConfig.totalPresenca.oitoATreze;
+        }
+        if (userData.escolaSabatina) {
+          const escola = userData.escolaSabatina;
+          if (escola.comunhao) totalPoints += escola.comunhao * pointsConfig.escolaSabatina.comunhao;
+          if (escola.missao) totalPoints += escola.missao * pointsConfig.escolaSabatina.missao;
+          if (escola.estudoBiblico) totalPoints += escola.estudoBiblico * pointsConfig.escolaSabatina.estudoBiblico;
+          if (escola.batizouAlguem) totalPoints += pointsConfig.escolaSabatina.batizouAlguem;
+          if (escola.discipuladoPosBatismo) totalPoints += escola.discipuladoPosBatismo * pointsConfig.escolaSabatina.discipuladoPosBatismo;
+        }
+        if (userData.cpfValido === "Sim" || userData.cpfValido === true) {
+          totalPoints += pointsConfig.cpfValido.valido;
+        }
+        if (userData.camposVaziosACMS === false) {
+          totalPoints += pointsConfig.camposVaziosACMS.completos;
+        }
         const roundedTotalPoints = Math.round(totalPoints);
         if (user.points !== roundedTotalPoints) {
           await db.update(schema.users).set({
@@ -7173,6 +7201,11 @@ var vite_config_default = defineConfig({
         drop_debugger: true
       }
     },
+    // Configurações para melhor compatibilidade com módulos
+    target: "esnext",
+    modulePreload: {
+      polyfill: false
+    },
     rollupOptions: {
       output: {
         manualChunks: {
@@ -7180,7 +7213,11 @@ var vite_config_default = defineConfig({
           ui: ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-select"],
           charts: ["recharts"],
           forms: ["react-hook-form", "@hookform/resolvers"]
-        }
+        },
+        // Garantir que os chunks sejam gerados com extensão .js
+        chunkFileNames: "assets/[name]-[hash].js",
+        entryFileNames: "assets/[name]-[hash].js",
+        assetFileNames: "assets/[name]-[hash].[ext]"
       }
     },
     // Otimizações de assets

@@ -17,7 +17,7 @@ export const useEventFilterPermissions = () => {
         throw new Error('Erro ao carregar permissões');
       }
       const data = await response.json();
-      return data.permissions;
+      return data; // A API retorna as permissões diretamente, não dentro de data.permissions
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
   });

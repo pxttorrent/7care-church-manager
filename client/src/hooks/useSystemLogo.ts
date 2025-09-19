@@ -123,14 +123,18 @@ export const useSystemLogo = () => {
 
     // Escutar evento de atualização da logo
     const handleLogoUpdate = (event: CustomEvent) => {
-      console.log('🎨 Logo update event received:', event.detail);
-      if (event.detail?.logoUrl) {
-        updateLogoSystem(event.detail.logoUrl);
-      } else {
-        // Logo removida
-        setSystemLogo(null);
-        setLogoVersion(0);
-        console.log('🗑️ Logo removed via event');
+      try {
+        console.log('🎨 Logo update event received:', event.detail);
+        if (event.detail?.logoUrl) {
+          updateLogoSystem(event.detail.logoUrl);
+        } else {
+          // Logo removida
+          setSystemLogo(null);
+          setLogoVersion(0);
+          console.log('🗑️ Logo removed via event');
+        }
+      } catch (error) {
+        console.error('❌ Erro no handleLogoUpdate:', error);
       }
     };
 

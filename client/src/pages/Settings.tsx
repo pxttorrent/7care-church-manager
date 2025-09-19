@@ -2505,7 +2505,16 @@ export default function Settings() {
               Confirmar Limpeza de Dados
             </DialogTitle>
             <DialogDescription>
-              Esta ação irá <strong>permanentemente</strong> remover todos os dados do sistema, incluindo usuários, eventos, pontuações e configurações. Esta ação não pode ser desfeita.
+              Esta ação irá <strong>permanentemente</strong> remover todos os dados do sistema, incluindo:
+              <br />• Usuários e perfis
+              <br />• Eventos e reuniões
+              <br />• Pontuações e conquistas
+              <br />• <strong>Dados do visitômetro</strong> (contadores de visitas)
+              <br />• Relacionamentos e discipulado
+              <br />• Oração e mensagens
+              <br />• Configurações do sistema
+              <br />
+              <br />Esta ação não pode ser desfeita.
             </DialogDescription>
           </DialogHeader>
           
