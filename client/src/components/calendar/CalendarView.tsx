@@ -11,10 +11,14 @@ import {
   MapPin,
   Users,
   Download,
-  Cake
+  Cake,
+  CloudSync
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBirthdays } from "@/hooks/useBirthdays";
+import { GoogleDriveImportModal } from "./GoogleDriveImportModal";
+import { ImportExcelModal } from "./ImportExcelModal";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Função utilitária para formatar datas sem problemas de fuso horário
 const formatDateSafe = (dateString: string): string => {
@@ -180,7 +184,76 @@ interface CalendarViewProps {
 export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: CalendarViewProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [showBirthdays, setShowBirthdays] = useState(false);
+  const [showGoogleDriveModal, setShowGoogleDriveModal] = useState(false);
+  const [showImportExcelModal, setShowImportExcelModal] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const { birthdays, isLoading: birthdaysLoading } = useBirthdays();
+  const queryClient = useQueryClient();
+
+  // Função para sincronização rápida do Google Drive
+  const handleQuickSync = async () => {
+    setIsSyncing(true);
+    try {
+      // Primeiro, buscar a configuração salva
+      const configResponse = await fetch('/api/calendar/google-drive-config');
+      const config = await configResponse.json();
+      
+      if (!config.spreadsheetUrl) {
+        toast({
+          title: "❌ Configuração não encontrada",
+          description: "Configure a planilha do Google Drive em Settings > Calendário",
+          variant: "destructive"
+        });
+        setIsSyncing(false);
+        return;
+      }
+
+      // Passo 1: Processar eventos pendentes para enviar à planilha
+      const sendResponse = await fetch('/api/google-drive/process-pending', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const sendResult = await sendResponse.json();
+      let sentCount = sendResult.processed || 0;
+      
+      // Passo 2: Importar novos eventos da planilha
+      const importResponse = await fetch('/api/calendar/sync-google-drive', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          spreadsheetUrl: config.spreadsheetUrl
+        })
+      });
+
+      const importResult = await importResponse.json();
+      let importedCount = importResult.importedCount || 0;
+      
+      // Recarregar eventos e aniversariantes
+      await queryClient.invalidateQueries({ queryKey: ['events'] });
+      await queryClient.invalidateQueries({ queryKey: ['birthdays'] });
+      
+      // Mostrar resultado da sincronização bidirecional
+      const messages = [];
+      if (sentCount > 0) messages.push(`${sentCount} eventos enviados`);
+      if (importedCount > 0) messages.push(`${importedCount} eventos importados`);
+      
+      if (messages.length > 0) {
+        alert(`✅ Sincronização concluída! ${messages.join(' e ')} da/para o Google Drive.`);
+      } else {
+        alert(`✅ Sincronização concluída! Planilha já está sincronizada.`);
+      }
+    } catch (error) {
+      console.error('Erro na sincronização:', error);
+      alert('❌ Erro na sincronização. Verifique a conexão.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const getDaysInWeek = (date: Date) => {
     const week: Date[] = [];
@@ -304,9 +377,30 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
           <Button
             variant="outline"
             size="sm"
-            data-testid="button-export-calendar"
+            onClick={handleQuickSync}
+            disabled={isSyncing}
+            className="flex items-center gap-2"
+          >
+            <CloudSync className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? "Sincronizando..." : "Sincronizar Google Drive"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowImportExcelModal(true)}
+            className="flex items-center gap-2"
           >
             <Download className="h-4 w-4" />
+            Importar Excel
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowGoogleDriveModal(true)}
+            className="flex items-center gap-2"
+          >
+            <CloudSync className="h-4 w-4" />
+            Google Drive
           </Button>
           {onNewEvent && (
             <Button
@@ -570,6 +664,28 @@ export const CalendarView = ({ onEventClick, onNewEvent, view = 'week' }: Calend
           </CardContent>
         </Card>
       )}
+      
+      {/* Google Drive Import Modal */}
+      <GoogleDriveImportModal
+        isOpen={showGoogleDriveModal}
+        onClose={() => setShowGoogleDriveModal(false)}
+        onImportComplete={() => {
+          setShowGoogleDriveModal(false);
+          // Aqui você pode adicionar lógica para recarregar os eventos
+          console.log('Sincronização com Google Drive concluída!');
+        }}
+      />
+      
+      {/* Import Excel Modal */}
+      <ImportExcelModal
+        isOpen={showImportExcelModal}
+        onClose={() => setShowImportExcelModal(false)}
+        onImportComplete={() => {
+          setShowImportExcelModal(false);
+          // Aqui você pode adicionar lógica para recarregar os eventos
+          console.log('Importação Excel concluída!');
+        }}
+      />
     </div>
   );
 };

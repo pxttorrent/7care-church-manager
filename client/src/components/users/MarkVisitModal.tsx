@@ -27,13 +27,14 @@ export const MarkVisitModal = ({
 }: MarkVisitModalProps) => {
   const [visitDate, setVisitDate] = useState('');
 
-  // Definir data atual quando o modal abrir
+  // Definir data atual quando o modal abrir (Brasil timezone)
   useEffect(() => {
     if (isOpen) {
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      const day = String(today.getDate()).padStart(2, '0');
+      const now = new Date();
+      const brazilTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+      const year = brazilTime.getFullYear();
+      const month = String(brazilTime.getMonth() + 1).padStart(2, '0');
+      const day = String(brazilTime.getDate()).padStart(2, '0');
       setVisitDate(`${year}-${month}-${day}`);
     }
   }, [isOpen]);
@@ -51,8 +52,29 @@ export const MarkVisitModal = ({
 
   const formatVisitDate = (dateString: string) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR');
+    
+    try {
+      let date;
+      
+      // Se a data já tem timezone info (formato ISO), usa diretamente
+      if (dateString.includes('T') || dateString.includes('Z')) {
+        date = new Date(dateString);
+      } else {
+        // Se é apenas data (YYYY-MM-DD), adiciona timezone do Brasil
+        date = new Date(dateString + 'T00:00:00-03:00');
+      }
+      
+      // Verifica se a data é válida
+      if (isNaN(date.getTime())) {
+        console.warn('Data inválida:', dateString);
+        return 'Data inválida';
+      }
+      
+      return date.toLocaleDateString('pt-BR');
+    } catch (error) {
+      console.error('Erro ao formatar data:', dateString, error);
+      return 'Data inválida';
+    }
   };
 
   const isNewVisit = visitCount === 0;

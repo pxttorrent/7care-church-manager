@@ -88,7 +88,7 @@ export function SimpleCalendarView({ onEventClick }: SimpleCalendarViewProps) {
     const current = new Date(startDate);
     
     for (let i = 0; i < 42; i++) {
-      days.push(new Date(current));
+      (days as any[]).push(new Date(current));
       current.setDate(current.getDate() + 1);
     }
     
@@ -310,12 +310,12 @@ export function SimpleCalendarView({ onEventClick }: SimpleCalendarViewProps) {
                   className={`min-h-[120px] p-2 border-r border-b last:border-r-0 ${
                     isCurrentMonthDay ? 'bg-white' : 'bg-gray-50'
                   } ${isTodayDay ? 'bg-blue-50' : ''}`}
-                  onClick={() => setSelectedDate(day.toISOString().split('T')[0])}
+                  onClick={() => setSelectedDate((day as Date).toISOString().split('T')[0])}
                 >
                   <div className={`text-sm font-medium mb-1 ${
                     isCurrentMonthDay ? 'text-gray-900' : 'text-gray-400'
                   } ${isTodayDay ? 'text-blue-600' : ''}`}>
-                    {day.getDate()}
+                    {(day as Date).getDate()}
                   </div>
                   
                   <div className="space-y-1">
@@ -323,8 +323,8 @@ export function SimpleCalendarView({ onEventClick }: SimpleCalendarViewProps) {
                       const isMultiDay = isMultiDayEvent(event);
                       const eventStart = new Date(event.date);
                       const eventEnd = event.endDate ? new Date(event.endDate) : eventStart;
-                      const isStart = day.toDateString() === eventStart.toDateString();
-                      const isEnd = day.toDateString() === eventEnd.toDateString();
+                      const isStart = (day as Date).toDateString() === eventStart.toDateString();
+                      const isEnd = (day as Date).toDateString() === eventEnd.toDateString();
                       const isMiddle = isMultiDay && !isStart && !isEnd;
                       
                       return (

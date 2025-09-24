@@ -401,8 +401,8 @@ export function MountIcon({ iconType, className = "w-6 h-6" }: MountIconProps) {
           <rect x="10.2" y="5.2" width="3.6" height="2.6" fill="#a16207"/>
           
           {/* Chama da fé com gradiente radial */}
-          <path d="M12 4 Q12.5 3 13 4 Q13.5 5 14 6 Q13 7 12 6 Q11 7 10 6 Q9 5 10 4 Q12 4" fill="url(#flameGradient)"/>
-          <path d="M12 4 Q12.5 3.5 13 4 Q13.5 4.5 12 4.5 Q11.5 4.5 11 4 Q12 4" fill="#fbbf24"/>
+          <path d="M12 4 Q12.5 3 13 4 Q13.5 5 14 6 Q13 7 12 6 Q11 7 10 6 Q9 5 10 4 Z" fill="url(#flameGradient)"/>
+          <path d="M12 4 Q12.5 3.5 13 4 Q13.5 4.5 12 4.5 Q11.5 4.5 11 4 Z" fill="#fbbf24"/>
           
           {/* Brilho da chama */}
           <circle cx="12" cy="4.5" r="0.3" fill="#ffffff" opacity="0.8"/>
@@ -440,9 +440,9 @@ export function MountIcon({ iconType, className = "w-6 h-6" }: MountIconProps) {
           <path d="M2 18h20v2H2z" fill="url(#carmeloBaseGradient)"/>
           
           {/* Grande chama do fogo do Senhor no topo */}
-          <path d="M12 3 Q13 1 14 3 Q15 5 14 6 Q13 7 12 6 Q11 7 10 6 Q9 5 10 3 Q12 3" fill="url(#fireGradient)" filter="url(#carmeloShadow)"/>
-          <path d="M12 3 Q13 1.5 14 3 Q13 4.5 12 4.5 Q11.5 4.5 11 4 Q12 4" fill="#ef4444"/>
-          <path d="M12 3 Q12.5 2 13 3 Q12.5 4 12 4 Q11.5 4 11 3 Q12 3" fill="#fbbf24"/>
+          <path d="M12 3 Q13 1 14 3 Q15 5 14 6 Q13 7 12 6 Q11 7 10 6 Q9 5 10 3 Z" fill="url(#fireGradient)" filter="url(#carmeloShadow)"/>
+          <path d="M12 3 Q13 1.5 14 3 Q13 4.5 12 4.5 Q11.5 4.5 11 4 Z" fill="#ef4444"/>
+          <path d="M12 3 Q12.5 2 13 3 Q12.5 4 12 4 Q11.5 4 11 3 Z" fill="#fbbf24"/>
           
           {/* Brilho da chama */}
           <circle cx="12" cy="3.5" r="0.4" fill="#ffffff" opacity="0.9"/>

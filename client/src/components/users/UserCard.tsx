@@ -54,6 +54,7 @@ interface UserCardProps {
   onDisciple?: () => void;
   onDiscipleRequest?: () => void; // Adicionado para controlar a requisição de discipulado
   showActions?: boolean;
+  relationshipsData?: any[]; // Adicionado para receber os dados de relacionamentos
 }
 
 export const UserCard = ({ 
@@ -69,7 +70,8 @@ export const UserCard = ({
   onMarkVisited, 
   onDisciple,
   onDiscipleRequest, // Adicionado para controlar a requisição de discipulado
-  showActions = true 
+  showActions = true,
+  relationshipsData = [] // Adicionado para receber os dados de relacionamentos
 }: UserCardProps) => {
   const [showMarkVisitModal, setShowMarkVisitModal] = useState(false);
   const [isMarkingVisit, setIsMarkingVisit] = useState(false);
@@ -84,6 +86,9 @@ export const UserCard = ({
   const [isPhotoPreviewOpen, setIsPhotoPreviewOpen] = useState(false);
   const [userSpiritual, setUserSpiritual] = useState<any>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [showVisitHistory, setShowVisitHistory] = useState(false);
+  const [visitHistory, setVisitHistory] = useState<any[]>([]);
+  const [lastClickTime, setLastClickTime] = useState(0);
 
 
   
@@ -95,6 +100,34 @@ export const UserCard = ({
     setLocalUser(user);
     setDataLoaded(false); // Reset data loaded state when user changes
   }, [user]);
+
+  // Sincronizar estado de visita com dados reais do banco
+  useEffect(() => {
+    console.log('🔄 [UserCard] Sincronizando estado de visita para usuário:', user?.name, 'extraData:', user?.extraData);
+    
+    if (user?.extraData) {
+      try {
+        let extraData;
+        if (typeof user.extraData === 'string') {
+          extraData = JSON.parse(user.extraData);
+        } else {
+          extraData = user.extraData;
+        }
+        
+        console.log('🔄 [UserCard] ExtraData parseado:', extraData);
+        console.log('🔄 [UserCard] Visited:', extraData.visited, 'VisitCount:', extraData.visitCount);
+        
+        // Sincronizar o estado local com os dados reais do banco
+        setLocalVisitedState(extraData.visited === true);
+      } catch (error) {
+        console.error('❌ [UserCard] Erro ao parsear extraData:', error);
+        setLocalVisitedState(false);
+      }
+    } else {
+      console.log('🔄 [UserCard] Nenhum extraData encontrado, definindo como não visitado');
+      setLocalVisitedState(false);
+    }
+  }, [user?.extraData]);
 
   // Não precisamos mais verificar perfil missionário - usamos apenas o campo role
 
@@ -108,15 +141,26 @@ export const UserCard = ({
           if (data && data.length > 0) {
             // Pegar o check-in mais recente
             setUserSpiritual(data[0]);
+          } else {
+            // Não há check-ins disponíveis
+            setUserSpiritual(null);
           }
+        } else {
+          // API retornou erro, não há check-ins
+          setUserSpiritual(null);
         }
       } catch (error) {
-        console.error('Erro ao buscar estado espiritual do usuário:', error);
+        // Erro na requisição, não há check-ins
+        console.log(`Check-in espiritual não disponível para ${user.name}:`, error.message);
+        setUserSpiritual(null);
       }
     };
 
     if (user?.id && currentUser?.role === 'admin') {
       fetchUserSpiritual();
+    } else {
+      // Resetar estado se não for admin
+      setUserSpiritual(null);
     }
   }, [user?.id, currentUser?.role]);
 
@@ -280,6 +324,14 @@ export const UserCard = ({
     }
   };
 
+  // Verificar se o usuário tem relacionamentos ativos como missionário
+  const hasActiveRelationships = () => {
+    if (!relationshipsData || !localUser) return false;
+    return relationshipsData.some((rel: any) => 
+      rel.missionaryId === localUser.id && rel.status === 'active'
+    );
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
@@ -350,7 +402,10 @@ export const UserCard = ({
   // Check if user has been visited (including local state)
   const isVisited = () => {
     // Se o estado local está true, considera como visitado
-    if (localVisitedState) return true;
+    if (localVisitedState) {
+      console.log('🔄 [UserCard] isVisited: true (localVisitedState)');
+      return true;
+    }
     
     try {
       if (localUser.extraData) {
@@ -360,10 +415,14 @@ export const UserCard = ({
         } else {
           extraData = localUser.extraData;
         }
-        return extraData.visited === true;
+        const visited = extraData.visited === true;
+        console.log('🔄 [UserCard] isVisited:', visited, 'extraData:', extraData);
+        return visited;
       }
+      console.log('🔄 [UserCard] isVisited: false (no extraData)');
       return false;
-    } catch {
+    } catch (error) {
+      console.error('❌ [UserCard] Erro em isVisited:', error);
       return false;
     }
   };
@@ -378,10 +437,14 @@ export const UserCard = ({
         } else {
           extraData = localUser.extraData;
         }
-        return extraData.visitCount || 0;
+        const count = extraData.visitCount || 0;
+        console.log('🔄 [UserCard] getVisitCount:', count, 'extraData:', extraData);
+        return count;
       }
+      console.log('🔄 [UserCard] getVisitCount: 0 (no extraData)');
       return 0;
-    } catch {
+    } catch (error) {
+      console.error('❌ [UserCard] Erro em getVisitCount:', error);
       return 0;
     }
   };
@@ -404,11 +467,131 @@ export const UserCard = ({
     }
   };
 
-  // Format visit date for display
+  // Format visit date for display with Brazil timezone
   const formatVisitDate = (dateString: string) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR');
+    
+    try {
+      let date;
+      
+      // Se a data já tem timezone info (formato ISO), usa diretamente
+      if (dateString.includes('T') || dateString.includes('Z')) {
+        date = new Date(dateString);
+      } else {
+        // Se é apenas data (YYYY-MM-DD), adiciona timezone do Brasil
+        date = new Date(dateString + 'T00:00:00-03:00');
+      }
+      
+      // Verifica se a data é válida
+      if (isNaN(date.getTime())) {
+        console.warn('Data inválida:', dateString);
+        return 'Data inválida';
+      }
+      
+      return date.toLocaleDateString('pt-BR');
+    } catch (error) {
+      console.error('Erro ao formatar data:', dateString, error);
+      return 'Data inválida';
+    }
+  };
+
+  // Get current date in Brazil timezone
+  const getBrazilDate = () => {
+    const now = new Date();
+    const brazilTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+    const year = brazilTime.getFullYear();
+    const month = String(brazilTime.getMonth() + 1).padStart(2, '0');
+    const day = String(brazilTime.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Load visit history for a user
+  const loadVisitHistory = async (userId: number) => {
+    try {
+      const response = await fetch(`/api/visits/user/${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setVisitHistory(data);
+      } else {
+        setVisitHistory([]);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar histórico de visitas:', error);
+      setVisitHistory([]);
+    }
+  };
+
+  // Handle double click to reset visit counter
+  const handleVisitButtonClick = () => {
+    const currentTime = Date.now();
+    const timeDiff = currentTime - lastClickTime;
+    
+    console.log('🖱️ [CLICK] Botão de visita clicado:', {
+      currentTime,
+      lastClickTime,
+      timeDiff,
+      isDoubleClick: timeDiff < 500,
+      user: localUser.name,
+      currentVisits: getVisitCount()
+    });
+    
+    if (timeDiff < 500) { // Double click within 500ms
+      console.log('🔄 [DOUBLE] Duplo clique detectado - zerando visitas');
+      handleResetVisits();
+    } else {
+      console.log('👆 [SINGLE] Clique simples - marcando visita');
+      handleMarkVisited();
+    }
+    
+    setLastClickTime(currentTime);
+  };
+
+  // Reset all visits for a user
+  const handleResetVisits = async () => {
+    console.log('🔄 [RESET] Iniciando reset de visitas para usuário:', localUser.id);
+    
+    try {
+      const response = await fetch(`/api/visits/user/${localUser.id}/reset`, {
+        method: 'DELETE'
+      });
+      
+      console.log('🔄 [RESET] Resposta da API:', response.status, response.ok);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('🔄 [RESET] Dados da resposta:', data);
+        
+        // Reset local state
+        setLocalVisitedState(false);
+        setLocalUser(prev => ({
+          ...prev,
+          extraData: {
+            ...(typeof prev.extraData === 'string' ? JSON.parse(prev.extraData) : prev.extraData || {}),
+            visited: false,
+            visitCount: 0,
+            lastVisitDate: null
+          }
+        }));
+        
+        console.log('✅ [RESET] Estado local atualizado');
+        
+        toast({
+          title: "🔄 Contador de visitas zerado",
+          description: `Todas as visitas de ${localUser.name} foram removidas.`,
+        });
+      } else {
+        const errorData = await response.json();
+        console.error('❌ [RESET] Erro na API:', errorData);
+        throw new Error('Erro ao zerar visitas');
+      }
+    } catch (error) {
+      console.error('❌ [RESET] Erro ao zerar visitas:', error);
+      toast({
+        title: "❌ Erro ao zerar visitas",
+        description: "Não foi possível zerar o contador. Tente novamente.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Validate WhatsApp number
@@ -423,12 +606,8 @@ export const UserCard = ({
       // Se já foi visitado, abre o modal para nova visita
       setShowMarkVisitModal(true);
     } else {
-      // Se não foi visitado, marca como visitado com data atual
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      const day = String(today.getDate()).padStart(2, '0');
-      const visitDate = `${year}-${month}-${day}`;
+      // Se não foi visitado, marca como visitado com data atual (Brasil)
+      const visitDate = getBrazilDate();
       
       // Atualiza o estado local imediatamente para feedback visual
       setLocalVisitedState(true);
@@ -595,9 +774,17 @@ export const UserCard = ({
                 <h3 className="font-medium text-foreground truncate" data-testid={`text-username-${localUser.id}`}>
                   {localUser.name}
                 </h3>
-                <Badge className={getRoleColor(localUser.role)} data-testid={`badge-role-${localUser.id}`}>
-                  {getRoleLabel(localUser.role)}
-                </Badge>
+                <div className="flex items-center gap-1">
+                  <Badge className={getRoleColor(localUser.role)} data-testid={`badge-role-${localUser.id}`}>
+                    {getRoleLabel(localUser.role)}
+                  </Badge>
+                  {localUser.role === 'member' && hasActiveRelationships() && (
+                    <Badge className="bg-blue-500 text-white" data-testid={`badge-missionary-${localUser.id}`}>
+                      Missionário
+                    </Badge>
+                  )}
+                </div>
+                
                 
                 {localUser.status === 'pending' && (
                   <Badge 
@@ -838,25 +1025,31 @@ export const UserCard = ({
                 )}
 
                 {/* Indicador de Estado Espiritual - Apenas para admins */}
-                {currentUser?.role === 'admin' && userSpiritual && (
+                {currentUser?.role === 'admin' && (
                   <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100">
                     <div className="flex items-center gap-1">
                       <Heart className="h-3 w-3 text-pink-500" />
-                      <span className="text-xs font-medium">Estado Espiritual:</span>
+                      <span className="text-xs font-medium">Check-in Espiritual:</span>
                     </div>
                     
-                    <div className="flex items-center gap-1">
-                      <span className="text-lg">{getSpiritualEmoji(userSpiritual.emotionalScore)?.emoji}</span>
-                      <Badge className={`${getSpiritualEmoji(userSpiritual.emotionalScore)?.color} text-xs px-2 py-0`}>
-                        {getSpiritualEmoji(userSpiritual.emotionalScore)?.label}
-                      </Badge>
-                    </div>
-                    
-                    {userSpiritual.prayerRequest && (
+                    {userSpiritual ? (
                       <div className="flex items-center gap-1">
-                        <MessageCircle className="h-3 w-3 text-blue-500" />
-                        <span className="text-xs text-blue-600">Pedido de oração</span>
+                        <span className="text-lg">{getSpiritualEmoji(userSpiritual.emotionalScore)?.emoji}</span>
+                        <Badge className={`${getSpiritualEmoji(userSpiritual.emotionalScore)?.color} text-xs px-2 py-0`}>
+                          {getSpiritualEmoji(userSpiritual.emotionalScore)?.label}
+                        </Badge>
+                        
+                        {userSpiritual.prayerRequest && (
+                          <div className="flex items-center gap-1 ml-2">
+                            <MessageCircle className="h-3 w-3 text-blue-500" />
+                            <span className="text-xs text-blue-600">Pedido de oração</span>
+                          </div>
+                        )}
                       </div>
+                    ) : (
+                      <Badge className="bg-gray-100 text-gray-600 text-xs px-2 py-0">
+                        Não realizado
+                      </Badge>
                     )}
                   </div>
                 )}
@@ -902,9 +1095,9 @@ export const UserCard = ({
                   } ${isMarkingVisit ? 'opacity-50 cursor-not-allowed' : ''}`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleMarkVisited();
+                    handleVisitButtonClick();
                   }}
-                  title={isVisited() ? "Marcar nova visita realizada" : "Marcar visita como realizada"}
+                  title={isVisited() ? "🖱️ Clique: nova visita | ⚡ Duplo clique: zerar contador" : "Marcar visita como realizada"}
                 >
                   {isMarkingVisit ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
@@ -915,9 +1108,18 @@ export const UserCard = ({
                   )}
                 </Button>
 
-                {/* Indicador discreto de múltiplas visitas */}
+                {/* Indicador discreto de múltiplas visitas - clicável para ver histórico */}
                 {getVisitCount() > 1 && (
-                  <Badge variant="secondary" className="text-xs px-1 py-0 bg-green-100 text-green-700 border border-green-200">
+                  <Badge 
+                    variant="secondary" 
+                    className="text-xs px-1 py-0 bg-green-100 text-green-700 border border-green-200 cursor-pointer hover:bg-green-200 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      loadVisitHistory(localUser.id);
+                      setShowVisitHistory(true);
+                    }}
+                    title="Clique para ver histórico de visitas"
+                  >
                     {getVisitCount()}x
                   </Badge>
                 )}
@@ -1019,6 +1221,57 @@ export const UserCard = ({
         </DialogContent>
       </Dialog>
 
+      {/* Modal de histórico de visitas */}
+      <Dialog open={showVisitHistory} onOpenChange={setShowVisitHistory}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-blue-600" />
+              Histórico de Visitas - {localUser.name}
+            </DialogTitle>
+            <DialogDescription>
+              Todas as visitas realizadas para este usuário.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {visitHistory.length > 0 ? (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {visitHistory.map((visit, index) => (
+                  <div key={visit.id || index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-sm font-medium">
+                        Visita #{visitHistory.length - index}
+                      </span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {formatVisitDate(visit.visit_date)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Calendar className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>Nenhuma visita registrada</p>
+              </div>
+            )}
+            
+            <div className="flex justify-between items-center pt-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Total: {visitHistory.length} visita{visitHistory.length !== 1 ? 's' : ''}
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setShowVisitHistory(false)}
+              >
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </Card>
   );

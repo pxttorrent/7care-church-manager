@@ -226,19 +226,20 @@ export default function Users() {
 
   // Garantir que users seja sempre um array
   const users = Array.isArray(usersData) ? usersData : [];
-
-  // Buscar relacionamentos do usuário logado (se for missionário)
+  
+  // Buscar todos os relacionamentos para mostrar badges duplos
   const { data: relationshipsData = [] } = useQuery({
-    queryKey: ['user-relationships', user?.id],
+    queryKey: ['all-relationships'],
     queryFn: async () => {
-      if (!user?.id || user.role !== 'missionary') return [];
-      
-      const response = await fetch(`/api/relationships?missionaryId=${user.id}`);
+      const response = await fetch('/api/relationships');
       if (!response.ok) throw new Error('Erro ao buscar relacionamentos');
       return response.json();
     },
-    enabled: !!user?.id && user.role === 'missionary'
+    enabled: true // Sempre executar para garantir que safeRelationshipsData sempre tenha valor
   });
+  
+  // Garantir que relationshipsData seja sempre um array
+  const safeRelationshipsData = Array.isArray(relationshipsData) ? relationshipsData : [];
 
   // Buscar dados dos check-ins espirituais para os filtros
   const { data: spiritualCheckInData } = useQuery({
@@ -362,10 +363,10 @@ export default function Users() {
       return usersWithDiscipleRequests.filter((u: any) => {
         if (u.role !== 'interested') return false;
         
-        // Verificar se está vinculado ao missionário
-        const isAssigned = relationshipsData.some((rel: any) => 
-          rel.interestedId === u.id && rel.status === 'active'
-        );
+          // Verificar se está vinculado ao missionário
+          const isAssigned = (safeRelationshipsData || []).some((rel: any) => 
+            rel.interestedId === u.id && rel.status === 'active'
+          );
         if (!isAssigned) return false;
         
         // Verificar pontos do monte
@@ -406,7 +407,14 @@ export default function Users() {
     .filter((u: any) => {
       const matchesSearch = (u.name && typeof u.name === 'string' && u.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
                            (u.email && typeof u.email === 'string' && u.email.toLowerCase().includes(searchTerm.toLowerCase()));
-      const matchesRole = !roleFilter || roleFilter === 'all' || u.role === roleFilter;
+      // Lógica especial para filtro de missionários: incluir membros com relacionamentos ativos
+      let matchesRole = !roleFilter || roleFilter === 'all' || u.role === roleFilter;
+      if (roleFilter === 'missionary') {
+        const hasActiveRelationships = (safeRelationshipsData || []).some((rel: any) => 
+          rel.missionaryId === u.id && rel.status === 'active'
+        );
+        matchesRole = u.role === 'missionary' || (u.role === 'member' && hasActiveRelationships);
+      }
       const matchesStatus = !statusFilter || statusFilter === 'all' || u.status === statusFilter;
       const matchesChurch = churchFilter === 'all' || u.church === churchFilter;
       
@@ -502,7 +510,7 @@ export default function Users() {
       if (user?.role === 'missionary') {
         if (u.role === 'interested') {
           // Verificar se o interessado está vinculado ao missionário
-          const isAssigned = relationshipsData.some((rel: any) => 
+          const isAssigned = (safeRelationshipsData || []).some((rel: any) => 
             rel.interestedId === u.id && rel.status === 'active'
           );
           matchesMissionaryRestriction = isAssigned;
@@ -924,11 +932,11 @@ export default function Users() {
                 {pendingCount} pendente{pendingCount > 1 ? 's' : ''}
               </Badge>
             )}
-            {user?.role === 'missionary' && (
-              <Badge variant="secondary" className="ml-2">
-                {relationshipsData.filter((rel: any) => rel.status === 'active').length} vinculado{relationshipsData.filter((rel: any) => rel.status === 'active').length !== 1 ? 's' : ''}
-              </Badge>
-            )}
+              {user?.role === 'missionary' && (
+                <Badge variant="secondary" className="ml-2">
+                  {(safeRelationshipsData || []).filter((rel: any) => rel.status === 'active').length} vinculado{(safeRelationshipsData || []).filter((rel: any) => rel.status === 'active').length !== 1 ? 's' : ''}
+                </Badge>
+              )}
           </div>
           
 
@@ -936,42 +944,6 @@ export default function Users() {
           <div className="flex items-center gap-2">
             {user?.role === 'admin' && (
               <>
-                <Button 
-                  onClick={async () => {
-                    try {
-                      toast({
-                        title: "🔄 Gerenciando...",
-                        description: "Gerenciando perfis missionários automaticamente.",
-                      });
-                      
-                      const response = await fetch('/api/system/manage-missionary-roles', { method: 'POST' });
-                      const result = await response.json();
-                      
-                      if (result.success) {
-                        queryClient.invalidateQueries({ queryKey: ['missionary-profiles'] });
-                        queryClient.invalidateQueries({ queryKey: ['/api/users/with-points'] });
-                        toast({
-                          title: "✅ Perfis Gerenciados",
-                          description: `${result.created} perfis criados, ${result.deactivated} desativados. Total ativo: ${result.totalActive}`,
-                        });
-                      } else {
-                        throw new Error(result.error || 'Erro desconhecido');
-                      }
-                    } catch (error) {
-                      toast({
-                        title: "❌ Erro",
-                        description: "Falha ao gerenciar roles missionários. Tente novamente.",
-                        variant: "destructive",
-                      });
-                    }
-                  }}
-                  size="sm"
-                  variant="outline"
-                  className="border-purple-600 text-purple-600 hover:bg-purple-50"
-                >
-                  <Shield className="h-4 w-4 mr-1" />
-                  Gerenciar Roles Missionários
-                </Button>
                 <Button size="sm" className="bg-primary hover:bg-primary-dark" data-testid="button-new-user">
                   <UserPlus className="h-4 w-4 mr-1" />
                   Novo
@@ -1035,7 +1007,12 @@ export default function Users() {
                 <Heart className="h-4 w-4 mr-2 drop-shadow-sm" />
                 <span className="font-semibold tracking-wide">Missionários</span>
                 <span className="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-sm font-bold">
-                    {users.filter((u: any) => u.role === 'missionary').length}
+                    {users.filter((u: any) => {
+                      const hasActiveRelationships = (safeRelationshipsData || []).some((rel: any) => 
+                        rel.missionaryId === u.id && rel.status === 'active'
+                      );
+                      return u.role === 'missionary' || (u.role === 'member' && hasActiveRelationships);
+                    }).length}
                 </span>
               </Badge>
               
@@ -1067,9 +1044,9 @@ export default function Users() {
                 <div className="absolute inset-0 bg-gradient-to-r from-violet-400/10 to-transparent rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 <Heart className="h-4 w-4 mr-2 drop-shadow-sm" />
                 <span className="font-semibold tracking-wide">Meus Interessados</span>
-                <span className="ml-2 px-2 py-0.5 bg-violet-200/50 rounded-full text-sm font-bold">
-                    {relationshipsData.filter((rel: any) => rel.status === 'active').length}
-                </span>
+                  <span className="ml-2 px-2 py-0.5 bg-violet-200/50 rounded-full text-sm font-bold">
+                     {(safeRelationshipsData || []).filter((rel: any) => rel.status === 'active').length}
+                  </span>
               </Badge>
               
               <Badge
@@ -1163,7 +1140,12 @@ export default function Users() {
                 <Heart className="h-4 w-4 mr-2 drop-shadow-sm" />
                 <span className="font-semibold tracking-wide">Missionários</span>
                 <span className="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-sm font-bold">
-                    {users.filter((u: any) => u.role === 'missionary').length}
+                    {users.filter((u: any) => {
+                      const hasActiveRelationships = (safeRelationshipsData || []).some((rel: any) => 
+                        rel.missionaryId === u.id && rel.status === 'active'
+                      );
+                      return u.role === 'missionary' || (u.role === 'member' && hasActiveRelationships);
+                    }).length}
                 </span>
               </Badge>
               
@@ -1909,9 +1891,9 @@ export default function Users() {
                 <span className="text-sm font-medium text-purple-800">
                   Visualizando apenas seus interessados vinculados
                 </span>
-                <Badge variant="secondary" className="text-xs">
-                  {relationshipsData.filter((rel: any) => rel.status === 'active').length} interessado{relationshipsData.filter((rel: any) => rel.status === 'active').length !== 1 ? 's' : ''}
-                </Badge>
+                  <Badge variant="secondary" className="text-xs">
+                   {(safeRelationshipsData || []).filter((rel: any) => rel.status === 'active').length} interessado{(safeRelationshipsData || []).filter((rel: any) => rel.status === 'active').length !== 1 ? 's' : ''}
+                  </Badge>
               </div>
               <div className="text-xs text-purple-600">
                 Para ver todos os interessados, solicite acesso ao administrador
@@ -1957,6 +1939,7 @@ export default function Users() {
               onDisciple={() => handleDiscipleUser(u)}
               onDiscipleRequest={() => handleDiscipleRequest(u)}
               showActions={user?.role === 'admin'}
+              relationshipsData={safeRelationshipsData}
             />
           ))}
         </div>

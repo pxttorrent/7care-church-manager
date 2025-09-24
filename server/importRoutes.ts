@@ -54,7 +54,6 @@ export const importRoutes = (app: any) => {
         'reunioes': 'reunioes',
         'reuniões': 'reunioes',
         'pregações': 'pregacoes',
-        'pregações': 'pregacoes',
         'pregacoes': 'pregacoes'
       };
 
@@ -63,14 +62,14 @@ export const importRoutes = (app: any) => {
         try {
           const event = data[i];
           
-          if (!event.Evento || !event.Data) {
-            errors.push(`Linha ${i + 1}: campos obrigatórios ausentes`);
+          if (!(event as any).Evento || !(event as any).Data) {
+            (errors as any[]).push(`Linha ${i + 1}: campos obrigatórios ausentes`);
             continue;
           }
 
-          const eventTitle = event.Evento.trim();
-          const dateString = event.Data.trim();
-          const category = event.Categoria ? event.Categoria.trim().toLowerCase() : 'reunioes';
+          const eventTitle = (event as any).Evento.trim();
+          const dateString = (event as any).Data.trim();
+          const category = (event as any).Categoria ? (event as any).Categoria.trim().toLowerCase() : 'reunioes';
           const mappedType = categoryMapping[category] || 'reunioes';
           
           // Processar data
@@ -122,7 +121,7 @@ export const importRoutes = (app: any) => {
                 RETURNING id, title, date
               `;
               
-              days.push(dayResult[0]);
+              (days as any[]).push(dayResult[0]);
             }
             
             result = days;
@@ -145,8 +144,8 @@ export const importRoutes = (app: any) => {
           }
           
         } catch (error) {
-          console.error(`❌ Erro na linha ${i + 1}: ${error.message}`);
-          errors.push(`Linha ${i + 1}: ${error.message}`);
+          console.error(`❌ Erro na linha ${i + 1}: ${(error as Error).message}`);
+          (errors as any[]).push(`Linha ${i + 1}: ${(error as Error).message}`);
         }
       }
 

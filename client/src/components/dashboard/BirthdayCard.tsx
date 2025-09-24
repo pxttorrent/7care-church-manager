@@ -23,104 +23,183 @@ interface BirthdayCardProps {
 
 export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = false }: BirthdayCardProps) => {
   const formatDate = (dateString: string) => {
-    // Para formato YYYY-MM-DD, extrai diretamente os componentes
-    if (dateString && typeof dateString === 'string' && dateString.includes('-') && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      const [year, month, day] = dateString.split('-');
-      const parsedDay = parseInt(day);
-      const parsedMonth = parseInt(month);
-      
-      // Retorna diretamente no formato DD/MM
-      return `${String(parsedDay).padStart(2, '0')}/${String(parsedMonth).padStart(2, '0')}`;
-    }
-    
-    // Para outros formatos, usa a lógica anterior
-    const date = new Date(dateString);
-    
-    // Se a data for inválida, tenta parsear manualmente
-    if (isNaN(date.getTime())) {
-      // Tenta parsear formato DD/MM/YYYY
-      if (dateString && typeof dateString === 'string' && dateString.includes('/')) {
-        const parts = dateString.split('/');
-        if (parts.length === 3) {
-          const [day, month, year] = parts;
-          const parsedDay = parseInt(day);
-          const parsedMonth = parseInt(month);
-          let parsedYear = parseInt(year);
-          
-          // Se o ano tem 2 dígitos, converte para 4 dígitos
-          if (parsedYear < 100) {
-            parsedYear += parsedYear < 50 ? 2000 : 1900;
-          }
-          
-          // Cria a data usando data local para evitar problemas de fuso horário
-          const localDate = new Date(parsedYear, parsedMonth - 1, parsedDay);
-          return localDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    try {
+      if (!dateString || typeof dateString !== 'string') {
+        return 'Data inválida';
+      }
+
+      // Para formato YYYY-MM-DD simples, extrai diretamente os componentes
+      if (dateString.includes('-') && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const [year, month, day] = dateString.split('-');
+        const parsedDay = parseInt(day);
+        const parsedMonth = parseInt(month);
+        
+        // Validação básica
+        if (parsedDay >= 1 && parsedDay <= 31 && parsedMonth >= 1 && parsedMonth <= 12) {
+          return `${String(parsedDay).padStart(2, '0')}/${String(parsedMonth).padStart(2, '0')}`;
+        }
+      }
+
+      // Para formato ISO (YYYY-MM-DDTHH:mm:ss.sssZ), extrai apenas a parte da data
+      if (dateString.includes('T') && dateString.includes('Z')) {
+        const datePart = dateString.split('T')[0]; // Pega apenas YYYY-MM-DD
+        const [year, month, day] = datePart.split('-');
+        const parsedDay = parseInt(day);
+        const parsedMonth = parseInt(month);
+        
+        // Validação básica
+        if (parsedDay >= 1 && parsedDay <= 31 && parsedMonth >= 1 && parsedMonth <= 12) {
+          return `${String(parsedDay).padStart(2, '0')}/${String(parsedMonth).padStart(2, '0')}`;
         }
       }
       
+      // Para outros formatos, usa a lógica anterior
+      const date = new Date(dateString);
+      
+      // Se a data for inválida, tenta parsear manualmente
+      if (isNaN(date.getTime())) {
+        // Tenta parsear formato DD/MM/YYYY
+        if (dateString.includes('/')) {
+          const parts = dateString.split('/');
+          if (parts.length === 3) {
+            const [day, month, year] = parts;
+            const parsedDay = parseInt(day);
+            const parsedMonth = parseInt(month);
+            let parsedYear = parseInt(year);
+            
+            // Se o ano tem 2 dígitos, converte para 4 dígitos
+            if (parsedYear < 100) {
+              parsedYear += parsedYear < 50 ? 2000 : 1900;
+            }
+            
+            // Validação básica
+            if (parsedDay >= 1 && parsedDay <= 31 && parsedMonth >= 1 && parsedMonth <= 12) {
+              // Cria a data usando data local para evitar problemas de fuso horário
+              const localDate = new Date(parsedYear, parsedMonth - 1, parsedDay);
+              if (!isNaN(localDate.getTime())) {
+                return localDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+              }
+            }
+          }
+        }
+        
+        return 'Data inválida';
+      }
+      
+      // Para datas válidas, usa data local para evitar problemas de fuso horário
+      const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      return localDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    } catch (error) {
+      console.error('Erro ao formatar data:', error, 'Data:', dateString);
       return 'Data inválida';
     }
-    
-    // Para datas válidas, usa data local para evitar problemas de fuso horário
-    const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    return localDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   };
 
   const formatDayName = (dateString: string) => {
-    // Evita problemas de fuso horário criando a data de forma explícita
-    const date = new Date(dateString);
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    
-    // Se a data for inválida, tenta parsear manualmente
-    if (isNaN(date.getTime())) {
-      // Tenta parsear formato DD/MM/YYYY
-      if (dateString && typeof dateString === 'string' && dateString.includes('/')) {
-        const parts = dateString.split('/');
-        if (parts.length === 3) {
-          const [day, month] = parts;
+    try {
+      console.log('🔍 formatDayName chamada com:', dateString);
+      
+      if (!dateString || typeof dateString !== 'string') {
+        return 'Dia inválido';
+      }
+
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      const currentBirthdayYear = 2025; // Usar 2025 para calcular o dia da semana do aniversário que será - VERSÃO CORRIGIDA
+      
+      console.log('📅 currentBirthdayYear:', currentBirthdayYear);
+      
+      // Para datas ISO, extrai apenas a parte da data e cria como data local
+      let dateToProcess = dateString;
+      if (dateString.includes('T') && dateString.includes('Z')) {
+        const datePart = dateString.split('T')[0]; // Pega apenas YYYY-MM-DD
+        const [year, month, day] = datePart.split('-');
+        // Cria uma data local para 2025 usando os componentes extraídos para evitar problemas de fuso horário
+        const localDate2025 = new Date(currentBirthdayYear, parseInt(month) - 1, parseInt(day));
+        const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+        const dayName = dayNames[localDate2025.getDay()];
+        
+        console.log('🌍 ISO Data processada:', { datePart, year, month, day });
+        console.log('📆 Data 2025 criada:', localDate2025.toDateString());
+        console.log('📝 Dia da semana retornado:', dayName);
+        
+        return dayName;
+      }
+      
+      // Evita problemas de fuso horário criando a data de forma explícita
+      const date = new Date(dateToProcess);
+      
+      // Se a data for inválida, tenta parsear manualmente
+      if (isNaN(date.getTime())) {
+        // Tenta parsear formato DD/MM/YYYY
+        if (dateString.includes('/')) {
+          const parts = dateString.split('/');
+          if (parts.length === 3) {
+            const [day, month] = parts;
+            const parsedDay = parseInt(day);
+            const parsedMonth = parseInt(month);
+            
+            // Validação básica
+            if (parsedDay >= 1 && parsedDay <= 31 && parsedMonth >= 1 && parsedMonth <= 12) {
+              // Cria a data usando 2025 para calcular o dia da semana do aniversário que será
+              const currentYearBirthday = new Date(currentBirthdayYear, parsedMonth - 1, parsedDay);
+              
+              // Get day name
+              const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+              const dayName = dayNames[currentYearBirthday.getDay()];
+              
+              return dayName;
+            }
+          }
+        }
+        
+        // Tenta parsear formato YYYY-MM-DD
+        if (dateString.includes('-') && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const [year, month, day] = dateString.split('-');
           const parsedDay = parseInt(day);
           const parsedMonth = parseInt(month);
           
-          // Cria a data usando data local para evitar problemas de fuso horário
-          const thisYearBirthday = new Date(currentYear, parsedMonth - 1, parsedDay);
-          
-          // Get day name
-                  const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-        const dayName = dayNames[thisYearBirthday.getDay()];
-        
-        return dayName;
+          // Validação básica
+          if (parsedDay >= 1 && parsedDay <= 31 && parsedMonth >= 1 && parsedMonth <= 12) {
+            // Cria a data usando 2025 para calcular o dia da semana do aniversário que será
+            const currentYearBirthday = new Date(currentBirthdayYear, parsedMonth - 1, parsedDay);
+            
+            // Get day name
+            const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+            const dayName = dayNames[currentYearBirthday.getDay()];
+            
+            return dayName;
+          }
         }
+        
+        return 'Dia inválido';
       }
       
-      // Tenta parsear formato YYYY-MM-DD
-      if (dateString && typeof dateString === 'string' && dateString.includes('-') && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        const [year, month, day] = dateString.split('-');
-        const thisYearBirthday = new Date(currentYear, parseInt(month) - 1, parseInt(day));
-        
-        // Get day name
-        const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-        const dayName = dayNames[thisYearBirthday.getDay()];
-        
-        return dayName;
-      }
+      // Para datas válidas, usa 2025 para calcular o dia da semana do aniversário que será
+      const currentYearBirthday = new Date(currentBirthdayYear, date.getMonth(), date.getDate());
       
+      // Get day name
+      const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+      const dayName = dayNames[currentYearBirthday.getDay()];
+      
+      return dayName;
+    } catch (error) {
+      console.error('Erro ao formatar nome do dia:', error, 'Data:', dateString);
       return 'Dia inválido';
     }
-    
-    // Para datas válidas, usa data local para evitar problemas de fuso horário
-    const thisYearBirthday = new Date(currentYear, date.getMonth(), date.getDate());
-    
-    // Get day name
-    const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-    const dayName = dayNames[thisYearBirthday.getDay()];
-    
-    return dayName;
   };
 
   const isToday = (dateString: string) => {
     const today = new Date();
-    const birthDate = new Date(dateString);
+    
+    // Para datas ISO, extrai apenas a parte da data para evitar problemas de fuso horário
+    let dateToProcess = dateString;
+    if (dateString.includes('T') && dateString.includes('Z')) {
+      const datePart = dateString.split('T')[0]; // Pega apenas YYYY-MM-DD
+      dateToProcess = datePart;
+    }
+    
+    const birthDate = new Date(dateToProcess);
     
     // Se a data for inválida, tenta parsear manualmente
     if (isNaN(birthDate.getTime())) {
@@ -168,6 +247,13 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
     const whatsappUrl = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
   };
+
+  // Filtrar aniversariantes de hoje apenas do mês corrente
+  const todayInCurrentMonth = birthdaysToday.filter(user => {
+    const birthDate = new Date(user.birthDate);
+    const today = new Date();
+    return birthDate.getMonth() === today.getMonth();
+  });
 
   // Sort other birthdays chronologically (excluding today's)
   const otherBirthdays = birthdaysThisMonth
@@ -226,7 +312,7 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
     );
   }
 
-  const totalBirthdays = birthdaysToday.length + otherBirthdays.length;
+  const totalBirthdays = todayInCurrentMonth.length + otherBirthdays.length;
 
   return (
     <Card className="shadow-divine">
@@ -236,9 +322,9 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
           Aniversariantes do mês
         </CardTitle>
         <div className="flex items-center gap-2">
-          {birthdaysToday.length > 0 && (
+          {todayInCurrentMonth.length > 0 && (
             <Badge variant="destructive" className="text-xs">
-              {birthdaysToday.length} hoje
+              {todayInCurrentMonth.length} hoje
             </Badge>
           )}
           <Badge variant="outline" className="text-xs">
@@ -258,7 +344,7 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
           <ScrollArea className="h-96">
             <div className="space-y-3 pr-4">
               {/* Aniversariantes de hoje - em destaque */}
-              {birthdaysToday.length > 0 && (
+              {todayInCurrentMonth.length > 0 && (
                 <>
                   <div className="mb-4">
                     <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
@@ -266,7 +352,7 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
                       Aniversariantes de Hoje
                     </h4>
                     <div className="space-y-2">
-                      {birthdaysToday.map((user) => (
+                      {todayInCurrentMonth.map((user) => (
                         <div
                           key={user.id}
                           className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/20 shadow-sm"

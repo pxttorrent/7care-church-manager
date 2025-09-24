@@ -4,6 +4,8 @@
 
 [build.environment]
   NODE_ENV = "production"
+  # GOOGLE_SCRIPT_URL deve ser configurada no painel do Netlify
+  # Exemplo: https://script.google.com/macros/s/SEU_SCRIPT_ID/exec
 
 [[redirects]]
   from = "/api/*"

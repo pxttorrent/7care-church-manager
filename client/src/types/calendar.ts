@@ -8,6 +8,7 @@ export interface CalendarEvent {
   duration?: number;
   location?: string;
   type: 'igreja-local' | 'asr-geral' | 'asr-administrativo' | 'asr-pastores' | 'visitas' | 'reunioes' | 'pregacoes';
+  color?: string;
   attendees?: number;
   maxAttendees?: number;
   status: 'scheduled' | 'confirmed' | 'cancelled';

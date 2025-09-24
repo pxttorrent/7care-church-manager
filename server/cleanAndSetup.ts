@@ -20,24 +20,24 @@ export async function cleanAndSetupArmour() {
     password: adminPassword,
     role: 'admin',
     church: 'Armour',
-    church_code: 'ARM001',
-    departments: ['Administração'],
-    birth_date: '1990-01-01',
-    civil_status: 'Solteiro',
+    churchCode: 'ARM001',
+    departments: 'Administração',
+    birthDate: '1990-01-01',
+    civilStatus: 'Solteiro',
     occupation: 'Administrador',
     education: 'Superior',
     address: 'Rua Principal, 123',
-    baptism_date: '2000-01-01',
-    previous_religion: 'Nenhuma',
-    biblical_instructor: 'Pastor João',
-    interested_situation: 'Aprovado',
-    is_donor: true,
-    is_tither: true,
-    is_approved: true,
+    baptismDate: '2000-01-01',
+    previousReligion: 'Nenhuma',
+    biblicalInstructor: 'Pastor João',
+    interestedSituation: 'Aprovado',
+    isDonor: true,
+    isTither: true,
+    isApproved: true,
     points: 1000,
     level: 'Ouro',
     attendance: 100,
-    extra_data: JSON.stringify({
+    extraData: JSON.stringify({
       engajamento: 'Alto',
       classificacao: 'Frequente',
       dizimista: 'Pontual',
@@ -60,7 +60,7 @@ export async function cleanAndSetupArmour() {
       }
     }),
     observations: 'Super administrador do sistema',
-    first_access: false,
+    firstAccess: false,
     status: 'active'
   });
   
@@ -74,7 +74,7 @@ export async function cleanAndSetupArmour() {
       password: 'armour123',
       role: 'admin',
       church: 'Armour',
-      church_code: 'ARM001',
+      churchCode: 'ARM001',
       departments: ['Pastoral'],
       birth_date: '1975-05-15',
       civil_status: 'Casado',
@@ -91,7 +91,7 @@ export async function cleanAndSetupArmour() {
       points: 850,
       level: 'Prata',
       attendance: 95,
-      extra_data: JSON.stringify({
+      extraData: JSON.stringify({
         engajamento: 'Alto',
         classificacao: 'Frequente',
         dizimista: 'Pontual',
@@ -107,7 +107,7 @@ export async function cleanAndSetupArmour() {
         camposVaziosACMS: false
       }),
       observations: 'Pastor da igreja Armour',
-      first_access: false,
+      firstAccess: false,
       status: 'active'
     },
     {
@@ -116,7 +116,7 @@ export async function cleanAndSetupArmour() {
       password: 'armour123',
       role: 'member',
       church: 'Armour',
-      church_code: 'ARM001',
+      churchCode: 'ARM001',
       departments: ['Música', 'Evangelismo'],
       birth_date: '1985-03-20',
       civil_status: 'Casada',
@@ -133,7 +133,7 @@ export async function cleanAndSetupArmour() {
       points: 650,
       level: 'Bronze',
       attendance: 90,
-      extra_data: JSON.stringify({
+      extraData: JSON.stringify({
         engajamento: 'Médio',
         classificacao: 'Frequente',
         dizimista: 'Sazonal',
@@ -149,7 +149,7 @@ export async function cleanAndSetupArmour() {
         camposVaziosACMS: false
       }),
       observations: 'Membro ativo da igreja Armour',
-      first_access: false,
+      firstAccess: false,
       status: 'active'
     },
     {
@@ -158,10 +158,10 @@ export async function cleanAndSetupArmour() {
       password: 'armour123',
       role: 'member',
       church: 'Armour',
-      church_code: 'ARM001',
+      churchCode: 'ARM001',
       departments: ['Jovens'],
       birth_date: '1995-12-10',
-      civil_status: 'Solteiro',
+      civilStatus: 'Solteiro',
       occupation: 'Estudante',
       education: 'Superior',
       address: 'Rua Nova, 321',
@@ -175,7 +175,7 @@ export async function cleanAndSetupArmour() {
       points: 400,
       level: 'Bronze',
       attendance: 80,
-      extra_data: JSON.stringify({
+      extraData: JSON.stringify({
         engajamento: 'Baixo',
         classificacao: 'Frequente',
         dizimista: 'Não dizimista',
@@ -191,7 +191,7 @@ export async function cleanAndSetupArmour() {
         camposVaziosACMS: false
       }),
       observations: 'Jovem membro da igreja Armour',
-      first_access: false,
+      firstAccess: false,
       status: 'active'
     }
   ];
@@ -202,30 +202,32 @@ export async function cleanAndSetupArmour() {
     const hashedPassword = await bcrypt.hash(userData.password, 10);
     const user = await storage.createUser({
       ...userData,
-      password: hashedPassword
-    });
+      password: hashedPassword,
+      firstAccess: true,
+      status: 'active'
+    } as any);
     console.log(`✅ Usuário criado: ${user.name} (${user.email})`);
   }
   
   // Criar igreja Armour
   console.log('⛪ Criando igreja Armour...');
   try {
-    const church = await storage.createChurch({
-      name: 'Igreja Armour',
-      code: 'ARM001',
-      address: 'Rua da Igreja, 456',
-      city: 'São Paulo',
-      state: 'SP',
-      zip_code: '01234-567',
-      phone: '(11) 1234-5678',
-      email: 'contato@armour.com',
-      pastor_name: 'Pastor João Silva',
-      pastor_email: 'joao@armour.com',
-      established_date: '1990-01-01',
-      status: 'active'
-    });
+    // const church = await storage.createChurch({
+    //   name: 'Igreja Armour',
+    //   code: 'ARM001',
+    //   address: 'Rua da Igreja, 456',
+    //   city: 'São Paulo',
+    //   state: 'SP',
+    //   zip_code: '01234-567',
+    //   phone: '(11) 1234-5678',
+    //   email: 'contato@armour.com',
+    //   pastor_name: 'Pastor João Silva',
+    //   pastor_email: 'joao@armour.com',
+    //   established_date: '1990-01-01',
+    //   status: 'active'
+    // });
     
-    console.log('✅ Igreja Armour criada:', church);
+    // console.log('✅ Igreja Armour criada:', church);
   } catch (error) {
     console.error('❌ Erro ao criar igreja:', error);
   }

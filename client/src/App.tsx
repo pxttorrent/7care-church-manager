@@ -27,7 +27,7 @@ const VideoCallRoom = lazy(() => import("./pages/VideoCallRoom"));
 const MyInterested = lazy(() => import("./pages/MyInterested"));
 const Gamification = lazy(() => import("./pages/Gamification"));
 const Prayers = lazy(() => import("./pages/Prayers"));
-const TestCalendar = lazy(() => import("./pages/TestCalendar"));
+// const TestCalendar = lazy(() => import("./pages/TestCalendar")); // Arquivo removido
 const Contact = lazy(() => import("./pages/Contact"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -88,7 +88,7 @@ const App = () => {
               <Route path="/reports" element={<Reports />} />
               <Route path="/my-reports" element={<Reports />} />
               <Route path="/contact" element={<Contact />} />
-              <Route path="/test-calendar" element={<TestCalendar />} />
+              {/* <Route path="/test-calendar" element={<TestCalendar />} /> */}
               <Route path="/video-call/:meetingId" element={<VideoCallRoom />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

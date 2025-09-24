@@ -174,11 +174,12 @@ export class PointsCalculator {
     }
     
     // Se for número
-    if (tempoBatismo <= 2) return 25;
-    if (tempoBatismo <= 5) return 50;
-    if (tempoBatismo <= 10) return 100;
-    if (tempoBatismo <= 15) return 150;
-    if (tempoBatismo <= 20) return 200;
+    const tempoNumero = typeof tempoBatismo === 'string' ? parseInt(tempoBatismo) : tempoBatismo;
+    if (tempoNumero <= 2) return 25;
+    if (tempoNumero <= 5) return 50;
+    if (tempoNumero <= 10) return 100;
+    if (tempoNumero <= 15) return 150;
+    if (tempoNumero <= 20) return 200;
     return 200; // 20+ anos
   }
   

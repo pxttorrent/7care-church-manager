@@ -253,9 +253,8 @@ export const usePointsConfig = () => {
       (config.nomeUnidade?.comUnidade || 0) +
       (config.temLicao?.comLicao || 0) +
       (config.totalPresenca?.oitoATreze || 0) +
-      (config.batizouAlguem?.sim || 0) +
       (config.cpfValido?.valido || 0) +
-      (config.camposVaziosACMS?.completos || 0);
+      (config.camposVaziosACMS?.semCamposVazios || 0);
     
     // Escola Sabatina (máximos)
     const escolaSabatinaPoints = 

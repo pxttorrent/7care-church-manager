@@ -340,6 +340,15 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
     return Math.floor((new Date().getTime() - dateObj.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) + ' anos';
   };
 
+  const formatDateForDisplay = (dateValue: any): string => {
+    if (!dateValue) return 'Não informado';
+    
+    const dateObj = parseDate(dateValue);
+    if (!dateObj) return 'Não informado';
+    
+    return dateObj.toLocaleDateString('pt-BR');
+  };
+
   const calculateYearsSince = (date: string | null) => {
     if (!date) return 'Não informado';
     
@@ -364,14 +373,17 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
   // Parse extraData from JSON string
   const getExtraData = () => {
     try {
-      if (user.extraData && typeof user.extraData === 'string') {
-        return JSON.parse(user.extraData);
+      // Verificar tanto extra_data quanto extraData para compatibilidade
+      const extraDataField = user.extra_data || user.extraData;
+      if (extraDataField && typeof extraDataField === 'string') {
+        return JSON.parse(extraDataField);
       }
-      if (user.extraData && typeof user.extraData === 'object') {
-        return user.extraData;
+      if (extraDataField && typeof extraDataField === 'object') {
+        return extraDataField;
       }
       return {};
-    } catch {
+    } catch (error) {
+      console.error('Erro ao parsear extra_data:', error);
       return {};
     }
   };
@@ -471,7 +483,7 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                   {renderEditableField('name', 'Nome', user.name)}
                 </div>
                 <div>
-                  {renderEditableField('churchCode', 'Código', user.churchCode)}
+                  {renderEditableField('church_code', 'Código', user.church_code || user.churchCode)}
                 </div>
                 <div>
                   <div className="flex items-center justify-between">
@@ -488,16 +500,47 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                   <div className="flex items-center justify-between">
                     <label className="text-sm font-medium">Idade</label>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.idade || calculateAge(user.birthDate)}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{extraData.idade || calculateAge(user.birth_date || user.birthDate)}</p>
                 </div>
                 <div>
-                  {renderEditableField('birthDate', 'Nascimento', user.birthDate)}
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Nascimento</label>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">{formatDateForDisplay(user.birth_date || user.birthDate)}</p>
                 </div>
                 <div>
                   {renderEditableField('extraData.engajamento', 'Engajamento', extraData.engajamento)}
                 </div>
                 <div>
                   {renderEditableField('extraData.classificacao', 'Classificação', extraData.classificacao)}
+                </div>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Estado Civil</label>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">{getCivilStatusLabel(user.civil_status || user.civilStatus)}</p>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Ocupação</label>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">{user.occupation || 'Não informado'}</p>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Educação</label>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">{user.education || 'Não informado'}</p>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Status</label>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    <Badge variant={user.status === 'approved' ? 'default' : 'secondary'}>
+                      {user.status === 'approved' ? 'Aprovado' : user.status === 'pending' ? 'Pendente' : 'Recusado'}
+                    </Badge>
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -520,8 +563,24 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                 <div>
                   <label className="text-sm font-medium">Dizimista</label>
                   <div className="text-sm text-muted-foreground mt-1">
-                    <Badge variant={user.isDonor ? "default" : "secondary"}>
-                      {extraData.dizimistaType || (user.isDonor ? 'Sim' : 'Não')}
+                    <Badge variant={user.is_donor || user.isDonor ? "default" : "secondary"}>
+                      {extraData.dizimistaType || (user.is_donor || user.isDonor ? 'Sim' : 'Não')}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">É Dizimista (DB)</label>
+                  <div className="text-sm text-muted-foreground mt-1">
+                    <Badge variant={user.is_tither || user.isTither ? "default" : "secondary"}>
+                      {user.is_tither || user.isTither ? 'Sim' : 'Não'}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">É Doador</label>
+                  <div className="text-sm text-muted-foreground mt-1">
+                    <Badge variant={user.is_donor || user.isDonor ? "default" : "secondary"}>
+                      {user.is_donor || user.isDonor ? 'Sim' : 'Não'}
                     </Badge>
                   </div>
                 </div>
@@ -601,15 +660,15 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <label className="text-sm font-medium">Tempo de batismo</label>
-                  <p className="text-sm text-muted-foreground mt-1">{calculateYearsSince(user.baptismDate)}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{calculateYearsSince(user.baptism_date || user.baptismDate)}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Batismo</label>
-                  <p className="text-sm text-muted-foreground mt-1">{formatDate(user.baptismDate)}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{formatDate(user.baptism_date || user.baptismDate)}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Tempo de batismo</label>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.tempoBatismo || calculateYearsSince(user.baptismDate)}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{extraData.tempoBatismo || calculateYearsSince(user.baptism_date || user.baptismDate)}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Localidade do batismo</label>
@@ -625,7 +684,7 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                 </div>
                 <div>
                   <label className="text-sm font-medium">Tempo de batismo - anos</label>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.tempoBatismoAnos || calculateYearsSince(user.baptismDate)}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{calculateYearsSince(user.baptism_date || user.baptismDate)}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Religião anterior</label>
@@ -642,6 +701,10 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                 <div>
                   <label className="text-sm font-medium">Como estudou a Bíblia</label>
                   <p className="text-sm text-muted-foreground mt-1">{extraData.comoEstudou || 'Não informado'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Tipo de Entrada</label>
+                  <p className="text-sm text-muted-foreground mt-1">{extraData.tipoEntrada || 'Não informado'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Instrutor bíblico</label>
@@ -724,6 +787,26 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                 <div>
                   <label className="text-sm font-medium">Ocupação</label>
                   <p className="text-sm text-muted-foreground mt-1">{user.occupation || 'Não informado'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Endereço Completo</label>
+                  <p className="text-sm text-muted-foreground mt-1">{user.address || 'Não informado'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Religião Anterior</label>
+                  <p className="text-sm text-muted-foreground mt-1">{user.previous_religion || user.previousReligion || (extraData.comoConheceu === 'Família/parentes' ? 'Nenhuma' : 'Não informado')}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Instrutor Bíblico</label>
+                  <p className="text-sm text-muted-foreground mt-1">{user.biblical_instructor || user.biblicalInstructor || extraData.batizadoPor || 'Não informado'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Primeiro Acesso</label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    <Badge variant={user.first_access || user.firstAccess ? "default" : "secondary"}>
+                      {user.first_access || user.firstAccess ? 'Sim' : 'Não'}
+                    </Badge>
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Aluno educação Adv.</label>
@@ -821,7 +904,7 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <label className="text-sm font-medium">Nome da unidade</label>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.nomeUnidade || 'Não informado'}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{extraData.nomeUnidade || extraData.cidadeEstado || 'Não informado'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Matriculado na ES</label>
@@ -881,7 +964,7 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                 </div>
                 <div>
                   <label className="text-sm font-medium">Total de presença</label>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.totalPresenca || user.attendance || 0}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{user.attendance || extraData.totalPresenca || (extraData.dizimos12m || 0)}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Teve participação</label>
@@ -932,6 +1015,30 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                 <div>
                   <label className="text-sm font-medium">Nível</label>
                   <p className="text-sm text-muted-foreground mt-1">{user.level || 'Iniciante'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Frequência</label>
+                  <p className="text-sm text-muted-foreground mt-1">{user.attendance || 0}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Pontuação</label>
+                  <p className="text-sm text-muted-foreground mt-1">{user.points || 0}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Código (extra)</label>
+                  <p className="text-sm text-muted-foreground mt-1">{extraData.codigo || 'Não informado'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Bairro</label>
+                  <p className="text-sm text-muted-foreground mt-1">{extraData.bairro || 'Não informado'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Cidade/Estado</label>
+                  <p className="text-sm text-muted-foreground mt-1">{extraData.cidadeEstado || 'Não informado'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Valor Dízimo</label>
+                  <p className="text-sm text-muted-foreground mt-1">{extraData.valorDizimo ? `R$ ${extraData.valorDizimo}` : 'Não informado'}</p>
                 </div>
               </div>
             </CardContent>

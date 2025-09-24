@@ -110,7 +110,7 @@ export class LocalStorageAdapter {
           
           if (extraData.visited === true) {
             console.log(`✅ Usuário visitado encontrado: ${user.name} (ID: ${user.id}, Role: ${user.role})`);
-            visitedUsers.push(user);
+            (visitedUsers as any[]).push(user);
           }
         }
       } catch (error) {

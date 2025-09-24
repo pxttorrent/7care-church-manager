@@ -71,21 +71,25 @@ self.addEventListener('push', (event) => {
 
 // Notification click event
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
+  try {
+    event.notification.close();
 
-  if (event.action === 'explore') {
-    // Open the app
-    event.waitUntil(
-      clients.openWindow('/')
-    );
-  } else if (event.action === 'close') {
-    // Just close the notification
-    return;
-  } else {
-    // Default action - open the app
-    event.waitUntil(
-      clients.openWindow('/')
-    );
+    if (event.action === 'explore') {
+      // Open the app
+      event.waitUntil(
+        clients.openWindow('/').catch(err => console.error('Error opening window:', err))
+      );
+    } else if (event.action === 'close') {
+      // Just close the notification
+      return;
+    } else {
+      // Default action - open the app
+      event.waitUntil(
+        clients.openWindow('/').catch(err => console.error('Error opening window:', err))
+      );
+    }
+  } catch (error) {
+    console.error('Error in notification click:', error);
   }
 });
 
@@ -104,8 +108,12 @@ function doBackgroundSync() {
 
 // Message event listener para comunicação com a página
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+  try {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+      self.skipWaiting();
+    }
+  } catch (error) {
+    console.error('Error in message listener:', error);
   }
 });
 

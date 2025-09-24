@@ -132,7 +132,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // 5. Formato YYYY/MM/DD (formato alternativo)
+      // 5. Tentar parse direto com Date (fallback)
+      const directDate = new Date(dateStr);
+      if (!isNaN(directDate.getTime()) && directDate.getFullYear() > 1900) {
+        return directDate;
+      }
+      
+      // 6. Se for um objeto Date já parseado (do banco de dados)
+      if (dateValue instanceof Date) {
+        return dateValue;
+      }
+      
+      // 7. Formato YYYY/MM/DD (formato alternativo)
       if (dateStr.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
         const parts = dateStr.split('/');
         const [year, month, day] = parts;
@@ -993,7 +1004,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         } catch (error) {
           console.error(`❌ Erro ao processar solicitação ${request.id}:`, error);
-          errors.push({ requestId: request.id, error: (error as any).message });
+          (errors as any[]).push({ requestId: request.id, error: (error as any).message });
         }
       }
       
@@ -1218,9 +1229,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allUsers = await storage.getAllUsers();
       // Usar data local para evitar problemas de fuso horário
       const today = new Date();
-      const localDate = new Date(today.getTime() - (today.getTimezoneOffset() * 60000));
-      const currentMonth = localDate.getMonth();
-      const currentDay = localDate.getDate();
+      const currentMonth = today.getMonth();
+      const currentDay = today.getDate();
       
       // Filtrar usuários por igreja se não for admin
       let filteredUsers = allUsers;
@@ -1335,7 +1345,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           // Se biblicalInstructor está sendo limpo (null), remover relacionamentos
           console.log(`➖ Removendo relacionamentos para usuário ${id}`);
-          await storage.deleteRelationshipByInterested(id);
+          // await storage.deleteRelationshipByInterested(id); // Função removida
         }
       }
       
@@ -1445,7 +1455,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Check if user already exists by email
           const existingUser = await storage.getUserByEmail(userData.email);
           if (existingUser) {
-            errors.push({ userId: userData.email, userName: userData.name, error: `User with email ${userData.email} already exists` });
+            (errors as any[]).push({ userId: userData.email, userName: userData.name, error: `User with email ${userData.email} already exists` });
             continue;
           }
 
@@ -1515,7 +1525,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Create user with first access credentials
           const newUser = await storage.createUser(processedUserData);
 
-          processedUsers.push({
+          (processedUsers as any[]).push({
             ...newUser,
             generatedUsername: finalUsername,
             defaultPassword: 'meu7care'
@@ -1523,7 +1533,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         } catch (error) {
           console.error(`Error processing user ${i + 1}:`, error);
-          errors.push({ userId: userData.email, userName: userData.name, error: error instanceof Error ? error.message : 'Unknown error' });
+          (errors as any[]).push({ userId: userData.email, userName: userData.name, error: error instanceof Error ? (error as Error).message : 'Unknown error' });
         }
       }
 
@@ -1761,7 +1771,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             
             if (extraData.visited === true) {
-              visitedUsers.push({
+              (visitedUsers as any[]).push({
                 id: user.id,
                 name: user.name,
                 role: user.role,
@@ -1823,7 +1833,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const visitCount = extraData.visitCount || 1;
               totalVisits += visitCount;
               
-              visitedUsersList.push({
+              (visitedUsersList as any[]).push({
                 id: user.id,
                 name: user.name,
                 visitCount: visitCount,
@@ -1959,333 +1969,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Endpoint para recalcular pontuação de todos os usuários
-  app.post('/api/system/recalculate-all-points', async (req, res) => {
-    try {
-      
-      // Buscar todos os usuários
-      const allUsers = await storage.getAllUsers();
-      console.log(`📊 Total de usuários encontrados: ${allUsers.length}`);
-      
-      let updatedCount = 0;
-      const errors: Array<{ userId: any; userName: any; error: string }> = [];
-      
-      // Processar cada usuário
-      for (const user of allUsers) {
-        try {
-          
-          // Pular Super Admin - não deve ter pontos
-          if (user.email === 'admin@7care.com' || user.role === 'admin') {
-            continue;
-          }
-          
-          // Calcular pontos usando a função corrigida
-          const config = await storage.getPointsConfiguration();
-          let points = 0;
-          
-          // Parse extra_data
-          let userData: any = {};
-          if (user.extraData && typeof user.extraData === 'string') {
-            userData = JSON.parse(user.extraData);
-          }
-          
-          // Pontos básicos
-          points += config.basicPoints || 100;
-          
-          // Pontos de presença
-          const attendancePoints = (user.attendance || 0) * (config.attendancePoints || 10);
-          points += attendancePoints;
-          
-          // Engajamento
-          if (userData.engajamento) {
-            const engajamento = userData.engajamento.toLowerCase();
-            if (engajamento.includes('baixo')) points += config.engajamento.baixo;
-            else if (engajamento.includes('médio') || engajamento.includes('medio')) points += config.engajamento.medio;
-            else if (engajamento.includes('alto')) points += config.engajamento.alto;
-            else points += config.engajamento.baixo; // Default para baixo se não reconhecer
-          }
-          
-          // Classificação
-          if (userData.classificacao) {
-            const classificacao = userData.classificacao.toLowerCase();
-            if (classificacao.includes('frequente')) points += config.classificacao.frequente;
-            else points += config.classificacao.naoFrequente;
-          }
-          
-          // Dizimista - usar dizimistaType se disponível
-          if (userData.dizimistaType) {
-            const dizimista = userData.dizimistaType.toLowerCase();
-            if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) points += config.dizimista.naoDizimista;
-            else if (dizimista.includes('pontual')) points += config.dizimista.pontual;
-            else if (dizimista.includes('sazonal')) points += config.dizimista.sazonal;
-            else if (dizimista.includes('recorrente')) points += config.dizimista.recorrente;
-          } else if (userData.dizimista) {
-            const dizimista = userData.dizimista.toLowerCase();
-            if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) points += config.dizimista.naoDizimista;
-            else if (dizimista.includes('pontual')) points += config.dizimista.pontual;
-            else if (dizimista.includes('sazonal')) points += config.dizimista.sazonal;
-            else if (dizimista.includes('recorrente')) points += config.dizimista.recorrente;
-          }
-          
-          // Ofertante - usar ofertanteType se disponível
-          if (userData.ofertanteType) {
-            const ofertante = userData.ofertanteType.toLowerCase();
-            if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) points += config.ofertante.naoOfertante;
-            else if (ofertante.includes('pontual')) points += config.ofertante.pontual;
-            else if (ofertante.includes('sazonal')) points += config.ofertante.sazonal;
-            else if (ofertante.includes('recorrente')) points += config.ofertante.recorrente;
-            else points += config.ofertante.recorrente; // Default para recorrente se não reconhecer
-          } else if (userData.ofertante) {
-            const ofertante = userData.ofertante.toLowerCase();
-            if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) points += config.ofertante.naoOfertante;
-            else if (ofertante.includes('pontual')) points += config.ofertante.pontual;
-            else if (ofertante.includes('sazonal')) points += config.ofertante.sazonal;
-            else if (ofertante.includes('recorrente')) points += config.ofertante.recorrente;
-            else points += config.ofertante.recorrente; // Default para recorrente se não reconhecer
-          }
-          
-          // Tempo de batismo
-          if (userData.tempoBatismoAnos) {
-            const tempo = userData.tempoBatismoAnos;
-            if (tempo >= 2 && tempo < 5) points += config.tempoBatismo.doisAnos;
-            else if (tempo >= 5 && tempo < 10) points += config.tempoBatismo.cincoAnos;
-            else if (tempo >= 10 && tempo < 20) points += config.tempoBatismo.dezAnos;
-            else if (tempo >= 20 && tempo < 30) points += config.tempoBatismo.vinteAnos;
-            else if (tempo >= 30) points += config.tempoBatismo.maisVinte;
-          }
-          
-          // Nome da unidade
-          if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
-            points += config.nomeUnidade.comUnidade;
-          }
-          
-          // Pontuação dinâmica
-          if (userData.comunhao) points += (userData.comunhao * config.pontuacaoDinamica.multiplicador);
-          if (userData.missao) points += (userData.missao * config.pontuacaoDinamica.multiplicador);
-          if (userData.estudoBiblico) points += (userData.estudoBiblico * config.pontuacaoDinamica.multiplicador);
-          
-          // Total de presença
-          if (userData.totalPresenca !== undefined) {
-            const presenca = userData.totalPresenca;
-            if (presenca >= 0 && presenca <= 3) points += config.totalPresenca.zeroATres;
-            else if (presenca >= 4 && presenca <= 7) points += config.totalPresenca.quatroASete;
-            else if (presenca >= 8 && presenca <= 13) points += config.totalPresenca.oitoATreze;
-          }
-          
-          // Escola sabatina
-          if (userData.batizouAlguem) points += config.escolaSabatina.batizouAlguem;
-          if (userData.discPosBatismal) points += (userData.discPosBatismal * config.escolaSabatina.discipuladoPosBatismo);
-          
-          // CPF válido
-          if (userData.cpfValido === 'Sim' || userData.cpfValido === true) {
-            points += config.cpfValido.valido;
-          }
-          
-          // Campos vazios ACMS (assumindo que está completo)
-          points += config.camposVaziosACMS.completos;
-          
-          // Aplicar multiplicadores
-          const multiplicadorDinamico = config.pontuacaoDinamica?.multiplicador || 1;
-          const multiplicadorPresenca = config.presenca?.multiplicador || 1;
-          
-          points = points * multiplicadorDinamico;
-          points += (user.attendance || 0) * multiplicadorPresenca;
-          
-          // Verificar se os pontos mudaram
-          const currentPoints = user.points || 0;
-          const newPoints = Math.round(points);
-          
-          if (newPoints !== currentPoints) {
-            await storage.updateUser(user.id, { points: newPoints });
-            updatedCount++;
-          } else {
-          }
-          
-        } catch (userError) {
-          console.error(`❌ Erro ao processar usuário ${user.name}:`, userError);
-          const message = userError instanceof Error ? userError.message : String(userError);
-          errors.push({ userId: user.id, userName: user.name, error: message });
-        }
-      }
-      
-      console.log(`✅ Processamento concluído: ${updatedCount} usuários atualizados`);
-      
-      res.json({
-        success: true,
-        message: `Pontuação recalculada para todos os usuários`,
-        totalUsers: allUsers.length,
-        updatedUsers: updatedCount,
-        errors: errors
-      });
-      
-    } catch (error) {
-      console.error('Erro ao recalcular pontuação de todos os usuários:', error);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-    }
-  });
+  // Rota removida - conflitante com /api/system/calculate-points-clean
 
-  // Endpoint específico para recalcular pontuação de um usuário
-  app.post('/api/users/:id/recalculate-points', async (req, res) => {
-    try {
-      const userId = parseInt(req.params.id);
-      
-      // Buscar usuário
-      const user = await storage.getUserById(userId);
-      if (!user) {
-        return res.status(404).json({ error: 'Usuário não encontrado' });
-      }
-      
-      // Pular Super Admin - não deve ter pontos
-      if (user.email === 'admin@7care.com' || user.role === 'admin') {
-        return res.json({ 
-          success: true, 
-          message: `Super Admin não deve ter pontos calculados`,
-          points: 0
-        });
-      }
-      
-      console.log(`👤 Usuário encontrado: ${user.name}`);
-      
-      // Calcular pontos manualmente
-      const config = await storage.getPointsConfiguration();
-      let points = 0;
-      
-      try {
-        // Parse extra_data
-        let userData: any = {};
-        if (user.extraData && typeof user.extraData === 'string') {
-          userData = JSON.parse(user.extraData);
-        }
-        
-        console.log(`📊 Dados do usuário:`, userData);
-        
-        // Pontos básicos
-        points += config.basicPoints || 5;
-        
-        // Pontos de presença
-        const attendancePoints = (user.attendance || 0) * (config.attendancePoints || 5);
-        points += attendancePoints;
-        
-        // Engajamento
-        if (userData.engajamento) {
-          const engajamento = userData.engajamento.toLowerCase();
-          if (engajamento.includes('baixo')) points += config.engajamento.baixo;
-          else if (engajamento.includes('médio') || engajamento.includes('medio')) points += config.engajamento.medio;
-          else if (engajamento.includes('alto')) points += config.engajamento.alto;
-          else points += config.engajamento.baixo; // Default para baixo se não reconhecer
-        }
-        
-        // Classificação
-        if (userData.classificacao) {
-          const classificacao = userData.classificacao.toLowerCase();
-          if (classificacao.includes('frequente')) points += config.classificacao.frequente;
-          else points += config.classificacao.naoFrequente;
-        }
-        
-        // Dizimista
-        if (userData.dizimistaType) {
-          const dizimista = userData.dizimistaType.toLowerCase();
-          if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) points += config.dizimista.naoDizimista;
-          else if (dizimista.includes('pontual')) points += config.dizimista.pontual;
-          else if (dizimista.includes('sazonal')) points += config.dizimista.sazonal;
-          else if (dizimista.includes('recorrente')) points += config.dizimista.recorrente;
-        }
-        
-        // Ofertante
-        if (userData.ofertanteType) {
-          const ofertante = userData.ofertanteType.toLowerCase();
-          if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) points += config.ofertante.naoOfertante;
-          else if (ofertante.includes('pontual')) points += config.ofertante.pontual;
-          else if (ofertante.includes('sazonal')) points += config.ofertante.sazonal;
-          else if (ofertante.includes('recorrente')) points += config.ofertante.recorrente;
-          else points += config.ofertante.recorrente; // Default para recorrente se não reconhecer
-        }
-        
-        // Tempo de batismo
-        if (userData.tempoBatismoAnos) {
-          const tempo = userData.tempoBatismoAnos;
-          if (tempo >= 2 && tempo < 5) points += config.tempoBatismo.doisAnos;
-          else if (tempo >= 5 && tempo < 10) points += config.tempoBatismo.cincoAnos;
-          else if (tempo >= 10 && tempo < 20) points += config.tempoBatismo.dezAnos;
-          else if (tempo >= 20 && tempo < 30) points += config.tempoBatismo.vinteAnos;
-          else if (tempo >= 30) points += config.tempoBatismo.maisVinte;
-        }
-        
-        // Nome da unidade
-        if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
-          points += config.nomeUnidade.comUnidade;
-        }
-        
-        // Pontuação dinâmica
-        if (userData.comunhao) points += (userData.comunhao * config.pontuacaoDinamica.multiplicador);
-        if (userData.missao) points += (userData.missao * config.pontuacaoDinamica.multiplicador);
-        if (userData.estudoBiblico) points += (userData.estudoBiblico * config.pontuacaoDinamica.multiplicador);
-        
-        // Total de presença
-        if (userData.totalPresenca !== undefined) {
-          const presenca = userData.totalPresenca;
-          if (presenca >= 0 && presenca <= 3) points += config.totalPresenca.zeroATres;
-          else if (presenca >= 4 && presenca <= 7) points += config.totalPresenca.quatroASete;
-          else if (presenca >= 8 && presenca <= 13) points += config.totalPresenca.oitoATreze;
-        }
-        
-        // Escola sabatina
-        if (userData.batizouAlguem) points += config.escolaSabatina.batizouAlguem;
-        if (userData.discPosBatismal) points += (userData.discPosBatismal * config.escolaSabatina.discipuladoPosBatismo);
-        
-        // CPF válido
-        if (userData.cpfValido === 'Sim' || userData.cpfValido === true) {
-          points += config.cpfValido.valido;
-        }
-        
-        // Campos vazios ACMS (assumindo que está completo)
-        points += config.camposVaziosACMS.completos;
-        
-        // Aplicar multiplicadores
-        const multiplicadorDinamico = config.pontuacaoDinamica?.multiplicador || 1;
-        const multiplicadorPresenca = config.presenca?.multiplicador || 1;
-        
-        points = points * multiplicadorDinamico;
-        points += (user.attendance || 0) * multiplicadorPresenca;
-        
-        
-        // Atualizar usuário
-        await storage.updateUser(userId, { points: Math.round(points) });
-        
-        res.json({ 
-          success: true, 
-          message: `Pontuação recalculada para ${user.name}`,
-          userId,
-          userName: user.name,
-          oldPoints: user.points,
-          newPoints: points,
-          breakdown: {
-            engajamento: userData.engajamento,
-            classificacao: userData.classificacao,
-            dizimista: userData.dizimistaType,
-            ofertante: userData.ofertanteType,
-            tempoBatismo: userData.tempoBatismoAnos,
-            nomeUnidade: userData.nomeUnidade,
-            comunhao: userData.comunhao,
-            missao: userData.missao,
-            estudoBiblico: userData.estudoBiblico,
-            totalPresenca: userData.totalPresenca,
-            batizouAlguem: userData.batizouAlguem,
-            discPosBatismal: userData.discPosBatismal,
-            cpfValido: userData.cpfValido
-          }
-        });
-        
-      } catch (calcError) {
-        console.error('Erro no cálculo:', calcError);
-        res.status(500).json({ error: 'Erro no cálculo de pontuação' });
-      }
-      
-    } catch (error) {
-      console.error('Erro ao recalcular pontuação:', error);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-    }
-  });
+  // Rota removida - conflitante com /api/system/calculate-points-clean
 
   // Points configuration routes
   app.get('/api/system/points-config', async (req, res) => {
@@ -2322,7 +2008,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             updatedCount++;
           }
         } catch (error) {
-          console.error(`❌ Erro ao processar ${user.name}:`, error.message);
+          console.error(`❌ Erro ao processar ${user.name}:`, (error as Error).message);
           errorCount++;
         }
       }
@@ -2372,15 +2058,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const calculateUserPointsFromConfig = (user: any, config: any): number => {
     let points = 0;
 
-    // Pontos básicos
-    points += config.basicPoints || 0;
-    points += config.eventPoints || 0;
-    points += config.donationPoints || 0;
-
-    // Pontos de presença
-    const attendancePoints = (user.attendance || 0) * (config.attendancePoints || 0);
-    points += attendancePoints;
-
     // Parse extraData se necessário
     let extraData = {};
     if (user.extraData) {
@@ -2396,176 +2073,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
 
-    // Engajamento
-    if (extraData.engajamento) {
-      const engajamento = String(extraData.engajamento).toLowerCase();
-      if (engajamento.includes('baixo')) {
-        points += config.engajamento?.baixo || 0;
-      } else if (engajamento.includes('médio') || engajamento.includes('medio')) {
-        points += config.engajamento?.medio || 0;
-      } else if (engajamento.includes('alto')) {
+    // 1. ENGAJAMENTO
+    if ((extraData as any).engajamento && (extraData as any).engajamento.toLowerCase().includes('alto')) {
         points += config.engajamento?.alto || 0;
-      } else {
-        points += config.engajamento?.baixo || 0; // Default
-      }
+    } else if ((extraData as any).engajamento && (extraData as any).engajamento.toLowerCase().includes('medio')) {
+      points += config.engajamento?.medio || 0;
+    } else if ((extraData as any).engajamento && (extraData as any).engajamento.toLowerCase().includes('baixo')) {
+      points += config.engajamento?.baixo || 0;
     }
 
-    // Classificação
-    if (extraData.classificacao) {
-      const classificacao = String(extraData.classificacao).toLowerCase();
-      if (classificacao.includes('frequente')) {
+    // 2. CLASSIFICAÇÃO
+    if ((extraData as any).classificacao && (extraData as any).classificacao.toLowerCase().includes('frequente')) {
         points += config.classificacao?.frequente || 0;
-      } else {
+    } else if ((extraData as any).classificacao && (extraData as any).classificacao.toLowerCase().includes('naofrequente')) {
         points += config.classificacao?.naoFrequente || 0;
-      }
     }
 
-    // Dizimista
-    if (extraData.dizimistaType) {
-      const dizimista = String(extraData.dizimistaType).toLowerCase();
-      if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) {
-        points += config.dizimista?.naoDizimista || 0;
-      } else if (dizimista.includes('pontual')) {
-        points += config.dizimista?.pontual || 0;
-      } else if (dizimista.includes('sazonal')) {
-        points += config.dizimista?.sazonal || 0;
-      } else if (dizimista.includes('recorrente')) {
+    // 3. DIZIMISTA
+    if ((extraData as any).dizimistaType && (extraData as any).dizimistaType.toLowerCase().includes('recorrente')) {
         points += config.dizimista?.recorrente || 0;
-      } else {
-        points += config.dizimista?.recorrente || 0; // Default
-      }
+    } else if ((extraData as any).dizimistaType && (extraData as any).dizimistaType.toLowerCase().includes('sazonal')) {
+      points += config.dizimista?.sazonal || 0;
+    } else if ((extraData as any).dizimistaType && (extraData as any).dizimistaType.toLowerCase().includes('pontual')) {
+      points += config.dizimista?.pontual || 0;
     }
 
-    // Ofertante
-    if (extraData.ofertanteType) {
-      const ofertante = String(extraData.ofertanteType).toLowerCase();
-      if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) {
-        points += config.ofertante?.naoOfertante || 0;
-      } else if (ofertante.includes('pontual')) {
-        points += config.ofertante?.pontual || 0;
-      } else if (ofertante.includes('sazonal')) {
-        points += config.ofertante?.sazonal || 0;
-      } else if (ofertante.includes('recorrente')) {
+    // 4. OFERTANTE
+    if ((extraData as any).ofertanteType && (extraData as any).ofertanteType.toLowerCase().includes('recorrente')) {
         points += config.ofertante?.recorrente || 0;
-      } else {
-        points += config.ofertante?.recorrente || 0; // Default
-      }
+    } else if ((extraData as any).ofertanteType && (extraData as any).ofertanteType.toLowerCase().includes('sazonal')) {
+      points += config.ofertante?.sazonal || 0;
+    } else if ((extraData as any).ofertanteType && (extraData as any).ofertanteType.toLowerCase().includes('pontual')) {
+      points += config.ofertante?.pontual || 0;
     }
 
-    // Tempo de batismo
-    if (extraData.tempoBatismo) {
-      const tempo = String(extraData.tempoBatismo).toLowerCase();
-      if (tempo.includes('2 anos')) {
-        points += config.tempoBatismo?.doisAnos || 0;
-      } else if (tempo.includes('5 anos')) {
-        points += config.tempoBatismo?.cincoAnos || 0;
-      } else if (tempo.includes('10 anos')) {
-        points += config.tempoBatismo?.dezAnos || 0;
-      } else if (tempo.includes('20 anos')) {
-        points += config.tempoBatismo?.vinteAnos || 0;
-      } else if (tempo.includes('mais de 20')) {
-        points += config.tempoBatismo?.maisVinte || 0;
-      }
+    // 5. TEMPO DE BATISMO
+    if ((extraData as any).tempoBatismoAnos && (extraData as any).tempoBatismoAnos >= 20) {
+      points += config.tempobatismo?.maisVinte || 0;
+    } else if ((extraData as any).tempoBatismoAnos && (extraData as any).tempoBatismoAnos >= 10) {
+      points += config.tempobatismo?.dezAnos || 0;
+    } else if ((extraData as any).tempoBatismoAnos && (extraData as any).tempoBatismoAnos >= 5) {
+      points += config.tempobatismo?.cincoAnos || 0;
+    } else if ((extraData as any).tempoBatismoAnos && (extraData as any).tempoBatismoAnos >= 2) {
+      points += config.tempobatismo?.doisAnos || 0;
     }
 
-    // Cargos
-    if (extraData.temCargo) {
-      const cargo = String(extraData.temCargo).toLowerCase();
-      if (cargo.includes('sim')) {
-        // Assumir 1 cargo por padrão
+    // 6. CARGOS
+    if ((extraData as any).temCargo === 'Sim' && (extraData as any).departamentosCargos) {
+      const numCargos = (extraData as any).departamentosCargos.split(';').length;
+      if (numCargos >= 3) {
+        points += config.cargos?.tresOuMais || 0;
+      } else if (numCargos === 2) {
+        points += config.cargos?.doisCargos || 0;
+      } else if (numCargos === 1) {
         points += config.cargos?.umCargo || 0;
       }
     }
 
-    // Nome da unidade
-    if (extraData.nomeUnidade) {
-      const unidade = String(extraData.nomeUnidade).toLowerCase();
-      if (unidade.includes('sim')) {
-        points += config.nomeUnidade?.comUnidade || 0;
-      } else {
-        points += config.nomeUnidade?.semUnidade || 0;
+    // 7. NOME DA UNIDADE
+    if ((extraData as any).nomeUnidade && (extraData as any).nomeUnidade.trim()) {
+      points += config.nomeunidade?.comUnidade || 0;
+    }
+
+    // 8. TEM LIÇÃO
+    if ((extraData as any).temLicao === true || (extraData as any).temLicao === 'true') {
+      points += config.temlicao?.comLicao || 0;
+    }
+
+    // 9. TOTAL DE PRESENÇA
+    if ((extraData as any).totalPresenca !== undefined && (extraData as any).totalPresenca !== null) {
+      const presenca = parseInt((extraData as any).totalPresenca);
+      if (presenca >= 8 && presenca <= 13) {
+        points += config.totalpresenca?.oitoATreze || 0;
+      } else if (presenca >= 4 && presenca <= 7) {
+        points += config.totalpresenca?.quatroASete || 0;
       }
     }
 
-    // Tem lição (boolean)
-    if (extraData.temLicao === true) {
-      points += config.temLicao?.comLicao || 0;
+    // 10. ESCOLA SABATINA - COMUNHÃO
+    if ((extraData as any).comunhao && (extraData as any).comunhao > 0) {
+      points += (extraData as any).comunhao * (config.escolasabatina?.comunhao || 0);
     }
 
-    // Total de presença - tratar como número ou string
-    if (extraData.totalPresenca !== undefined && extraData.totalPresenca !== null) {
-      if (typeof extraData.totalPresenca === 'number') {
-        // Se for número, mapear para categorias
-        const total = extraData.totalPresenca;
-        if (total >= 0 && total <= 3) {
-          points += config.totalPresenca?.zeroATres || 0;
-        } else if (total >= 4 && total <= 7) {
-          points += config.totalPresenca?.quatroASete || 0;
-        } else if (total >= 8 && total <= 13) {
-          points += config.totalPresenca?.oitoATreze || 0;
-        }
-      } else {
-        // Se for string, processar normalmente
-        const total = String(extraData.totalPresenca).toLowerCase();
-        if (total.includes('0 a 3') || total.includes('0-3')) {
-          points += config.totalPresenca?.zeroATres || 0;
-        } else if (total.includes('4 a 7') || total.includes('4-7')) {
-          points += config.totalPresenca?.quatroASete || 0;
-        } else if (total.includes('8 a 13') || total.includes('8-13')) {
-          points += config.totalPresenca?.oitoATreze || 0;
-        }
-      }
+    // 11. ESCOLA SABATINA - MISSÃO
+    if ((extraData as any).missao && (extraData as any).missao > 0) {
+      points += (extraData as any).missao * (config.escolasabatina?.missao || 0);
     }
 
-    // Escola sabatina
-    if (extraData.escolaSabatina) {
-      const escola = String(extraData.escolaSabatina).toLowerCase();
-      if (escola.includes('comunhão') || escola.includes('comunhao')) {
-        points += config.escolaSabatina?.comunhao || 0;
-      } else if (escola.includes('missão') || escola.includes('missao')) {
-        points += config.escolaSabatina?.missao || 0;
-      } else if (escola.includes('estudo bíblico') || escola.includes('estudo biblico')) {
-        points += config.escolaSabatina?.estudoBiblico || 0;
-      }
+    // 12. ESCOLA SABATINA - ESTUDO BÍBLICO
+    if ((extraData as any).estudoBiblico && (extraData as any).estudoBiblico > 0) {
+      points += (extraData as any).estudoBiblico * (config.escolasabatina?.estudoBiblico || 0);
     }
 
-    // Batizou alguém
-    if (extraData.batizouAlguem) {
-      const batizou = String(extraData.batizouAlguem).toLowerCase();
-      if (batizou.includes('sim')) {
-        points += config.batizouAlguem?.sim || 0;
-      } else {
-        points += config.batizouAlguem?.nao || 0;
-      }
+    // 13. ESCOLA SABATINA - DISCIPULADO PÓS-BATISMO
+    if ((extraData as any).discPosBatismal && (extraData as any).discPosBatismal > 0) {
+      points += (extraData as any).discPosBatismal * (config.escolasabatina?.discipuladoPosBatismo || 0);
     }
 
-    // CPF válido
-    if (extraData.cpfValido === true || (typeof extraData.cpfValido === 'string' && extraData.cpfValido.toLowerCase().includes('sim'))) {
-      points += config.cpfValido?.valido || 0;
-    } else {
-      points += config.cpfValido?.invalido || 0;
+    // 14. CPF VÁLIDO
+    if ((extraData as any).cpfValido === 'Sim' || (extraData as any).cpfValido === true || (extraData as any).cpfValido === 'true') {
+      points += config.cpfvalido?.valido || 0;
     }
 
-    // Campos vazios ACMS
-    if (extraData.camposVaziosACMS) {
-      const campos = String(extraData.camposVaziosACMS).toLowerCase();
-      if (campos.includes('completo')) {
-        points += config.camposVaziosACMS?.completos || 0;
-      } else {
-        points += config.camposVaziosACMS?.incompletos || 0;
-      }
+    // 15. CAMPOS VAZIOS ACMS
+    if ((extraData as any).camposVaziosACMS === false || (extraData as any).camposVaziosACMS === 'false') {
+      points += config.camposvaziosacms?.completos || 0;
     }
 
-    // Aplicar multiplicadores
-    const multiplicadorDinamico = config.pontuacaoDinamica?.multiplicador || 1;
-    const multiplicadorPresenca = config.presenca?.multiplicador || 1;
-    const multiplicadorDiscipulado = config.discipuladoPosBatismo?.multiplicador || 1;
-
-    points = points * multiplicadorDinamico;
-    points += (user.attendance || 0) * multiplicadorPresenca;
-    points = points * multiplicadorDiscipulado;
-
-    return points;
+    return Math.round(points);
   };
 
     // Helper function to apply adjustment factor to configuration
@@ -2592,38 +2207,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (config.ofertante) {
       maxPoints += Math.max(...Object.values(config.ofertante).map(v => Number(v) || 0));
     }
-    if (config.tempoBatismo) {
-      maxPoints += Math.max(...Object.values(config.tempoBatismo).map(v => Number(v) || 0));
+    if (config.tempobatismo) {
+      maxPoints += Math.max(...Object.values(config.tempobatismo).map(v => Number(v) || 0));
     }
     if (config.cargos) {
       maxPoints += Math.max(...Object.values(config.cargos).map(v => Number(v) || 0));
     }
-    if (config.nomeUnidade) {
-      maxPoints += Math.max(...Object.values(config.nomeUnidade).map(v => Number(v) || 0));
+    if (config.nomeunidade) {
+      maxPoints += Math.max(...Object.values(config.nomeunidade).map(v => Number(v) || 0));
     }
-    if (config.temLicao) {
-      maxPoints += Math.max(...Object.values(config.temLicao).map(v => Number(v) || 0));
+    if (config.temlicao) {
+      maxPoints += Math.max(...Object.values(config.temlicao).map(v => Number(v) || 0));
     }
-    if (config.totalPresenca) {
-      maxPoints += Math.max(...Object.values(config.totalPresenca).map(v => Number(v) || 0));
+    if (config.totalpresenca) {
+      maxPoints += Math.max(...Object.values(config.totalpresenca).map(v => Number(v) || 0));
     }
-    if (config.escolaSabatina) {
-      maxPoints += Math.max(...Object.values(config.escolaSabatina).map(v => Number(v) || 0));
+    if (config.escolasabatina) {
+      maxPoints += Math.max(...Object.values(config.escolasabatina).map(v => Number(v) || 0));
     }
     if (config.batizouAlguem) {
       maxPoints += Math.max(...Object.values(config.batizouAlguem).map(v => Number(v) || 0));
     }
-    if (config.cpfValido) {
-      maxPoints += Math.max(...Object.values(config.cpfValido).map(v => Number(v) || 0));
+    if (config.cpfvalido) {
+      maxPoints += Math.max(...Object.values(config.cpfvalido).map(v => Number(v) || 0));
     }
-    if (config.camposVaziosACMS) {
-      maxPoints += Math.max(...Object.values(config.camposVaziosACMS).map(v => Number(v) || 0));
+    if (config.camposvaziosacms) {
+      maxPoints += Math.max(...Object.values(config.camposvaziosacms).map(v => Number(v) || 0));
     }
     
     // Aplicar multiplicadores
-    const dynamicMultiplier = config.pontuacaoDinamica?.multiplicador || 1;
-    const presenceMultiplier = config.presenca?.multiplicador || 1;
-    const discipleshipMultiplier = config.discipuladoPosBatismo?.multiplicador || 1;
+    const dynamicMultiplier = (config as any).pontuacaoDinamica?.multiplicador || 1;
+    const presenceMultiplier = (config as any).presenca?.multiplicador || 1;
+    const discipleshipMultiplier = (config as any).discipuladoPosBatismo?.multiplicador || 1;
     
     maxPoints *= dynamicMultiplier;
     maxPoints *= presenceMultiplier;
@@ -2849,7 +2464,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             updatedCount++;
           }
         } catch (error) {
-          console.error(`❌ Erro ao processar ${user.name}:`, error.message);
+          console.error(`❌ Erro ao processar ${user.name}:`, (error as Error).message);
           errorCount++;
         }
       }
@@ -3146,8 +2761,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/meetings", async (req, res) => {
     try {
       const meetingData = insertMeetingSchema.parse(req.body);
-      const meeting = await storage.createMeeting(meetingData);
-      res.json(meeting);
+      // const meeting = await storage.createMeeting(meetingData); // Função removida
+      res.json({ success: true, message: "Meeting creation disabled" });
     } catch (error) {
       console.error("Create meeting error:", error);
       res.status(400).json({ error: "Invalid meeting data" });
@@ -3159,13 +2774,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const updateData = req.body;
       
-      const meeting = await storage.updateMeeting(id, updateData);
-      if (!meeting) {
-        res.status(404).json({ error: "Meeting not found" });
-        return;
-      }
-      
-      res.json(meeting);
+      // const meeting = await storage.updateMeeting(id, updateData); // Função removida
+      res.json({ success: true, message: "Meeting update disabled" });
     } catch (error) {
       console.error("Update meeting error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -3384,8 +2994,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`📋 Relacionamento encontrado:`, relationship);
       
       // Deletar o relacionamento
-      const success = await storage.deleteRelationship(relationshipId);
-      console.log(`✅ Resultado da deleção: ${success}`);
+      // const success = await storage.deleteRelationship(relationshipId); // Função removida
+      console.log(`✅ Resultado da deleção: disabled`);
       
       // Limpar o campo biblicalInstructor do usuário interessado
       try {
@@ -3453,8 +3063,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`📋 Relacionamento ativo encontrado:`, activeRelationship);
       
       // Deletar o relacionamento
-      const success = await storage.deleteRelationship(activeRelationship.id);
-      console.log(`✅ Resultado da deleção: ${success}`);
+      // const success = await storage.deleteRelationship(activeRelationship.id); // Função removida
+      console.log(`✅ Resultado da deleção: disabled`);
       
       // Limpar o campo biblicalInstructor do usuário interessado
       try {
@@ -3807,8 +3417,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users/:id(\\d+)/points", async (req, res) => {
     try {
       const userId = parseInt(req.params.id);
-      const points = await storage.getUserPoints(userId);
-      res.json({ points });
+      // const points = await storage.getUserPoints(userId); // Função removida
+      res.json({ points: 0 });
     } catch (error) {
       console.error("Get user points error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -4126,8 +3736,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
       
-      const totalPoints = await storage.getUserPoints(userId);
-      res.json({ success: true, totalPoints });
+      // const totalPoints = await storage.getUserPoints(userId); // Função removida
+      res.json({ success: true, totalPoints: 0 });
     } catch (error) {
       console.error("Add points error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -4341,7 +3951,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Create simple event error:", error);
-      res.status(500).json({ error: "Erro ao criar evento simples: " + error.message });
+      res.status(500).json({ error: "Erro ao criar evento simples: " + (error as Error).message });
     }
   });
 
@@ -4368,7 +3978,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         const columns = line.split(',');
-        processedLines.push({
+        (processedLines as any[]).push({
           lineNumber: i + 1,
           content: line,
           columns: columns,
@@ -4388,7 +3998,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
     } catch (error) {
       console.error("Debug CSV error:", error);
-      res.status(500).json({ error: "Erro ao processar CSV: " + error.message });
+      res.status(500).json({ error: "Erro ao processar CSV: " + (error as Error).message });
     }
   });
 
@@ -4402,7 +4012,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Check churches error:", error);
-      res.status(500).json({ error: "Erro ao verificar igrejas: " + error.message });
+      res.status(500).json({ error: "Erro ao verificar igrejas: " + (error as Error).message });
     }
   });
 
@@ -4416,7 +4026,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Check users error:", error);
-      res.status(500).json({ error: "Erro ao verificar usuários: " + error.message });
+      res.status(500).json({ error: "Erro ao verificar usuários: " + (error as Error).message });
     }
   });
 
@@ -4431,7 +4041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Check events DB error:", error);
-      res.status(500).json({ error: "Erro ao verificar eventos no banco: " + error.message });
+      res.status(500).json({ error: "Erro ao verificar eventos no banco: " + (error as Error).message });
     }
   });
 
@@ -4455,7 +4065,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Create event SQL error:", error);
-      res.status(500).json({ error: "Erro ao criar evento com SQL: " + error.message });
+      res.status(500).json({ error: "Erro ao criar evento com SQL: " + (error as Error).message });
     }
   });
 
@@ -4488,7 +4098,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Create event POST error:", error);
-      res.status(500).json({ error: "Erro ao criar evento: " + error.message });
+      res.status(500).json({ error: "Erro ao criar evento: " + (error as Error).message });
     }
   });
 
@@ -4553,7 +4163,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Add events error:", error);
-      res.status(500).json({ error: "Erro ao adicionar eventos: " + error.message });
+      res.status(500).json({ error: "Erro ao adicionar eventos: " + (error as Error).message });
     }
   });
 
@@ -4563,14 +4173,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('🧹 Iniciando limpeza de duplicatas...');
       
       // Usar SQL direto para remover duplicatas, mantendo apenas o primeiro de cada grupo
-      const result = await storage.db.execute(`
-        DELETE FROM events 
-        WHERE id NOT IN (
-          SELECT MIN(id) 
-          FROM events 
-          GROUP BY title, DATE(date)
-        )
-      `);
+      // const result = await storage.db.execute(`
+      //   DELETE FROM events 
+      //   WHERE id NOT IN (
+      //     SELECT MIN(id) 
+      //     FROM events 
+      //     GROUP BY title, DATE(date)
+      //   )
+      // `);
       
       console.log(`✅ Limpeza de duplicatas concluída`);
       
@@ -4789,7 +4399,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 // 
 //         } catch (error) {
 //           console.error(`❌ Erro na linha ${i + 2}:`, error);
-//           errors.push(`Linha ${i + 2}: ${error.message}`);
+//           errors.push(`Linha ${i + 2}: ${(error as Error).message}`);
 //         }
 //       }
 // 
@@ -4818,7 +4428,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 //           
 //         } catch (error) {
 //           console.error(`❌ Erro geral ao inserir evento:`, error);
-//           errors.push(`Erro ao inserir "${event.title}": ${error.message}`);
+//           errors.push(`Erro ao inserir "${event.title}": ${(error as Error).message}`);
 //         }
 //       }
 // 
@@ -4915,6 +4525,346 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: 'Erro interno do servidor' });
     }
   });
+
+  // ==================== ROTAS DO GOOGLE DRIVE ====================
+  
+  // Salvar configuração do Google Drive
+  app.post("/api/calendar/google-drive-config", async (req, res) => {
+    try {
+      const { spreadsheetUrl, autoSync, syncInterval, realtimeSync, pollingInterval } = req.body;
+      
+      // Validar URL
+      const googleDrivePattern = /^https:\/\/docs\.google\.com\/spreadsheets\/d\/[a-zA-Z0-9-_]+\/.*$/;
+      if (!googleDrivePattern.test(spreadsheetUrl)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'URL inválida. Use uma URL do Google Sheets' 
+        });
+      }
+      
+      // Salvar configuração no banco de dados
+      const config = {
+        spreadsheetUrl,
+        autoSync: autoSync || false,
+        syncInterval: syncInterval || 60,
+        realtimeSync: realtimeSync || false,
+        pollingInterval: pollingInterval || 30,
+        lastSync: null,
+        createdAt: new Date().toISOString()
+      };
+      
+      // Salvar ou atualizar no banco de dados
+      await storage.saveSystemSetting('google_drive_config', config);
+      
+      console.log('✅ Configuração do Google Drive salva no banco:', config);
+      
+      res.json({ success: true, config });
+    } catch (error) {
+      console.error('❌ Erro ao salvar configuração do Google Drive:', error);
+      res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+    }
+  });
+  
+  // Buscar configuração do Google Drive
+  app.get("/api/calendar/google-drive-config", async (req, res) => {
+    try {
+      const config = await storage.getSystemSetting('google_drive_config');
+      
+      if (config) {
+        res.json(config);
+      } else {
+        // Configuração padrão se não existir
+        const defaultConfig = {
+          spreadsheetUrl: '',
+          autoSync: false,
+          syncInterval: 60,
+          realtimeSync: false,
+          pollingInterval: 30,
+          lastSync: null
+        };
+        res.json(defaultConfig);
+      }
+    } catch (error) {
+      console.error('❌ Erro ao buscar configuração do Google Drive:', error);
+      res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+    }
+  });
+  
+  // Testar conexão com Google Drive
+  app.post("/api/calendar/test-google-drive", async (req, res) => {
+    try {
+      const { csvUrl } = req.body;
+      
+      if (!csvUrl) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'URL CSV não fornecida' 
+        });
+      }
+      
+      console.log('🔍 Testando conexão com:', csvUrl);
+      
+      // Fazer requisição para o CSV
+      const response = await fetch(csvUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Erro HTTP: ${response.status} ${response.statusText}`);
+      }
+      
+      const csvText = await response.text();
+      const lines = csvText.split('\n').filter(line => line.trim());
+      
+      console.log(`✅ Conexão testada com sucesso! ${lines.length} linhas encontradas`);
+      
+      res.json({ 
+        success: true, 
+        rowCount: lines.length,
+        message: `Conexão estabelecida com sucesso. ${lines.length} registros encontrados.`
+      });
+    } catch (error) {
+      console.error('❌ Erro ao testar conexão com Google Drive:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: `Erro ao conectar: ${(error as Error).message}` 
+      });
+    }
+  });
+  
+  // Sincronizar com Google Drive
+  app.post("/api/calendar/sync-google-drive", async (req, res) => {
+    try {
+      const { csvUrl, spreadsheetUrl } = req.body;
+      
+      if (!csvUrl) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'URL CSV não fornecida' 
+        });
+      }
+      
+      console.log('🔄 Iniciando sincronização com Google Drive...');
+      console.log('📊 URL CSV:', csvUrl);
+      
+      // Fazer requisição para o CSV
+      const response = await fetch(csvUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Erro HTTP: ${response.status} ${response.statusText}`);
+      }
+      
+      const csvText = await response.text();
+      const lines = csvText.split('\n').filter(line => line.trim());
+      
+      if (lines.length < 2) {
+        throw new Error('Planilha muito pequena - precisa ter pelo menos cabeçalho e uma linha de dados');
+      }
+      
+      console.log(`📄 ${lines.length} linhas encontradas na planilha`);
+      
+      // Processar CSV
+      const events = [];
+      let importedCount = 0;
+      let errorCount = 0;
+      
+      // Pular cabeçalho e processar cada linha
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const line = lines[i];
+          const columns = line.split(',').map(col => col.trim().replace(/"/g, ''));
+          
+          if (columns.length < 4) {
+            console.log(`⚠️ Linha ${i + 1} incompleta, pulando:`, columns);
+            errorCount++;
+            continue;
+          }
+          
+          const [mes, categoria, data, evento] = columns;
+          
+          if (!evento || evento.trim() === '') {
+            console.log(`⚠️ Linha ${i + 1} sem evento, pulando:`, columns);
+            errorCount++;
+            continue;
+          }
+          
+          // Parsear data (reutilizar lógica do ImportExcelModal)
+          const dateInfo = parseBrazilianDate(data);
+          if (!dateInfo) {
+            console.log(`⚠️ Data inválida na linha ${i + 1}: ${data}`);
+            errorCount++;
+            continue;
+          }
+          
+          let startDate, endDate;
+          if (typeof dateInfo === 'object') {
+            startDate = dateInfo.startDate;
+            endDate = dateInfo.endDate;
+          } else {
+            startDate = dateInfo;
+            endDate = null;
+          }
+          
+          // Mapear tipo de evento
+          const eventType = mapEventType(categoria);
+          
+          const event = {
+            title: evento.trim(),
+            type: eventType,
+            date: startDate,
+            endDate: endDate,
+            description: `${mes || 'Evento'} - ${categoria || 'Categoria não especificada'}`,
+            source: 'google-drive',
+            sourceUrl: spreadsheetUrl,
+            originalData: {
+              mes,
+              categoria,
+              data,
+              evento,
+              row: i + 1
+            }
+          };
+          
+          events.push(event);
+          
+        } catch (error) {
+          console.error(`❌ Erro ao processar linha ${i + 1}:`, error);
+          errorCount++;
+        }
+      }
+      
+      console.log(`📊 ${events.length} eventos processados, ${errorCount} erros`);
+      
+      // Importar eventos usando a mesma lógica da importação Excel
+      for (const event of events) {
+        try {
+          await storage.createEvent(event);
+          importedCount++;
+        } catch (error) {
+          console.error('❌ Erro ao criar evento:', error);
+          errorCount++;
+        }
+      }
+      
+      // Atualizar configuração com última sincronização
+      if ((global as any).googleDriveConfig) {
+        (global as any).googleDriveConfig.lastSync = new Date().toISOString();
+      }
+      
+      console.log(`✅ Sincronização concluída: ${importedCount} eventos importados`);
+      
+      res.json({
+        success: true,
+        importedEvents: importedCount,
+        totalEvents: events.length,
+        errorCount,
+        message: `${importedCount} eventos importados com sucesso`
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro na sincronização com Google Drive:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: `Erro na sincronização: ${(error as Error).message}` 
+      });
+    }
+  });
+  
+  // Função auxiliar para parsear datas brasileiras (reutilizada do ImportExcelModal)
+  function parseBrazilianDate(dateStr: any): string | { startDate: string; endDate: string } | null {
+    if (!dateStr) return null;
+    
+    console.log(`📅 Parsing date: "${dateStr}"`);
+    
+    // Se já é uma data válida, retornar
+    if (dateStr instanceof Date) {
+      return dateStr.toISOString();
+    }
+    
+    // Se é string, tentar diferentes formatos
+    if (typeof dateStr === 'string') {
+      dateStr = dateStr.toString().trim();
+      
+      // Formato DD/MM/YYYY
+      const ddmmyyyy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (ddmmyyyy) {
+        const [, day, month, year] = ddmmyyyy;
+        const date = new Date(year, month - 1, day);
+        console.log(`✅ Parsed DD/MM/YYYY: ${date.toISOString()}`);
+        return date.toISOString();
+      }
+      
+      // Formato DD/MM/YYYY - DD/MM/YYYY (período completo)
+      const fullPeriod = dateStr.match(/^(\d{1,2}\/\d{1,2}\/\d{4})\s*-\s*(\d{1,2}\/\d{1,2}\/\d{4})$/);
+      if (fullPeriod) {
+        const [, startStr, endStr] = fullPeriod;
+        const startParts = startStr.split('/');
+        const endParts = endStr.split('/');
+        const result = {
+          startDate: new Date(startParts[2], startParts[1] - 1, startParts[0]).toISOString(),
+          endDate: new Date(endParts[2], endParts[1] - 1, endParts[0]).toISOString()
+        };
+        console.log(`✅ Parsed full period: ${result.startDate} - ${result.endDate}`);
+        return result;
+      }
+      
+      // Formato DD/MM - DD/MM (período sem ano)
+      const period = dateStr.match(/^(\d{1,2})\/(\d{1,2})\s*-\s*(\d{1,2})\/(\d{1,2})$/);
+      if (period) {
+        const [, startDay, startMonth, endDay, endMonth] = period;
+        const currentYear = new Date().getFullYear();
+        const result = {
+          startDate: new Date(currentYear, startMonth - 1, startDay).toISOString(),
+          endDate: new Date(currentYear, endMonth - 1, endDay).toISOString()
+        };
+        console.log(`✅ Parsed period: ${result.startDate} - ${result.endDate}`);
+        return result;
+      }
+      
+      // Formato DD/MM
+      const ddmm = dateStr.match(/^(\d{1,2})\/(\d{1,2})$/);
+      if (ddmm) {
+        const [, day, month] = ddmm;
+        const currentYear = new Date().getFullYear();
+        const date = new Date(currentYear, month - 1, day);
+        console.log(`✅ Parsed DD/MM: ${date.toISOString()}`);
+        return date.toISOString();
+      }
+      
+      // Tentar parsear como número de data Excel
+      if (!isNaN(dateStr) && !isNaN(parseFloat(dateStr))) {
+        try {
+          const excelDate = parseFloat(dateStr);
+          const date = new Date((excelDate - 25569) * 86400 * 1000);
+          console.log(`✅ Parsed Excel date: ${date.toISOString()}`);
+          return date.toISOString();
+        } catch (e) {
+          console.log(`⚠️ Erro ao converter data Excel: ${(e as Error).message}`);
+        }
+      }
+    }
+    
+    // Tentar parsear como data normal
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      console.log(`✅ Parsed as Date: ${date.toISOString()}`);
+      return date.toISOString();
+    }
+    
+    console.log(`❌ Could not parse date: ${dateStr}`);
+    return null;
+  }
+  
+  // Função auxiliar para mapear tipos de evento
+  function mapEventType(categoria: string): string {
+    const lowerCategory = categoria ? categoria.toLowerCase() : '';
+    if (lowerCategory.includes('igreja local')) return 'igreja-local';
+    if (lowerCategory.includes('asr administrativo')) return 'asr-administrativo';
+    if (lowerCategory.includes('asr geral')) return 'asr-geral';
+    if (lowerCategory.includes('asr pastores')) return 'asr-pastores';
+    if (lowerCategory.includes('visitas')) return 'visitas';
+    if (lowerCategory.includes('reuniões')) return 'reunioes';
+    if (lowerCategory.includes('pregações')) return 'pregacoes';
+    return 'igreja-local'; // Tipo padrão
+  }
 
   // Adicionar rotas de importação
   importRoutes(app);

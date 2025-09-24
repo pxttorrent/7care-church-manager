@@ -88,11 +88,11 @@ export function ImportExcelModal({ isOpen, onClose, onImportComplete }: ImportEx
       if (!isNaN(dateStr) && !isNaN(parseFloat(dateStr))) {
         try {
           const excelDate = parseFloat(dateStr);
-          const date = XLSX.utils.excelToJsDate(excelDate);
+          const date = new Date((excelDate - 25569) * 86400 * 1000);
           console.log(`✅ Parsed Excel date: ${date.toISOString()}`);
           return date.toISOString();
         } catch (e) {
-          console.log(`⚠️ Erro ao converter data Excel: ${e.message}`);
+          console.log(`⚠️ Erro ao converter data Excel: ${(e as Error).message}`);
         }
       }
     }
@@ -156,7 +156,7 @@ export function ImportExcelModal({ isOpen, onClose, onImportComplete }: ImportEx
             console.log('📋 Cabeçalhos encontrados:', headers);
             
             // Tentar encontrar colunas por nome
-            headers.forEach((header, index) => {
+            (headers as string[]).forEach((header, index) => {
               if (header && typeof header === 'string') {
                 const lowerHeader = header.toLowerCase();
                 if (lowerHeader.includes('mês') || lowerHeader.includes('mes')) columnIndexes.mes = index;
@@ -192,7 +192,7 @@ export function ImportExcelModal({ isOpen, onClose, onImportComplete }: ImportEx
             processedRows++;
             
             // Pular linhas vazias ou sem dados relevantes
-            if (!row || row.length === 0 || !row.some(cell => cell)) {
+            if (!row || (row as any[]).length === 0 || !(row as any[]).some(cell => cell)) {
               console.log(`⏭️ Linha ${i} vazia, pulando`);
               skippedRows++;
               continue;
@@ -246,7 +246,7 @@ export function ImportExcelModal({ isOpen, onClose, onImportComplete }: ImportEx
                   row: i
                 }
               };
-              events.push(event);
+              (events as any[]).push(event);
               console.log(`✅ Evento criado (${events.length}): ${event.title} (${event.type}) - ${startDate}`);
             } catch (error) {
               console.error(`❌ Erro ao processar linha ${i}:`, error);
@@ -265,7 +265,7 @@ export function ImportExcelModal({ isOpen, onClose, onImportComplete }: ImportEx
           
         } catch (error) {
           console.error('❌ Erro ao processar Excel:', error);
-          reject(new Error(`Erro ao processar arquivo Excel: ${error.message}`));
+          reject(new Error(`Erro ao processar arquivo Excel: ${(error as Error).message}`));
         }
       };
       
@@ -334,7 +334,7 @@ export function ImportExcelModal({ isOpen, onClose, onImportComplete }: ImportEx
       }
     } catch (error) {
       console.error('Erro ao importar:', error);
-      setMessage(`❌ ${error.message || "Erro ao processar arquivo Excel"}`);
+      setMessage(`❌ ${(error as Error).message || "Erro ao processar arquivo Excel"}`);
     } finally {
       setIsLoading(false);
     }

@@ -76,7 +76,7 @@ export const EventModal = ({
     time: '09:00',
     duration: 60,
     location: '',
-    type: 'cultos',
+    type: 'igreja-local',
     maxAttendees: 50,
     status: 'scheduled',
     organizer: ''

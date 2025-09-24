@@ -161,7 +161,7 @@ export class LocalStorageStorage implements IStorage {
   }
 
   async updateUserProfilePhoto(id: number, profilePhoto: string | null): Promise<boolean> {
-    const user = await this.localStorage.updateUser(id, { profilePhoto });
+    const user = await this.localStorage.updateUser(id, { profilePhoto: profilePhoto || undefined });
     return user !== null;
   }
 
@@ -566,7 +566,7 @@ export class LocalStorageStorage implements IStorage {
 
   async getEventFilterPermissions(): Promise<any> {
     try {
-      const stored = this.localStorage.getItem('eventFilterPermissions');
+      const stored = (this.localStorage as any).getItem('eventFilterPermissions');
       if (stored) {
         return JSON.parse(stored);
       }
@@ -579,7 +579,7 @@ export class LocalStorageStorage implements IStorage {
 
   async saveEventFilterPermissions(permissions: any): Promise<void> {
     try {
-      this.localStorage.setItem('eventFilterPermissions', JSON.stringify(permissions));
+      (this.localStorage as any).setItem('eventFilterPermissions', JSON.stringify(permissions));
       console.log('Permissões de filtros salvas:', permissions);
     } catch (error) {
       console.error('Erro ao salvar permissões de filtros:', error);

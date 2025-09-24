@@ -42,6 +42,425 @@ exports.handler = async (event, context) => {
     
     console.log(`🔍 API Request: ${method} ${path}`);
 
+    // Função para adicionar eventos diretamente à planilha do Google Drive
+    async function addEventsToGoogleDrive(events) {
+      try {
+        console.log('📊 [GOOGLE-DRIVE] Tentando adicionar eventos diretamente à planilha...');
+        
+        // Buscar configuração do Google Drive
+        const configResult = await sql`
+          SELECT value FROM system_settings 
+          WHERE key = 'google_drive_config'
+          LIMIT 1
+        `;
+        
+        if (configResult.length === 0 || !configResult[0].value) {
+          console.log('⚠️ [GOOGLE-DRIVE] Configuração do Google Drive não encontrada');
+          return { success: false, message: 'Configuração do Google Drive não encontrada' };
+        }
+        
+        const config = typeof configResult[0].value === 'object' ? 
+          configResult[0].value : 
+          JSON.parse(configResult[0].value);
+        
+        if (!config.spreadsheetUrl) {
+          console.log('⚠️ [GOOGLE-DRIVE] URL da planilha não configurada');
+          return { success: false, message: 'URL da planilha não configurada' };
+        }
+        
+        console.log(`📊 [GOOGLE-DRIVE] Configuração encontrada: ${config.spreadsheetUrl}`);
+        
+        // Extrair ID da planilha e gid
+        const match = config.spreadsheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+).*[#?].*gid=([0-9]+)/);
+        if (!match) {
+          throw new Error('URL inválida da planilha');
+        }
+        
+        const spreadsheetId = match[1];
+        const gid = match[2];
+        
+        console.log(`📊 [GOOGLE-DRIVE] Spreadsheet ID: ${spreadsheetId}, GID: ${gid}`);
+        
+        let addedCount = 0;
+        
+        // Para cada evento, tentar adicionar diretamente à planilha
+        for (const event of events) {
+          try {
+            // Converter data para formato brasileiro (DD/MM/YYYY)
+            let formattedDate = '';
+            
+            if (event.date) {
+              const eventDate = new Date(event.date);
+              
+              // Verificar se a data é válida
+              if (!isNaN(eventDate.getTime())) {
+                const day = String(eventDate.getDate()).padStart(2, '0');
+                const month = String(eventDate.getMonth() + 1).padStart(2, '0');
+                const year = eventDate.getFullYear();
+                formattedDate = `${day}/${month}/${year}`;
+              } else {
+                // Se a data for inválida, usar a data atual
+                const today = new Date();
+                const day = String(today.getDate()).padStart(2, '0');
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const year = today.getFullYear();
+                formattedDate = `${day}/${month}/${year}`;
+              }
+            } else {
+              // Se não houver data, usar a data atual
+              const today = new Date();
+              const day = String(today.getDate()).padStart(2, '0');
+              const month = String(today.getMonth() + 1).padStart(2, '0');
+              const year = today.getFullYear();
+              formattedDate = `${day}/${month}/${year}`;
+            }
+            
+            // Preparar dados para adicionar à planilha
+            const rowData = [
+              event.title || '',
+              formattedDate,
+              event.type || '',
+              event.description || '',
+              event.location || '',
+              'Sistema'
+            ];
+            
+            console.log(`📊 [GOOGLE-DRIVE] Adicionando evento: ${event.title} (${formattedDate})`);
+            
+        // Método direto: Tentar adicionar via Google Apps Script
+        try {
+          // URL do Google Apps Script (substitua pela sua URL)
+          const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL || 'https://script.google.com/macros/s/SEU_SCRIPT_ID/exec';
+          
+          // Preparar dados para o Google Apps Script
+          const scriptData = {
+            title: event.title,
+            date: event.date, // Enviar data original, não formatada
+            type: event.type,
+            description: event.description || '',
+            location: event.location || ''
+          };
+          
+          console.log(`📊 [GOOGLE-DRIVE] Enviando evento para Google Apps Script: ${event.title}`);
+          
+          try {
+            // Tentar adicionar via Google Apps Script
+            const scriptResponse = await fetch(GOOGLE_SCRIPT_URL, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(scriptData)
+            });
+            
+            const scriptResult = await scriptResponse.json();
+            
+            if (scriptResult.success) {
+              console.log(`✅ [GOOGLE-DRIVE] Evento "${event.title}" adicionado à planilha via Google Apps Script`);
+              addedCount++;
+            } else {
+              throw new Error(`Google Apps Script falhou: ${scriptResult.message}`);
+            }
+            
+          } catch (scriptError) {
+            console.log(`⚠️ [GOOGLE-DRIVE] Google Apps Script falhou para "${event.title}":`, scriptError.message);
+            
+            // Fallback: Salvar para processamento posterior
+            await sql`
+              INSERT INTO pending_google_drive_events (title, date, type, description, location, organizer, spreadsheet_id, created_at)
+              VALUES (${event.title}, ${event.date}, ${event.type}, ${event.description || ''}, ${event.location || ''}, 'Sistema', ${spreadsheetId}, NOW())
+            `;
+            
+            console.log(`✅ [GOOGLE-DRIVE] Evento "${event.title}" salvo para processamento posterior`);
+            addedCount++;
+          }
+          
+        } catch (error) {
+          console.log(`❌ [GOOGLE-DRIVE] Erro geral ao processar "${event.title}":`, error.message);
+        }
+            
+          } catch (eventError) {
+            console.error(`❌ [GOOGLE-DRIVE] Erro ao processar evento "${event.title}":`, eventError.message);
+          }
+        }
+        
+        const result = {
+          success: addedCount > 0,
+          message: `${addedCount} de ${events.length} eventos adicionados diretamente à planilha`,
+          addedCount,
+          totalEvents: events.length
+        };
+        
+        console.log(`✅ [GOOGLE-DRIVE] Resultado: ${result.message}`);
+        return result;
+        
+      } catch (error) {
+        console.error('❌ [GOOGLE-DRIVE] Erro ao adicionar eventos à planilha:', error);
+        return { success: false, message: `Erro: ${error.message}` };
+      }
+    }
+
+    // Rota para verificar configuração do Google Apps Script
+    if (path === '/api/check-google-script' && method === 'GET') {
+      const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL;
+      
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          hasGoogleScriptUrl: !!GOOGLE_SCRIPT_URL,
+          googleScriptUrl: GOOGLE_SCRIPT_URL ? GOOGLE_SCRIPT_URL.substring(0, 50) + '...' : 'Não configurado',
+          message: GOOGLE_SCRIPT_URL ? 'Google Apps Script configurado' : 'Google Apps Script não configurado'
+        })
+      };
+    }
+
+    // Rota para testar integração com Google Drive
+    if (path === '/api/test-google-drive' && method === 'POST') {
+      try {
+        console.log('🧪 [TEST] Testando integração com Google Drive...');
+        
+        // Criar evento de teste
+        const testEvent = {
+          title: 'Teste de Integração - ' + new Date().toLocaleString(),
+          date: new Date().toISOString(),
+          type: 'teste',
+          description: 'Evento de teste para verificar integração com Google Drive',
+          location: 'Sistema de Teste'
+        };
+        
+        // Tentar adicionar à planilha
+        const result = await addEventsToGoogleDrive([testEvent]);
+        
+        console.log('🧪 [TEST] Resultado do teste:', result);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Teste de integração executado',
+            testEvent,
+            result
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ [TEST] Erro no teste de integração:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: `Erro no teste: ${error.message}`
+          })
+        };
+      }
+    }
+
+    // Rota para verificar eventos pendentes do Google Drive
+    if (path === '/api/google-drive/pending-events' && method === 'GET') {
+      try {
+        const pendingEvents = await sql`
+          SELECT * FROM pending_google_drive_events 
+          ORDER BY created_at DESC 
+          LIMIT 50
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            pendingEvents,
+            count: pendingEvents.length
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao buscar eventos pendentes:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: `Erro: ${error.message}`
+          })
+        };
+      }
+    }
+
+    // Rota para processar eventos pendentes
+    // Rota para atualizar status de eventos processados
+    if (path === '/api/google-drive/update-processed-status' && method === 'POST') {
+      try {
+        // Atualizar eventos que foram processados mas ainda estão com status pending
+        const result = await sql`
+          UPDATE pending_google_drive_events 
+          SET status = 'processed'
+          WHERE processed_at IS NOT NULL AND status = 'pending'
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: `Status de eventos processados atualizado`,
+            updated: result.count || 0
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao atualizar status:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            message: 'Erro ao atualizar status: ' + error.message
+          })
+        };
+      }
+    }
+
+    // Rota para corrigir datas inválidas nos eventos pendentes
+    if (path === '/api/google-drive/fix-invalid-dates' && method === 'POST') {
+      try {
+        // Buscar eventos com datas inválidas
+        const eventsWithInvalidDates = await sql`
+          SELECT id, title, date, type, description, location, organizer, spreadsheet_id, created_at
+          FROM pending_google_drive_events 
+          WHERE date = 'NaN/NaN/NaN' OR date IS NULL
+          ORDER BY created_at DESC
+        `;
+        
+        if (eventsWithInvalidDates.length === 0) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              success: true,
+              message: 'Nenhum evento com data inválida encontrado',
+              fixed: 0
+            })
+          };
+        }
+        
+        let fixedCount = 0;
+        
+        // Corrigir cada evento com data inválida
+        for (const event of eventsWithInvalidDates) {
+          // Usar a data de criação como fallback
+          const createdDate = new Date(event.created_at);
+          const day = String(createdDate.getDate()).padStart(2, '0');
+          const month = String(createdDate.getMonth() + 1).padStart(2, '0');
+          const year = createdDate.getFullYear();
+          const correctedDate = `${day}/${month}/${year}`;
+          
+          // Atualizar o evento com a data corrigida
+          await sql`
+            UPDATE pending_google_drive_events 
+            SET date = ${correctedDate}
+            WHERE id = ${event.id}
+          `;
+          
+          fixedCount++;
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: `${fixedCount} eventos com datas inválidas foram corrigidos`,
+            fixed: fixedCount
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao corrigir datas inválidas:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            message: 'Erro ao corrigir datas inválidas: ' + error.message
+          })
+        };
+      }
+    }
+
+    if (path === '/api/google-drive/process-pending' && method === 'POST') {
+      try {
+        console.log('🔄 [PENDING] Processando eventos pendentes...');
+        
+        const pendingEvents = await sql`
+          SELECT * FROM pending_google_drive_events 
+          WHERE processed_at IS NULL
+          ORDER BY created_at ASC
+          LIMIT 10
+        `;
+        
+        if (pendingEvents.length === 0) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              success: true,
+              message: 'Nenhum evento pendente para processar',
+              processed: 0
+            })
+          };
+        }
+        
+        // Converter para formato esperado pela função
+        const events = pendingEvents.map(event => ({
+          title: event.title,
+          date: event.date,
+          type: event.type,
+          description: event.description,
+          location: event.location
+        }));
+        
+        // Tentar adicionar à planilha
+        const result = await addEventsToGoogleDrive(events);
+        
+        if (result.success) {
+          // Marcar como processados
+          await sql`
+            UPDATE pending_google_drive_events 
+            SET processed_at = NOW() 
+            WHERE id = ANY(${pendingEvents.map(e => e.id)})
+          `;
+          
+          console.log(`✅ [PENDING] ${result.addedCount} eventos processados com sucesso`);
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: `${result.addedCount} eventos processados`,
+            result
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao processar eventos pendentes:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: `Erro: ${error.message}`
+          })
+        };
+      }
+    }
+
     // Rota para estatísticas do dashboard
     if (path === '/api/dashboard/stats' && method === 'GET') {
       const users = await sql`SELECT COUNT(*) as count FROM users`;
@@ -98,163 +517,15 @@ exports.handler = async (event, context) => {
     }
 
 
-    // Rota para usuários com pontos calculados em tempo real
+    // Rota para usuários com pontos calculados em tempo real - VERSÃO COM VISITAS
     if (path === '/api/users/with-points' && method === 'GET') {
       try {
         const { role, status } = event.queryStringParameters || {};
         
         console.log('🔄 Rota /api/users/with-points chamada');
         
-        // Calcular pontos para todos os usuários usando a lógica corrigida
-        try {
-          // Buscar todos os usuários
-          const users = await sql`SELECT * FROM users`;
-          console.log(`📊 Total de usuários encontrados: ${users.length}`);
-          
-          // Buscar configuração de pontos
-          const pointsConfigResult = await sql`SELECT * FROM points_configuration LIMIT 1`;
-          const pointsConfig = pointsConfigResult.length > 0 ? pointsConfigResult[0] : {};
-          
-          let updatedCount = 0;
-          
-          for (const user of users) {
-            // Pular Super Admin - não deve ter pontos
-            if (user.email === 'admin@7care.com' || user.role === 'admin') {
-              continue;
-            }
-            
-            // Buscar dados detalhados do usuário
-            let userData = {};
-            try {
-              const userDataResult = await sql`
-                SELECT engajamento, classificacao, dizimista, ofertante, tempo_batismo, 
-                       cargos, nome_unidade, tem_licao, total_presenca, escola_sabatina,
-                       batizou_alguem, discipulado_pos_batismo, cpf_valido, campos_vazios_acms
-                FROM users 
-                WHERE id = ${user.id}
-              `;
-              if (userDataResult.length > 0) {
-                userData = userDataResult[0];
-              }
-            } catch (err) {
-              console.log(`⚠️ Erro ao buscar dados detalhados para ${user.name}:`, err.message);
-              continue;
-            }
-            
-            // Calcular pontos usando a mesma lógica da rota points-details
-            let totalPoints = 0;
-            
-            // Engajamento
-            if (userData.engajamento) {
-              const engajamento = userData.engajamento.toLowerCase();
-              if (engajamento.includes('baixo')) totalPoints += pointsConfig.engajamento?.baixo || 0;
-              else if (engajamento.includes('médio') || engajamento.includes('medio')) totalPoints += pointsConfig.engajamento?.medio || 0;
-              else if (engajamento.includes('alto')) totalPoints += pointsConfig.engajamento?.alto || 0;
-            }
-            
-            // Classificação
-            if (userData.classificacao) {
-              const classificacao = userData.classificacao.toLowerCase();
-              if (classificacao.includes('frequente')) {
-                totalPoints += pointsConfig.classificacao?.frequente || 0;
-              } else {
-                totalPoints += pointsConfig.classificacao?.naoFrequente || 0;
-              }
-            }
-            
-            // Dizimista
-            if (userData.dizimista) {
-              const dizimista = userData.dizimista.toLowerCase();
-              if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) totalPoints += pointsConfig.dizimista?.naoDizimista || 0;
-              else if (dizimista.includes('pontual')) totalPoints += pointsConfig.dizimista?.pontual || 0;
-              else if (dizimista.includes('sazonal')) totalPoints += pointsConfig.dizimista?.sazonal || 0;
-              else if (dizimista.includes('recorrente')) totalPoints += pointsConfig.dizimista?.recorrente || 0;
-            }
-            
-            // Ofertante
-            if (userData.ofertante) {
-              const ofertante = userData.ofertante.toLowerCase();
-              if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) totalPoints += pointsConfig.ofertante?.naoOfertante || 0;
-              else if (ofertante.includes('pontual')) totalPoints += pointsConfig.ofertante?.pontual || 0;
-              else if (ofertante.includes('sazonal')) totalPoints += pointsConfig.ofertante?.sazonal || 0;
-              else if (ofertante.includes('recorrente')) totalPoints += pointsConfig.ofertante?.recorrente || 0;
-            }
-            
-            // Tempo de batismo
-            if (userData.tempo_batismo && typeof userData.tempo_batismo === 'number') {
-              const tempo = userData.tempo_batismo;
-              if (tempo >= 2 && tempo < 5) totalPoints += pointsConfig.tempoBatismo?.doisAnos || 0;
-              else if (tempo >= 5 && tempo < 10) totalPoints += pointsConfig.tempoBatismo?.cincoAnos || 0;
-              else if (tempo >= 10 && tempo < 20) totalPoints += pointsConfig.tempoBatismo?.dezAnos || 0;
-              else if (tempo >= 20 && tempo < 30) totalPoints += pointsConfig.tempoBatismo?.vinteAnos || 0;
-              else if (tempo >= 30) totalPoints += pointsConfig.tempoBatismo?.maisVinte || 0;
-            }
-            
-            // Cargos
-            if (userData.cargos && Array.isArray(userData.cargos)) {
-              const numCargos = userData.cargos.length;
-              if (numCargos === 1) totalPoints += pointsConfig.cargos?.umCargo || 0;
-              else if (numCargos === 2) totalPoints += pointsConfig.cargos?.doisCargos || 0;
-              else if (numCargos >= 3) totalPoints += pointsConfig.cargos?.tresOuMais || 0;
-            }
-            
-            // Nome da unidade
-            if (userData.nome_unidade && userData.nome_unidade.trim()) {
-              totalPoints += pointsConfig.nomeUnidade?.comUnidade || 0;
-            }
-            
-            // Tem lição
-            if (userData.tem_licao) {
-              totalPoints += pointsConfig.temLicao?.comLicao || 0;
-            }
-            
-            // Total de presença
-            if (userData.total_presenca !== undefined) {
-              const presenca = userData.total_presenca;
-              if (presenca >= 0 && presenca <= 3) totalPoints += pointsConfig.totalPresenca?.zeroATres || 0;
-              else if (presenca >= 4 && presenca <= 7) totalPoints += pointsConfig.totalPresenca?.quatroASete || 0;
-              else if (presenca >= 8 && presenca <= 13) totalPoints += pointsConfig.totalPresenca?.oitoATreze || 0;
-            }
-            
-            // Escola sabatina
-            if (userData.escola_sabatina) {
-              const escola = userData.escola_sabatina;
-              if (escola.comunhao) totalPoints += (escola.comunhao * (pointsConfig.escolaSabatina?.comunhao || 0));
-              if (escola.missao) totalPoints += (escola.missao * (pointsConfig.escolaSabatina?.missao || 0));
-              if (escola.estudoBiblico) totalPoints += (escola.estudoBiblico * (pointsConfig.escolaSabatina?.estudoBiblico || 0));
-              if (escola.batizouAlguem) totalPoints += pointsConfig.escolaSabatina?.batizouAlguem || 0;
-              if (escola.discipuladoPosBatismo) totalPoints += (escola.discipuladoPosBatismo * (pointsConfig.escolaSabatina?.discipuladoPosBatismo || 0));
-            }
-            
-            // CPF válido
-            if (userData.cpf_valido === 'Sim' || userData.cpf_valido === true) {
-              totalPoints += pointsConfig.cpfValido?.valido || 0;
-            }
-            
-            // Campos vazios ACMS
-            if (userData.campos_vazios_acms === false) {
-              totalPoints += pointsConfig.camposVaziosACMS?.completos || 0;
-            }
-            
-            // Verificar se os pontos mudaram e atualizar
-            const roundedTotalPoints = Math.round(totalPoints);
-            if (user.points !== roundedTotalPoints) {
-              await sql`
-                UPDATE users 
-                SET points = ${roundedTotalPoints}, updated_at = NOW()
-                WHERE id = ${user.id}
-              `;
-              updatedCount++;
-            }
-          }
-          
-          console.log(`✅ Processamento concluído: ${updatedCount} usuários atualizados`);
-        } catch (calcError) {
-          console.error('⚠️ Erro ao calcular pontos, continuando sem cálculo:', calcError);
-        }
-        
-        // Buscar usuários com pontos atualizados
-        let users = await sql`SELECT * FROM users ORDER BY points DESC`;
+        // Buscar usuários diretamente do banco (já com pontos calculados)
+        let users = await sql`SELECT *, extra_data as extraData FROM users ORDER BY points DESC`;
         console.log(`📊 Usuários carregados: ${users.length}`);
         
         // Garantir que users seja sempre um array
@@ -263,16 +534,88 @@ exports.handler = async (event, context) => {
           users = [];
         }
         
+        // Buscar dados de visitas
+        const visitsData = await sql`
+          SELECT 
+            user_id, 
+            COUNT(*) as visit_count, 
+            MAX(visit_date) as last_visit_date, 
+            MIN(visit_date) as first_visit_date
+          FROM visits 
+          GROUP BY user_id
+        `;
+        
+        // Criar mapa de visitas
+        const visitsMap = new Map();
+        visitsData.forEach(visit => {
+          // Formatar datas para ISO string
+          const formatDate = (dateValue) => {
+            if (!dateValue) return null;
+            try {
+              const date = new Date(dateValue);
+              return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
+            } catch (error) {
+              console.warn('Erro ao formatar data:', dateValue, error);
+              return null;
+            }
+          };
+          
+          visitsMap.set(visit.user_id, {
+            visited: true,
+            visitCount: parseInt(visit.visit_count),
+            lastVisitDate: formatDate(visit.last_visit_date),
+            firstVisitDate: formatDate(visit.first_visit_date)
+          });
+        });
+        
+        console.log(`📊 Visitas encontradas: ${visitsData.length}`);
+        
+        // Processar usuários com dados de visitas
+        const processedUsers = users.map(user => {
+          let extraData = {};
+          if (user.extraData) {
+            try {
+              extraData = typeof user.extraData === 'string' 
+                ? JSON.parse(user.extraData) 
+                : user.extraData;
+            } catch (e) {
+              console.log(`⚠️ Erro ao parsear extraData do usuário ${user.name}:`, e.message);
+              extraData = {};
+            }
+          }
+          
+          // Adicionar dados de visitas se existirem
+          const visitData = visitsMap.get(user.id);
+          if (visitData) {
+            extraData.visited = visitData.visited;
+            extraData.visitCount = visitData.visitCount;
+            extraData.lastVisitDate = visitData.lastVisitDate;
+            extraData.firstVisitDate = visitData.firstVisitDate;
+          } else {
+            // Se não há visitas, garantir que os campos existam
+            extraData.visited = false;
+            extraData.visitCount = 0;
+            extraData.lastVisitDate = null;
+            extraData.firstVisitDate = null;
+          }
+          
+          return {
+            ...user,
+            extraData: extraData
+          };
+        });
+        
         // Aplicar filtros se fornecidos
+        let filteredUsers = processedUsers;
         if (role) {
-          users = users.filter(u => u.role === role);
+          filteredUsers = filteredUsers.filter(u => u.role === role);
         }
         if (status) {
-          users = users.filter(u => u.status === status);
+          filteredUsers = filteredUsers.filter(u => u.status === status);
         }
         
         // Remove password from response
-        const safeUsers = users.map(({ password, ...user }) => user);
+        const safeUsers = filteredUsers.map(({ password, ...user }) => user);
         
         return {
           statusCode: 200,
@@ -289,24 +632,437 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Rota para usuários
+    // Rota para usuários - VERSÃO COM TABELA DE VISITAS
     if (path === '/api/users' && method === 'GET') {
-      const users = await sql`SELECT * FROM users LIMIT 50`;
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify(users)
-      };
+      try {
+        console.log('🔍 Users route hit - buscando usuários do banco');
+        
+        // Buscar usuários
+        const users = await sql`SELECT *, extra_data as extraData FROM users ORDER BY name ASC`;
+        console.log(`📊 Usuários carregados: ${users.length}`);
+        
+        // Buscar dados de visitas
+        const visitsData = await sql`
+          SELECT 
+            user_id, 
+            COUNT(*) as visit_count, 
+            MAX(visit_date) as last_visit_date, 
+            MIN(visit_date) as first_visit_date
+          FROM visits 
+          GROUP BY user_id
+        `;
+        
+        // Criar mapa de visitas
+        const visitsMap = new Map();
+        visitsData.forEach(visit => {
+          visitsMap.set(visit.user_id, {
+            visited: true,
+            visitCount: parseInt(visit.visit_count),
+            lastVisitDate: visit.last_visit_date,
+            firstVisitDate: visit.first_visit_date
+          });
+        });
+        
+        console.log(`📊 Visitas encontradas: ${visitsData.length}`);
+        
+        // Processar usuários com dados de visitas
+        const processedUsers = users.map(user => {
+          let extraData = {};
+          if (user.extraData) {
+            try {
+              extraData = typeof user.extraData === 'string' 
+                ? JSON.parse(user.extraData) 
+                : user.extraData;
+            } catch (e) {
+              console.log(`⚠️ Erro ao parsear extraData do usuário ${user.name}:`, e.message);
+              extraData = {};
+            }
+          }
+          
+          // Adicionar dados de visitas se existirem
+          const visitData = visitsMap.get(user.id);
+          if (visitData) {
+            extraData.visited = visitData.visited;
+            extraData.visitCount = visitData.visitCount;
+            extraData.lastVisitDate = visitData.lastVisitDate;
+            extraData.firstVisitDate = visitData.firstVisitDate;
+          } else {
+            // Se não há visitas, garantir que os campos existam
+            extraData.visited = false;
+            extraData.visitCount = 0;
+            extraData.lastVisitDate = null;
+            extraData.firstVisitDate = null;
+          }
+          
+          return {
+            ...user,
+            extraData: extraData
+          };
+        });
+        
+        console.log(`📊 Usuários processados: ${processedUsers.length}`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(processedUsers)
+        };
+      } catch (error) {
+        console.error('❌ Erro ao buscar usuários:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Erro interno do servidor',
+            details: error.message 
+          })
+        };
+      }
+    }
+
+    // Rota para usuário específico
+    if (path.match(/^\/api\/users\/\d+$/) && method === 'GET') {
+      try {
+        const userId = parseInt(path.split('/')[3]);
+        console.log('🔍 User route hit - buscando usuário:', userId);
+        
+        const users = await sql`SELECT *, extra_data as extraData FROM users WHERE id = ${userId} LIMIT 1`;
+        
+        if (users.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Usuário não encontrado' })
+          };
+        }
+        
+        // Processar extraData para garantir que visitas sejam exibidas corretamente
+        const user = users[0];
+        let extraData = {};
+        if (user.extraData) {
+          if (typeof user.extraData === 'string') {
+            try {
+              extraData = JSON.parse(user.extraData);
+            } catch (e) {
+              console.log(`⚠️ Erro ao parsear extraData do usuário ${user.name}:`, e.message);
+              extraData = {};
+            }
+          } else if (typeof user.extraData === 'object') {
+            extraData = user.extraData;
+          }
+        }
+        
+        const processedUser = {
+          ...user,
+          extraData: extraData
+        };
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(processedUser)
+        };
+      } catch (error) {
+        console.error('❌ Erro ao buscar usuário:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
     }
 
     // Rota para eventos
     if (path === '/api/events' && method === 'GET') {
-      const events = await sql`SELECT * FROM events ORDER BY date DESC LIMIT 50`;
+      // Buscar eventos do ano atual e próximo ano, ordenados por data
+      const currentYear = new Date().getFullYear();
+      const events = await sql`
+        SELECT * FROM events 
+        WHERE EXTRACT(YEAR FROM date) >= ${currentYear} 
+        ORDER BY date ASC 
+        LIMIT 100
+      `;
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify(events)
       };
+    }
+
+    // Rota para processar eventos pendentes do Google Drive
+    if (path === '/api/calendar/process-pending-events' && method === 'POST') {
+      try {
+        // Buscar eventos pendentes
+        const pendingEvents = await sql`
+          SELECT * FROM pending_google_drive_events 
+          WHERE status = 'pending' 
+          ORDER BY created_at ASC 
+          LIMIT 10
+        `;
+        
+        if (pendingEvents.length === 0) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ 
+              success: true, 
+              message: 'Nenhum evento pendente encontrado',
+              processedCount: 0
+            })
+          };
+        }
+        
+        let processedCount = 0;
+        
+        for (const pendingEvent of pendingEvents) {
+          try {
+            // Criar CSV com o evento para adicionar à planilha
+            const csvLine = `"${pendingEvent.title}","${pendingEvent.date}","${pendingEvent.type}","${pendingEvent.description || ''}","${pendingEvent.location || ''}","${pendingEvent.organizer}"`;
+            
+            console.log(`📊 [PROCESS] Processando evento: ${pendingEvent.title}`);
+            console.log(`📝 [PROCESS] Linha CSV: ${csvLine}`);
+            
+            // Marcar como processado
+            await sql`
+              UPDATE pending_google_drive_events 
+              SET status = 'processed', processed_at = NOW()
+              WHERE id = ${pendingEvent.id}
+            `;
+            
+            processedCount++;
+            console.log(`✅ Evento "${pendingEvent.title}" processado e pronto para a planilha`);
+            
+          } catch (error) {
+            console.error(`❌ Erro ao processar evento ${pendingEvent.id}:`, error);
+          }
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: `${processedCount} eventos processados e prontos para a planilha`,
+            processedCount,
+            totalEvents: pendingEvents.length
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao processar eventos pendentes:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para baixar CSV de novos eventos
+    if (path === '/api/calendar/download-new-events' && method === 'GET') {
+      try {
+        // Buscar CSV de novos eventos
+        const result = await sql`
+          SELECT value FROM system_settings 
+          WHERE key = 'google_drive_new_events'
+          LIMIT 1
+        `;
+        
+        if (result.length === 0 || !result[0].value) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Nenhum arquivo CSV de novos eventos encontrado' })
+          };
+        }
+        
+        const csvData = typeof result[0].value === 'object' ? 
+          result[0].value : 
+          JSON.parse(result[0].value);
+        
+        return {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': `attachment; filename="${csvData.filename}"`,
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: csvData.content
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao baixar CSV de novos eventos:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para buscar eventos
+    if (path === '/api/calendar/events' && method === 'GET') {
+      try {
+        const events = await sql`
+          SELECT id, title, description, date, end_date, type, color, location, capacity, created_at, updated_at
+          FROM events 
+          ORDER BY date ASC
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(events)
+        };
+      } catch (error) {
+        console.error('❌ Erro ao buscar eventos:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para criar eventos
+    if (path === '/api/calendar/events' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { events: eventsArray } = body;
+        
+        if (!eventsArray || !Array.isArray(eventsArray)) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Array de eventos é obrigatório' })
+          };
+        }
+
+        const createdEvents = [];
+        
+        for (const eventData of eventsArray) {
+          // Validar dados obrigatórios
+          if (!eventData.title || !eventData.startDate) {
+            continue; // Pular eventos inválidos
+          }
+
+          // Mapear categoria para cor (função inline)
+          const mapEventTypeInline = (categoryStr) => {
+            if (!categoryStr) {
+              return { type: 'igreja-local', color: '#ef4444' };
+            }
+            
+            const category = categoryStr.toLowerCase().trim();
+            
+            // Categorias estabelecidas com suas cores
+            const establishedCategories = {
+              'igreja-local': { 
+                variations: ['igreja local', 'igreja-local', 'local', 'igreja', 'culto', 'cultos'],
+                color: '#ef4444'
+              },
+              'asr-geral': { 
+                variations: ['asr geral', 'asr-geral', 'asr', 'conferência', 'conferencia'],
+                color: '#f97316'
+              },
+              'asr-administrativo': { 
+                variations: ['asr administrativo', 'asr-administrativo', 'administrativo', 'admin'],
+                color: '#06b6d4'
+              },
+              'asr-pastores': { 
+                variations: ['asr pastores', 'asr-pastores', 'pastores', 'pastor'],
+                color: '#8b5cf6'
+              },
+              'visitas': { 
+                variations: ['visitas', 'visita', 'visitação', 'visitacao'],
+                color: '#10b981'
+              },
+              'reuniões': { 
+                variations: ['reuniões', 'reunioes', 'reunião', 'reuniao'],
+                color: '#3b82f6'
+              },
+              'pregacoes': { 
+                variations: ['pregacoes', 'pregações', 'pregacao', 'pregação', 'sermão', 'sermao'],
+                color: '#6366f1'
+              }
+            };
+            
+            // Buscar categoria correspondente
+            for (const [standardCategory, data] of Object.entries(establishedCategories)) {
+              for (const variation of data.variations) {
+                if (category.includes(variation) || variation.includes(category)) {
+                  return { type: standardCategory, color: data.color };
+                }
+              }
+            }
+            
+            // Nova categoria - gerar cor dinâmica
+            const generateDynamicColor = (categoryName) => {
+              const colors = ['#22c55e', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#10b981', '#06b6d4', '#84cc16', '#f97316', '#8b5a2b'];
+              let hash = 0;
+              for (let i = 0; i < categoryName.length; i++) {
+                hash = categoryName.charCodeAt(i) + ((hash << 5) - hash);
+              }
+              const colorIndex = Math.abs(hash) % colors.length;
+              return colors[colorIndex];
+            };
+            
+            return { type: category, color: generateDynamicColor(category) };
+          };
+          
+          const categoryMapping = mapEventTypeInline(eventData.category || eventData.type || 'igreja-local');
+          
+          // Preparar dados para inserção (apenas colunas que existem na tabela)
+          const insertData = {
+            title: eventData.title,
+            description: eventData.description || '',
+            date: eventData.startDate,
+            end_date: eventData.endDate || eventData.startDate,
+            type: categoryMapping.type,
+            color: categoryMapping.color,
+            location: eventData.location || '',
+            capacity: eventData.maxAttendees || 50
+          };
+
+          // Inserir evento no banco
+          const result = await sql`
+            INSERT INTO events (title, description, date, end_date, type, color, location, capacity, created_at, updated_at)
+            VALUES (${insertData.title}, ${insertData.description}, ${insertData.date}::date, ${insertData.end_date}::date, ${insertData.type}, ${insertData.color}, ${insertData.location}, ${insertData.capacity}, NOW(), NOW())
+            RETURNING id, title, date, type, color
+          `;
+
+          if (result.length > 0) {
+            createdEvents.push(result[0]);
+            console.log(`✅ Evento criado: ${result[0].title} (ID: ${result[0].id})`);
+          }
+        }
+
+        // Tentar adicionar eventos à planilha do Google Drive se configurada
+        try {
+          console.log('📊 [CREATE-EVENT] Tentando adicionar eventos à planilha do Google Drive...');
+          await addEventsToGoogleDrive(createdEvents);
+          console.log(`✅ [CREATE-EVENT] ${createdEvents.length} eventos processados para a planilha do Google Drive`);
+        } catch (googleError) {
+          console.log('⚠️ [CREATE-EVENT] Não foi possível adicionar à planilha do Google Drive:', googleError.message);
+        }
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: `${createdEvents.length} evento(s) criado(s) com sucesso`,
+            events: createdEvents
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao criar eventos:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
     }
 
     // Rota para check-ins emocionais
@@ -350,6 +1106,265 @@ exports.handler = async (event, context) => {
         headers,
         body: JSON.stringify(checkIns)
       };
+    }
+
+    // Rota para buscar check-ins de um usuário específico
+    if (path.startsWith('/api/emotional-checkins/user/') && method === 'GET') {
+      try {
+        const userId = parseInt(path.split('/')[4]);
+        
+        if (isNaN(userId)) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID de usuário inválido' })
+          };
+        }
+
+        const checkIns = await sql`
+          SELECT ec.*, u.name as user_name, u.email 
+          FROM emotional_checkins ec
+          JOIN users u ON ec.user_id = u.id
+          WHERE ec.user_id = ${userId}
+          ORDER BY ec.created_at DESC
+          LIMIT 10
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(checkIns)
+        };
+      } catch (error) {
+        console.error('Erro ao buscar check-ins do usuário:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para reverter missionários de volta para membros (para usar badge duplo)
+    if (path === '/api/users/revert-missionaries-to-members' && method === 'POST') {
+      try {
+        console.log('🔄 Revertendo missionários para membros para usar badge duplo...');
+        
+        // Buscar missionários que têm relacionamentos ativos
+        const missionariesWithRelationships = await sql`
+          SELECT DISTINCT u.id, u.name, u.role
+          FROM users u
+          INNER JOIN relationships r ON u.id = r.missionary_id
+          WHERE u.role = 'missionary' AND r.status = 'active'
+        `;
+        
+        console.log(`📊 Encontrados ${missionariesWithRelationships.length} missionários com relacionamentos`);
+        
+        let revertedCount = 0;
+        for (const missionary of missionariesWithRelationships) {
+          await sql`
+            UPDATE users 
+            SET role = 'member', updated_at = NOW()
+            WHERE id = ${missionary.id}
+          `;
+          revertedCount++;
+          console.log(`✅ Missionário ${missionary.name} (ID: ${missionary.id}) revertido para membro`);
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: `${revertedCount} missionários foram revertidos para membros`,
+            revertedCount: revertedCount
+          })
+        };
+      } catch (error) {
+        console.error('❌ Erro ao reverter missionários:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Erro ao reverter missionários',
+            details: error.message 
+          })
+        };
+      }
+    }
+
+    // Rota para promover membros com relacionamentos a missionários
+    if (path === '/api/users/promote-members-to-missionaries' && method === 'POST') {
+    try {
+      console.log('🔄 Iniciando promoção de membros com relacionamentos a missionários...');
+      
+      // Buscar membros que têm relacionamentos ativos
+      const membersWithRelationships = await sql`
+        SELECT DISTINCT u.id, u.name, u.role
+        FROM users u
+        INNER JOIN relationships r ON u.id = r.missionary_id
+        WHERE u.role = 'member' AND r.status = 'active'
+      `;
+      
+      console.log(`📊 Encontrados ${membersWithRelationships.length} membros com relacionamentos`);
+      
+      let promotedCount = 0;
+      for (const member of membersWithRelationships) {
+        await sql`
+          UPDATE users 
+          SET role = 'missionary', updated_at = NOW()
+          WHERE id = ${member.id}
+        `;
+        promotedCount++;
+        console.log(`✅ Membro ${member.name} (ID: ${member.id}) promovido a missionário`);
+      }
+      
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          message: `${promotedCount} membros foram promovidos a missionários`,
+          promotedCount: promotedCount
+        })
+      };
+    } catch (error) {
+      console.error('❌ Erro ao promover membros:', error);
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Erro ao promover membros',
+          details: error.message 
+        })
+      };
+    }
+  }
+
+  // Rota para limpar todas as visitas
+  if (path === '/api/visits/clear-all' && method === 'POST') {
+      try {
+        console.log('🧹 [CLEAR] Iniciando limpeza de todas as visitas...');
+        
+        // Contar visitas antes da limpeza
+        const countBefore = await sql`SELECT COUNT(*) as total FROM visits`;
+        const totalBefore = countBefore[0]?.total || 0;
+        
+        console.log(`📊 [CLEAR] Total de visitas antes da limpeza: ${totalBefore}`);
+        
+        // Limpar todas as visitas
+        const deleteResult = await sql`DELETE FROM visits`;
+        
+        console.log('✅ [CLEAR] Todas as visitas foram removidas');
+        
+        // Verificar se realmente foram removidas
+        const countAfter = await sql`SELECT COUNT(*) as total FROM visits`;
+        const totalAfter = countAfter[0]?.total || 0;
+        
+        console.log(`📊 [CLEAR] Total de visitas após limpeza: ${totalAfter}`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Todas as visitas foram removidas com sucesso',
+            visitsRemoved: totalBefore,
+            remainingVisits: totalAfter
+          })
+        };
+      } catch (error) {
+        console.error('❌ [CLEAR] Erro ao limpar visitas:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Erro ao limpar visitas',
+            details: error.message 
+          })
+        };
+      }
+    }
+
+    // Rota para buscar histórico de visitas de um usuário específico
+    if (path.startsWith('/api/visits/user/') && method === 'GET') {
+      try {
+        const userId = parseInt(path.split('/')[4]);
+        
+        if (isNaN(userId)) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID de usuário inválido' })
+          };
+        }
+
+        const visits = await sql`
+          SELECT id, visit_date, created_at
+          FROM visits
+          WHERE user_id = ${userId}
+          ORDER BY visit_date DESC, created_at DESC
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(visits)
+        };
+      } catch (error) {
+        console.error('Erro ao buscar histórico de visitas:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para zerar visitas de um usuário específico
+    if (path.startsWith('/api/visits/user/') && path.endsWith('/reset') && method === 'DELETE') {
+      try {
+        const userId = parseInt(path.split('/')[4]);
+        
+        if (isNaN(userId)) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID de usuário inválido' })
+          };
+        }
+
+        console.log(`🔄 [RESET] Zerando visitas do usuário ${userId}...`);
+        
+        // Contar visitas antes da remoção
+        const countBefore = await sql`SELECT COUNT(*) as total FROM visits WHERE user_id = ${userId}`;
+        const totalBefore = countBefore[0]?.total || 0;
+        
+        // Remover todas as visitas do usuário
+        const deleteResult = await sql`DELETE FROM visits WHERE user_id = ${userId}`;
+        
+        console.log(`✅ [RESET] ${totalBefore} visitas removidas do usuário ${userId}`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: `Todas as visitas do usuário foram removidas com sucesso`,
+            visitsRemoved: totalBefore
+          })
+        };
+      } catch (error) {
+        console.error('❌ [RESET] Erro ao zerar visitas do usuário:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Erro ao zerar visitas do usuário',
+            details: error.message 
+          })
+        };
+      }
     }
 
     // Rota para login
@@ -631,37 +1646,108 @@ exports.handler = async (event, context) => {
 
     // Rota para aniversariantes
     if (path === '/api/users/birthdays' && method === 'GET') {
+      try {
+        console.log('🎂 Endpoint de aniversários chamado');
+        
+        // Usar data local para evitar problemas de fuso horário
       const today = new Date();
-      const thisMonth = today.getMonth() + 1;
-      
-      const birthdays = await sql`
-        SELECT id, name, email, church, 
-               EXTRACT(MONTH FROM birth_date) as birth_month,
-               EXTRACT(DAY FROM birth_date) as birth_day
-        FROM users 
-        WHERE EXTRACT(MONTH FROM birth_date) = ${thisMonth}
-        ORDER BY EXTRACT(DAY FROM birth_date)
-        LIMIT 20
-      `;
+        const currentMonth = today.getMonth();
+        const currentDay = today.getDate();
+        
+        console.log(`🎂 Mês atual: ${currentMonth + 1}, Dia atual: ${currentDay}`);
+        
+        // Buscar usuários com datas de nascimento válidas (TODOS os meses)
+        const users = await sql`
+          SELECT id, name, birth_date, church
+          FROM users 
+          WHERE birth_date IS NOT NULL 
+          ORDER BY EXTRACT(MONTH FROM birth_date), EXTRACT(DAY FROM birth_date)
+        `;
+        
+        console.log(`🎂 Usuários encontrados: ${users.length}`);
+        
+        // Filtrar aniversariantes de hoje
+        const birthdaysToday = users.filter(user => {
+          const birthDate = new Date(user.birth_date);
+          return birthDate.getDate() === currentDay;
+        });
+        
+        // Filtrar aniversariantes do mês atual (exceto hoje)
+        const birthdaysThisMonth = users.filter(user => {
+          const birthDate = new Date(user.birth_date);
+          return birthDate.getMonth() === currentMonth && birthDate.getDate() !== currentDay;
+        });
+        
+        console.log(`🎂 Aniversariantes hoje: ${birthdaysToday.length}`);
+        console.log(`🎂 Aniversariantes do mês: ${birthdaysThisMonth.length}`);
+        
+        // Formatar dados dos aniversariantes
+        const formatBirthdayUser = (user) => {
+          let birthDate = null;
+          if (user.birth_date) {
+            try {
+              // Converter para Date object e depois para YYYY-MM-DD
+              const date = new Date(user.birth_date);
+              if (!isNaN(date.getTime())) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                birthDate = `${year}-${month}-${day}`;
+              }
+            } catch (error) {
+              console.error('Erro ao formatar data:', error);
+              birthDate = null;
+            }
+          }
+          
+          return {
+            id: user.id,
+            name: user.name,
+            birthDate: birthDate,
+            church: user.church || null
+          };
+        };
+        
+        const result = {
+          today: birthdaysToday.map(formatBirthdayUser),
+          thisMonth: birthdaysThisMonth.map(formatBirthdayUser),
+          all: users.map(formatBirthdayUser),
+          timestamp: new Date().toISOString(),
+          debug: {
+            currentMonth: currentMonth + 1,
+            currentDay: currentDay,
+            totalUsers: users.length,
+            thisMonthCount: birthdaysThisMonth.length,
+            todayCount: birthdaysToday.length
+          }
+        };
+        
+        console.log('🎂 Resultado final:', JSON.stringify(result, null, 2));
       
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ 
-          today: [],
-          thisMonth: birthdays
-        })
-      };
+          body: JSON.stringify(result)
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro no endpoint de aniversariantes:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
+        };
+      }
     }
 
-    // Rota para visitas
+    // Rota para visitas - VERSÃO COM TABELA DE VISITAS
     if (path === '/api/dashboard/visits' && method === 'GET') {
       try {
         console.log('🔍 Buscando dados do visitômetro...');
         
         // Buscar usuários que devem ser visitados (member ou missionary)
         const targetUsers = await sql`
-          SELECT id, name, email, role, extraData
+          SELECT id, name, email, role
           FROM users 
           WHERE role = 'member' OR role = 'missionary'
           ORDER BY name ASC
@@ -669,36 +1755,40 @@ exports.handler = async (event, context) => {
         
         console.log(`🎯 Usuários target (member/missionary): ${targetUsers.length}`);
         
-        let visitedPeople = 0;
+        // Buscar dados de visitas
+        const visitsData = await sql`
+          SELECT 
+            v.user_id, 
+            u.name, 
+            COUNT(v.id) as visit_count, 
+            MAX(v.visit_date) as last_visit_date, 
+            MIN(v.visit_date) as first_visit_date
+          FROM visits v 
+          JOIN users u ON v.user_id = u.id
+          WHERE u.role = 'member' OR u.role = 'missionary'
+          GROUP BY v.user_id, u.name
+          ORDER BY u.name ASC
+        `;
+        
+        console.log(`📊 Visitas encontradas: ${visitsData.length}`);
+        
+        let visitedPeople = visitsData.length;
         let totalVisits = 0;
         const visitedUsersList = [];
         
-        // Processar cada usuário target
-        targetUsers.forEach(user => {
-          try {
-            let extraData = {};
-            if (user.extraData && typeof user.extraData === 'object') {
-              extraData = user.extraData;
-            }
-            
-            // Verificar se foi visitado
-            if (extraData.visited === true) {
-              visitedPeople++;
-              const visitCount = extraData.visitCount || 1;
-              totalVisits += visitCount;
-              
-              visitedUsersList.push({
-                id: user.id,
-                name: user.name,
-                visitCount: visitCount,
-                lastVisitDate: extraData.lastVisitDate
-              });
-              
-              console.log(`✅ ${user.name}: ${visitCount} visitas`);
-            }
-          } catch (error) {
-            console.log(`⚠️ Erro ao processar usuário ${user.name}:`, error.message);
-          }
+        // Processar dados de visitas
+        visitsData.forEach(visit => {
+          const visitCount = parseInt(visit.visit_count);
+          totalVisits += visitCount;
+          
+          visitedUsersList.push({
+            id: visit.user_id,
+            name: visit.name,
+            visitCount: visitCount,
+            lastVisitDate: visit.last_visit_date
+          });
+          
+          console.log(`✅ ${visit.name}: ${visitCount} visitas`);
         });
         
         const expectedVisits = targetUsers.length;
@@ -808,8 +1898,8 @@ exports.handler = async (event, context) => {
               church: userData.church,
               engajamento: userData.engajamento || 'Baixo',
               classificacao: userData.classificacao || 'A resgatar',
-              dizimista: userData.dizimista || 'Não dizimista',
-              ofertante: userData.ofertante || 'Não ofertante',
+              dizimista: userData.dizimistaType || 'Não dizimista',
+              ofertante: userData.ofertanteType || 'Não ofertante',
               tempoBatismo: userData.tempoBatismo || 0,
               cargos: userData.cargos || [],
               nomeUnidade: userData.nomeUnidade || null,
@@ -852,7 +1942,7 @@ exports.handler = async (event, context) => {
       console.log('🔍 Get user by ID:', userId);
       
       try {
-        const user = await sql`SELECT * FROM users WHERE id = ${parseInt(userId)} LIMIT 1`;
+        const user = await sql`SELECT *, extra_data as extraData FROM users WHERE id = ${parseInt(userId)} LIMIT 1`;
         
         if (user.length === 0) {
           return {
@@ -883,7 +1973,14 @@ exports.handler = async (event, context) => {
         const { role } = event.queryStringParameters || {};
         console.log('🔍 Events request with role:', role);
         
-        let events = await sql`SELECT * FROM events ORDER BY date DESC LIMIT 50`;
+        // Buscar eventos do ano atual e próximo ano, ordenados por data
+        const currentYear = new Date().getFullYear();
+        let events = await sql`
+          SELECT * FROM events 
+          WHERE EXTRACT(YEAR FROM date) >= ${currentYear} 
+          ORDER BY date ASC 
+          LIMIT 100
+        `;
         
         // Aplicar filtros baseados no role (simplificado)
         if (role && role !== 'admin') {
@@ -909,6 +2006,34 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // Rota para limpar todos os eventos (DELETE /api/events)
+    if (path === '/api/events' && method === 'DELETE') {
+      try {
+        console.log('🗑️ Limpando todos os eventos...');
+        
+        // Deletar todos os eventos da tabela events
+        const result = await sql`DELETE FROM events`;
+        
+        console.log(`✅ Eventos removidos com sucesso`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: "Todos os eventos foram removidos com sucesso" 
+          })
+        };
+      } catch (error) {
+        console.error('❌ Erro ao limpar eventos:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao limpar eventos' })
+        };
+      }
+    }
+
     // Rota para igrejas
     if (path === '/api/churches' && method === 'GET') {
       try {
@@ -928,40 +2053,51 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Rota para buscar usuários (fallback)
-    if (path === '/api/users' && method === 'GET') {
-      console.log('🔍 Users route hit - path:', path, 'method:', method);
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify([
-          {
-            id: 1,
-            name: "Super Administrador",
-            email: "admin@7care.com",
-            role: "admin",
-            points: 1000,
-            church: "Sistema"
-          }
-        ])
-      };
-    }
 
     // Rota para relacionamentos
     if (path === '/api/relationships' && method === 'GET') {
       try {
         console.log('🔍 Fetching relationships...');
-        const relationships = await sql`SELECT * FROM relationships ORDER BY created_at DESC LIMIT 50`;
+        
+        // Verificar se há parâmetro interestedId na query string
+        const url = new URL(event.rawUrl || `https://example.com${path}`);
+        const interestedId = url.searchParams.get('interestedId');
+        
+        let relationships;
+        
+        if (interestedId) {
+          // Buscar relacionamentos de um interessado específico com dados do missionário
+          console.log('🔍 Fetching relationships for interestedId:', interestedId);
+          relationships = await sql`
+            SELECT 
+              r.id,
+              r.missionary_id,
+              r.interested_id,
+              r.status,
+              r.created_at,
+              r.updated_at,
+              u.name as missionary_name
+            FROM relationships r
+            JOIN users u ON r.missionary_id = u.id
+            WHERE r.interested_id = ${parseInt(interestedId)}
+            ORDER BY r.created_at DESC
+          `;
+        } else {
+          // Buscar todos os relacionamentos
+          relationships = await sql`SELECT * FROM relationships ORDER BY created_at DESC LIMIT 50`;
+        }
+        
         console.log('🔍 Relationships found:', relationships.length);
         
         // Garantir que todos os relacionamentos tenham dados válidos
         const safeRelationships = (relationships || []).map(rel => ({
           id: rel.id || 0,
-          missionaryId: rel.missionaryId || 0,
-          interestedId: rel.interestedId || 0,
+          missionaryId: rel.missionary_id || 0,
+          interestedId: rel.interested_id || 0,
           status: rel.status || 'pending',
           created_at: rel.created_at || new Date().toISOString(),
-          updated_at: rel.updated_at || new Date().toISOString()
+          updated_at: rel.updated_at || new Date().toISOString(),
+          missionaryName: rel.missionary_name || null
         }));
         
         return {
@@ -975,6 +2111,160 @@ exports.handler = async (event, context) => {
           statusCode: 200,
           headers,
           body: JSON.stringify([])
+        };
+      }
+    }
+
+    // Rota para deletar relacionamentos
+    if (path.startsWith('/api/relationships/') && method === 'DELETE') {
+      try {
+        console.log('🗑️ Deleting relationship...');
+        const relationshipId = parseInt(path.split('/')[3]);
+        
+        if (isNaN(relationshipId)) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ 
+              error: 'ID do relacionamento inválido' 
+            })
+          };
+        }
+
+        // Verificar se o relacionamento existe
+        const existingRelationship = await sql`
+          SELECT id FROM relationships WHERE id = ${relationshipId}
+        `;
+        
+        if (existingRelationship.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ 
+              error: 'Relacionamento não encontrado' 
+            })
+          };
+        }
+
+        // Deletar o relacionamento
+        await sql`DELETE FROM relationships WHERE id = ${relationshipId}`;
+
+        console.log('✅ Relationship deleted:', relationshipId);
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Relacionamento removido com sucesso'
+          })
+        };
+      } catch (error) {
+        console.error('❌ Delete relationship error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Erro interno do servidor',
+            details: error.message 
+          })
+        };
+      }
+    }
+
+    // Rota para criar relacionamentos
+    if (path === '/api/relationships' && method === 'POST') {
+      try {
+        console.log('🤝 Creating relationship...');
+        const body = JSON.parse(event.body || '{}');
+        const { missionaryId, interestedId, status = 'pending' } = body;
+        
+        if (!missionaryId || !interestedId) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ 
+              error: 'missionaryId e interestedId são obrigatórios' 
+            })
+          };
+        }
+
+        // Verificar se os usuários existem
+        const missionary = await sql`SELECT id, name FROM users WHERE id = ${missionaryId}`;
+        const interested = await sql`SELECT id, name FROM users WHERE id = ${interestedId}`;
+        
+        if (missionary.length === 0) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ 
+              error: 'Missionário não encontrado' 
+            })
+          };
+        }
+        
+        if (interested.length === 0) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ 
+              error: 'Interessado não encontrado' 
+            })
+          };
+        }
+
+        // Verificar se já existe um relacionamento entre estes usuários
+        const existingRelationship = await sql`
+          SELECT id FROM relationships 
+          WHERE missionary_id = ${missionaryId} AND interested_id = ${interestedId}
+        `;
+        
+        if (existingRelationship.length > 0) {
+          return {
+            statusCode: 409,
+            headers,
+            body: JSON.stringify({ 
+              error: 'Relacionamento já existe entre estes usuários' 
+            })
+          };
+        }
+
+        // Criar o relacionamento - Admin sempre aprova automaticamente
+        const newRelationship = await sql`
+          INSERT INTO relationships (missionary_id, interested_id, status, created_at, updated_at)
+          VALUES (${missionaryId}, ${interestedId}, 'active', NOW(), NOW())
+          RETURNING id, missionary_id, interested_id, status, created_at, updated_at
+        `;
+
+        // Não alterar o role do usuário - manter como member e usar badge duplo
+        const missionaryUser = await sql`
+          SELECT id, name, role FROM users WHERE id = ${missionaryId}
+        `;
+        
+        if (missionaryUser.length > 0) {
+          console.log(`✅ Relacionamento criado para ${missionaryUser[0].name} (ID: ${missionaryId}) - Role mantido como: ${missionaryUser[0].role}`);
+        }
+
+        console.log('✅ Relationship created:', newRelationship[0]);
+
+        return {
+          statusCode: 201,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Relacionamento criado e aprovado automaticamente',
+            relationship: newRelationship[0]
+          })
+        };
+      } catch (error) {
+        console.error('❌ Create relationship error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Erro interno do servidor',
+            details: error.message 
+          })
         };
       }
     }
@@ -1583,24 +2873,346 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Rota para registrar visita
+    // Rota para registrar visita - VERSÃO COM TABELA SEPARADA
     if (path.startsWith('/api/users/') && path.endsWith('/visit') && method === 'POST') {
       try {
-        const userId = path.split('/')[3];
-        const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Registering visit for user:', userId, body);
+        const userId = parseInt(path.split('/')[3]);
+        console.log(`🔍 [VISIT] Registrando visita para usuário ID: ${userId}`);
+        
+        if (isNaN(userId)) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID de usuário inválido' })
+          };
+        }
+        
+        // Parse do body da requisição
+        let body;
+        try {
+          body = JSON.parse(event.body || '{}');
+        } catch (e) {
+          console.log('⚠️ [VISIT] Erro ao parsear body, usando valores padrão');
+          body = {};
+        }
+        
+        const visitDate = body.visitDate || new Date().toISOString().split('T')[0];
+        console.log(`🔍 [VISIT] Data da visita: ${visitDate}`);
+        
+        // Buscar usuário
+        const user = await sql`SELECT id, name FROM users WHERE id = ${userId}`;
+        if (user.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Usuário não encontrado' })
+          };
+        }
+        
+        console.log(`🔍 [VISIT] Usuário encontrado: ${user[0].name}`);
+        
+        // Inserir visita na tabela separada
+        const visitResult = await sql`
+          INSERT INTO visits (user_id, visit_date)
+          VALUES (${userId}, ${visitDate})
+          ON CONFLICT (user_id, visit_date) DO NOTHING
+          RETURNING id, visit_date
+        `;
+        
+        console.log('✅ [VISIT] Visita inserida:', visitResult);
+        
+        // Buscar estatísticas de visitas
+        const visitStats = await sql`
+          SELECT 
+            COUNT(*) as total_visits,
+            MAX(visit_date) as last_visit_date,
+            MIN(visit_date) as first_visit_date
+          FROM visits 
+          WHERE user_id = ${userId}
+        `;
+        
+        const stats = visitStats[0];
+        console.log('📊 [VISIT] Estatísticas:', stats);
+        
+        // Retornar resposta
+        const responseUser = {
+          ...user[0],
+          extraData: {
+            visited: true,
+            visitCount: parseInt(stats.total_visits),
+            lastVisitDate: stats.last_visit_date,
+            firstVisitDate: stats.first_visit_date
+          }
+        };
         
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ success: true, message: 'Visita registrada com sucesso' })
+          body: JSON.stringify({
+            success: true,
+            message: 'Visita registrada com sucesso',
+            user: responseUser,
+            extraData: responseUser.extraData
+          })
         };
       } catch (error) {
-        console.error('❌ Register visit error:', error);
+        console.error('❌ [VISIT] Erro ao registrar visita:', error);
         return {
           statusCode: 500,
           headers,
-          body: JSON.stringify({ error: 'Erro ao registrar visita' })
+          body: JSON.stringify({ 
+            error: 'Erro ao registrar visita',
+            details: error.message 
+          })
+        };
+      }
+    }
+
+    // Rota para resetar visitas de um usuário
+    if (path.startsWith('/api/users/') && path.endsWith('/visit/reset') && method === 'POST') {
+      try {
+        console.log('🔍 [VISIT-RESET] Iniciando reset de visitas');
+        
+        const userId = parseInt(path.split('/')[3]);
+        console.log('🔍 [VISIT-RESET] UserID extraído:', userId);
+        
+        if (isNaN(userId)) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID inválido' })
+          };
+        }
+
+        // Buscar usuário atual
+        const user = await sql`SELECT id, name, extra_data FROM users WHERE id = ${userId}`;
+        
+        if (user.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Usuário não encontrado' })
+          };
+        }
+        
+        // Parse existing extraData or create new
+        let extraData = {};
+        if (user[0].extra_data) {
+          if (typeof user[0].extra_data === 'string') {
+            try {
+              extraData = JSON.parse(user[0].extra_data);
+            } catch (e) {
+              extraData = {};
+            }
+          } else if (typeof user[0].extra_data === 'object') {
+            extraData = { ...user[0].extra_data };
+          }
+        }
+        
+        // Reset visit information
+        extraData.visited = false;
+        extraData.lastVisitDate = null;
+        extraData.visitCount = 0;
+        
+        console.log(`🔍 [VISIT-RESET] Resetando visitas: ${user[0].name}`);
+        
+        // Update user with reset extraData
+        await sql`
+          UPDATE users 
+          SET extra_data = ${JSON.stringify(extraData)}, updated_at = NOW()
+          WHERE id = ${userId}
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: 'Visitas resetadas com sucesso',
+            user: {
+              id: user[0].id,
+              name: user[0].name,
+              extraData: extraData
+            }
+          })
+        };
+      } catch (error) {
+        console.error('❌ [VISIT-RESET] Erro:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao resetar visitas' })
+        };
+      }
+    }
+
+    // Rota de teste para verificar visitas
+    if (path === '/api/test/visits' && method === 'GET') {
+      try {
+        console.log('🧪 [TEST] Testando sistema de visitas...');
+        
+        // Buscar um usuário específico para teste
+        const testUser = await sql`
+          SELECT id, name, email, role, extra_data
+          FROM users 
+          WHERE role = 'member' OR role = 'missionary'
+          LIMIT 1
+        `;
+        
+        if (testUser.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Nenhum usuário encontrado para teste' })
+          };
+        }
+        
+        const user = testUser[0];
+        let extraData = {};
+        
+        if (user.extra_data) {
+          if (typeof user.extra_data === 'string') {
+            try {
+              extraData = JSON.parse(user.extra_data);
+            } catch (e) {
+              console.log(`⚠️ Erro ao parsear extra_data:`, e.message);
+            }
+          } else if (typeof user.extra_data === 'object') {
+            extraData = user.extra_data;
+          }
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            testUser: {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              extraDataRaw: user.extra_data,
+              extraDataParsed: extraData,
+              visited: extraData.visited || false,
+              visitCount: extraData.visitCount || 0,
+              lastVisitDate: extraData.lastVisitDate || null
+            },
+            message: 'Teste de visitas executado com sucesso'
+          })
+        };
+      } catch (error) {
+        console.error('❌ [TEST] Erro no teste de visitas:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro no teste de visitas' })
+        };
+      }
+    }
+
+    // Rota para obter estatísticas detalhadas de visitas
+    if (path === '/api/visits/stats' && method === 'GET') {
+      try {
+        console.log('🔍 [VISIT-STATS] Buscando estatísticas de visitas...');
+        
+        // Buscar todos os usuários (member ou missionary)
+        const allUsers = await sql`
+          SELECT id, name, email, role, extra_data
+          FROM users 
+          WHERE role = 'member' OR role = 'missionary'
+          ORDER BY name ASC
+        `;
+        
+        let totalUsers = allUsers.length;
+        let visitedUsers = 0;
+        let totalVisits = 0;
+        let usersWithMultipleVisits = 0;
+        const visitedUsersList = [];
+        const recentVisits = [];
+        
+        allUsers.forEach(user => {
+          let extraData = {};
+          if (user.extra_data) {
+            if (typeof user.extra_data === 'string') {
+              try {
+                extraData = JSON.parse(user.extra_data);
+              } catch (e) {
+                console.log(`⚠️ Erro ao parsear extra_data do usuário ${user.name}:`, e.message);
+              }
+            } else if (typeof user.extra_data === 'object') {
+              extraData = user.extra_data;
+            }
+          }
+          
+          if (extraData.visited === true) {
+            visitedUsers++;
+            const visitCount = extraData.visitCount || 1;
+            totalVisits += visitCount;
+            
+            if (visitCount > 1) {
+              usersWithMultipleVisits++;
+            }
+            
+            visitedUsersList.push({
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              visitCount: visitCount,
+              lastVisitDate: extraData.lastVisitDate,
+              firstVisitDate: extraData.firstVisitDate || extraData.lastVisitDate
+            });
+            
+            // Adicionar às visitas recentes (últimos 30 dias)
+            if (extraData.lastVisitDate) {
+              const visitDate = new Date(extraData.lastVisitDate);
+              const thirtyDaysAgo = new Date();
+              thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+              
+              if (visitDate >= thirtyDaysAgo) {
+                recentVisits.push({
+                  id: user.id,
+                  name: user.name,
+                  visitDate: extraData.lastVisitDate,
+                  visitCount: visitCount
+                });
+              }
+            }
+          }
+        });
+        
+        // Ordenar visitas recentes por data
+        recentVisits.sort((a, b) => new Date(b.visitDate) - new Date(a.visitDate));
+        
+        const percentage = totalUsers > 0 ? Math.round((visitedUsers / totalUsers) * 100) : 0;
+        const averageVisitsPerUser = visitedUsers > 0 ? Math.round((totalVisits / visitedUsers) * 10) / 10 : 0;
+        
+        console.log(`📊 [VISIT-STATS] Estatísticas: ${visitedUsers}/${totalUsers} usuários visitados (${percentage}%), ${totalVisits} visitas totais`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            summary: {
+              totalUsers,
+              visitedUsers,
+              notVisitedUsers: totalUsers - visitedUsers,
+              totalVisits,
+              percentage,
+              averageVisitsPerUser,
+              usersWithMultipleVisits
+            },
+            visitedUsersList,
+            recentVisits: recentVisits.slice(0, 10), // Últimas 10 visitas
+            lastUpdated: new Date().toISOString()
+          })
+        };
+      } catch (error) {
+        console.error('❌ [VISIT-STATS] Erro:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar estatísticas de visitas' })
         };
       }
     }
@@ -1846,23 +3458,163 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Rota para debug de usuários visitados
-    if (path === '/api/debug/visited-users' && method === 'GET') {
+    // Rota para criar tabela de visitas (executar uma vez)
+    if (path === '/api/setup/visits-table' && method === 'POST') {
       try {
-        const visitedUsers = await sql`
-          SELECT u.id, u.name, u.email, u.role, u.lastVisit, u.visitCount
-          FROM users u 
-          WHERE u.visitCount > 0 
-          ORDER BY u.lastVisit DESC
+        console.log('🔧 [SETUP] Criando tabela de visitas...');
+        
+        // Criar tabela de visitas
+        await sql`
+          CREATE TABLE IF NOT EXISTS visits (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            visit_date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(user_id, visit_date)
+          )
         `;
+        
+        // Criar índices para performance
+        await sql`CREATE INDEX IF NOT EXISTS idx_visits_user_id ON visits(user_id)`;
+        await sql`CREATE INDEX IF NOT EXISTS idx_visits_date ON visits(visit_date)`;
+        
+        console.log('✅ [SETUP] Tabela de visitas criada com sucesso');
         
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify(visitedUsers)
+          body: JSON.stringify({ 
+            success: true, 
+            message: 'Tabela de visitas criada com sucesso' 
+          })
         };
       } catch (error) {
-        console.error('Erro ao buscar usuários visitados:', error);
+        console.error('❌ [SETUP] Erro ao criar tabela de visitas:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao criar tabela de visitas' })
+        };
+      }
+    }
+
+    // Rota para limpar todas as visitas do extraData
+    if (path === '/api/cleanup/visits' && method === 'POST') {
+      try {
+        console.log('🧹 [CLEANUP] Limpando visitas do extraData...');
+        
+        // Buscar todos os usuários com dados de visita no extraData
+        const usersWithVisits = await sql`
+          SELECT id, name, extra_data 
+          FROM users 
+          WHERE extra_data IS NOT NULL 
+          AND (extra_data::text LIKE '%"visited":true%' OR extra_data::text LIKE '%"visitCount"%')
+        `;
+        
+        console.log(`📊 [CLEANUP] Encontrados ${usersWithVisits.length} usuários com dados de visita`);
+        
+        let cleanedCount = 0;
+        
+        for (const user of usersWithVisits) {
+          try {
+            let extraData = {};
+            if (user.extra_data) {
+              if (typeof user.extra_data === 'string') {
+                extraData = JSON.parse(user.extra_data);
+              } else if (typeof user.extra_data === 'object') {
+                extraData = user.extra_data;
+              }
+            }
+            
+            // Remover campos de visita do extraData
+            delete extraData.visited;
+            delete extraData.visitCount;
+            delete extraData.lastVisitDate;
+            delete extraData.firstVisitDate;
+            
+            // Atualizar usuário
+            await sql`
+              UPDATE users 
+              SET extra_data = ${JSON.stringify(extraData)}, updated_at = NOW()
+              WHERE id = ${user.id}
+            `;
+            
+            cleanedCount++;
+            console.log(`✅ [CLEANUP] Limpo extraData do usuário ${user.name} (ID: ${user.id})`);
+          } catch (error) {
+            console.error(`❌ [CLEANUP] Erro ao limpar usuário ${user.name}:`, error);
+          }
+        }
+        
+        console.log(`✅ [CLEANUP] Limpeza concluída: ${cleanedCount} usuários processados`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: `Limpeza concluída: ${cleanedCount} usuários processados`,
+            cleanedUsers: cleanedCount
+          })
+        };
+      } catch (error) {
+        console.error('❌ [CLEANUP] Erro na limpeza:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro na limpeza das visitas' })
+        };
+      }
+    }
+
+    // Rota para debug de usuários visitados
+    if (path === '/api/debug/visited-users' && method === 'GET') {
+      try {
+        console.log('🔍 [DEBUG] Buscando usuários visitados para debug...');
+        
+        const visitedUsers = await sql`
+          SELECT u.id, u.name, u.email, u.role, u.extra_data
+          FROM users u 
+          WHERE u.role = 'member' OR u.role = 'missionary'
+          ORDER BY u.name ASC
+        `;
+        
+        const processedUsers = visitedUsers.map(user => {
+          let extraData = {};
+          if (user.extra_data) {
+            if (typeof user.extra_data === 'string') {
+              try {
+                extraData = JSON.parse(user.extra_data);
+              } catch (e) {
+                console.log(`⚠️ Erro ao parsear extra_data do usuário ${user.name}:`, e.message);
+              }
+            } else if (typeof user.extra_data === 'object') {
+              extraData = user.extra_data;
+            }
+          }
+          
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            visited: extraData.visited || false,
+            visitCount: extraData.visitCount || 0,
+            lastVisitDate: extraData.lastVisitDate || null,
+            extraData: extraData
+          };
+        });
+        
+        console.log(`📊 [DEBUG] Processados ${processedUsers.length} usuários`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(processedUsers)
+        };
+      } catch (error) {
+        console.error('❌ [DEBUG] Erro ao buscar usuários visitados:', error);
         return {
           statusCode: 500,
           headers,
@@ -2072,6 +3824,31 @@ exports.handler = async (event, context) => {
     }
 
     // Rota para criar evento via SQL
+    // Nova rota de teste para inserção direta
+    if (path === '/api/debug/test-insert' && method === 'GET') {
+      try {
+        console.log('🔧 [TEST] Testando inserção direta...');
+        const result = await sql`
+          INSERT INTO events (title, description, date, type, created_at, updated_at)
+          VALUES ('Evento Hoje 2024', 'Teste para verificar se aparece no calendário', '2024-09-21'::date, 'igreja-local', NOW(), NOW())
+          RETURNING id, title, date
+        `;
+        console.log('✅ [TEST] Inserção bem-sucedida:', result[0]);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, inserted: result[0] })
+        };
+      } catch (error) {
+        console.error('❌ [TEST] Erro na inserção:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: error.message, details: error.toString() })
+        };
+      }
+    }
+
     if (path === '/api/debug/create-event-sql' && method === 'GET') {
       try {
         const newEvent = await sql`
@@ -2251,51 +4028,271 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Rota para média de parâmetros
-    if (path === '/api/system/parameter-average' && method === 'GET') {
+
+
+    // Rota limpa para cálculo de pontos - NOVA IMPLEMENTAÇÃO
+    if (path === '/api/system/calculate-points-clean' && method === 'POST') {
       try {
-        // Buscar todos os usuários (exceto admin) e calcular média
-        const users = await sql`
-          SELECT points, role 
-          FROM users 
-          WHERE email != 'admin@7care.com'
-        `;
+        console.log('🧹 Iniciando cálculo limpo de pontos...');
         
-        if (users.length === 0) {
+        // Buscar configuração de pontos
+        const pointsConfigResult = await sql`SELECT * FROM points_configuration LIMIT 1`;
+        if (pointsConfigResult.length === 0) {
           return {
-            statusCode: 200,
+            statusCode: 404,
             headers,
-            body: JSON.stringify({ 
-              success: true,
-              currentAverage: 0,
-              totalUsers: 0
-            })
+            body: JSON.stringify({ error: 'Configuração de pontos não encontrada' })
           };
         }
         
-        // Calcular média geral
-        const totalPoints = users.reduce((sum, user) => sum + (user.points || 0), 0);
-        const currentAverage = totalPoints / users.length;
+        const pointsConfig = pointsConfigResult[0];
+        console.log('📋 Configuração carregada:', JSON.stringify(pointsConfig, null, 2));
+        
+        // Buscar todos os usuários (exceto admin)
+        const users = await sql`
+          SELECT id, name, email, role, points, extra_data
+          FROM users 
+          WHERE email != 'admin@7care.com' AND role != 'admin'
+        `;
+        
+        console.log(`👥 ${users.length} usuários encontrados para cálculo`);
+        
+        let updatedCount = 0;
+        let totalCalculatedPoints = 0;
+        
+        for (const user of users) {
+          console.log(`\n🔍 Processando: ${user.name} (ID: ${user.id})`);
+          console.log(`📊 Pontos atuais: ${user.points}`);
+          
+          // Parse extra_data
+          let userData = {};
+          try {
+            userData = JSON.parse(user.extra_data || '{}');
+            console.log('📋 Dados parseados:', Object.keys(userData).length, 'campos');
+          } catch (err) {
+            console.log(`⚠️ Erro ao parsear extra_data: ${err.message}`);
+            continue;
+          }
+          
+          let totalPoints = 0;
+          let appliedCategories = [];
+          
+          // 1. ENGAJAMENTO
+          if (userData.engajamento) {
+            const engajamento = userData.engajamento.toLowerCase();
+            if (engajamento.includes('alto')) {
+              totalPoints += pointsConfig.engajamento?.alto || 0;
+              appliedCategories.push(`Engajamento (Alto): +${pointsConfig.engajamento?.alto || 0}`);
+            } else if (engajamento.includes('medio') || engajamento.includes('médio')) {
+              totalPoints += pointsConfig.engajamento?.medio || 0;
+              appliedCategories.push(`Engajamento (Médio): +${pointsConfig.engajamento?.medio || 0}`);
+            } else if (engajamento.includes('baixo')) {
+              totalPoints += pointsConfig.engajamento?.baixo || 0;
+              appliedCategories.push(`Engajamento (Baixo): +${pointsConfig.engajamento?.baixo || 0}`);
+            }
+          }
+          
+          // 2. CLASSIFICAÇÃO
+          if (userData.classificacao) {
+            const classificacao = userData.classificacao.toLowerCase();
+            if (classificacao.includes('frequente')) {
+              totalPoints += pointsConfig.classificacao?.frequente || 0;
+              appliedCategories.push(`Classificação (Frequente): +${pointsConfig.classificacao?.frequente || 0}`);
+            } else {
+              totalPoints += pointsConfig.classificacao?.naoFrequente || 0;
+              appliedCategories.push(`Classificação (Não Frequente): +${pointsConfig.classificacao?.naoFrequente || 0}`);
+            }
+          }
+          
+          // 3. DIZIMISTA
+          if (userData.dizimistaType) {
+            const dizimista = userData.dizimistaType.toLowerCase();
+            if (dizimista.includes('recorrente')) {
+              totalPoints += pointsConfig.dizimista?.recorrente || 0;
+              appliedCategories.push(`Dizimista (Recorrente): +${pointsConfig.dizimista?.recorrente || 0}`);
+            } else if (dizimista.includes('sazonal')) {
+              totalPoints += pointsConfig.dizimista?.sazonal || 0;
+              appliedCategories.push(`Dizimista (Sazonal): +${pointsConfig.dizimista?.sazonal || 0}`);
+            } else if (dizimista.includes('pontual')) {
+              totalPoints += pointsConfig.dizimista?.pontual || 0;
+              appliedCategories.push(`Dizimista (Pontual): +${pointsConfig.dizimista?.pontual || 0}`);
+            } else if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) {
+              totalPoints += pointsConfig.dizimista?.naoDizimista || 0;
+              appliedCategories.push(`Dizimista (Não Dizimista): +${pointsConfig.dizimista?.naoDizimista || 0}`);
+            }
+          }
+          
+          // 4. OFERTANTE
+          if (userData.ofertanteType) {
+            const ofertante = userData.ofertanteType.toLowerCase();
+            if (ofertante.includes('recorrente')) {
+              totalPoints += pointsConfig.ofertante?.recorrente || 0;
+              appliedCategories.push(`Ofertante (Recorrente): +${pointsConfig.ofertante?.recorrente || 0}`);
+            } else if (ofertante.includes('sazonal')) {
+              totalPoints += pointsConfig.ofertante?.sazonal || 0;
+              appliedCategories.push(`Ofertante (Sazonal): +${pointsConfig.ofertante?.sazonal || 0}`);
+            } else if (ofertante.includes('pontual')) {
+              totalPoints += pointsConfig.ofertante?.pontual || 0;
+              appliedCategories.push(`Ofertante (Pontual): +${pointsConfig.ofertante?.pontual || 0}`);
+            } else if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) {
+              totalPoints += pointsConfig.ofertante?.naoOfertante || 0;
+              appliedCategories.push(`Ofertante (Não Ofertante): +${pointsConfig.ofertante?.naoOfertante || 0}`);
+            }
+          }
+          
+          // 5. TEMPO DE BATISMO
+          if (userData.tempoBatismoAnos && typeof userData.tempoBatismoAnos === 'number') {
+            const tempo = userData.tempoBatismoAnos;
+            if (tempo >= 30) {
+              totalPoints += pointsConfig.tempoBatismo?.maisVinte || 0;
+              appliedCategories.push(`Tempo Batismo (30+ anos): +${pointsConfig.tempoBatismo?.maisVinte || 0}`);
+            } else if (tempo >= 20) {
+              totalPoints += pointsConfig.tempoBatismo?.vinteAnos || 0;
+              appliedCategories.push(`Tempo Batismo (20-30 anos): +${pointsConfig.tempoBatismo?.vinteAnos || 0}`);
+            } else if (tempo >= 10) {
+              totalPoints += pointsConfig.tempoBatismo?.dezAnos || 0;
+              appliedCategories.push(`Tempo Batismo (10-20 anos): +${pointsConfig.tempoBatismo?.dezAnos || 0}`);
+            } else if (tempo >= 5) {
+              totalPoints += pointsConfig.tempoBatismo?.cincoAnos || 0;
+              appliedCategories.push(`Tempo Batismo (5-10 anos): +${pointsConfig.tempoBatismo?.cincoAnos || 0}`);
+            } else if (tempo >= 2) {
+              totalPoints += pointsConfig.tempoBatismo?.doisAnos || 0;
+              appliedCategories.push(`Tempo Batismo (2-5 anos): +${pointsConfig.tempoBatismo?.doisAnos || 0}`);
+            }
+          }
+          
+          // 6. CARGOS
+          if (userData.temCargo === 'Sim' && userData.departamentosCargos) {
+            const numCargos = userData.departamentosCargos.split(';').length;
+            if (numCargos >= 3) {
+              totalPoints += pointsConfig.cargos?.tresOuMais || 0;
+              appliedCategories.push(`Cargos (${numCargos} cargos): +${pointsConfig.cargos?.tresOuMais || 0}`);
+            } else if (numCargos === 2) {
+              totalPoints += pointsConfig.cargos?.doisCargos || 0;
+              appliedCategories.push(`Cargos (${numCargos} cargos): +${pointsConfig.cargos?.doisCargos || 0}`);
+            } else if (numCargos === 1) {
+              totalPoints += pointsConfig.cargos?.umCargo || 0;
+              appliedCategories.push(`Cargos (${numCargos} cargo): +${pointsConfig.cargos?.umCargo || 0}`);
+            }
+          }
+          
+          // 7. NOME DA UNIDADE
+          if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
+            totalPoints += pointsConfig.nomeUnidade?.comUnidade || 0;
+            appliedCategories.push(`Nome da Unidade: +${pointsConfig.nomeUnidade?.comUnidade || 0}`);
+          }
+          
+          // 8. TEM LIÇÃO
+          if (userData.temLicao === true || userData.temLicao === 'true') {
+            totalPoints += pointsConfig.temLicao?.comLicao || 0;
+            appliedCategories.push(`Tem Lição: +${pointsConfig.temLicao?.comLicao || 0}`);
+          }
+          
+          // 9. TOTAL DE PRESENÇA
+          if (userData.totalPresenca !== undefined && userData.totalPresenca !== null) {
+            const presenca = parseInt(userData.totalPresenca);
+            if (presenca >= 8 && presenca <= 13) {
+              totalPoints += pointsConfig.totalPresenca?.oitoATreze || 0;
+              appliedCategories.push(`Total Presença (${presenca}): +${pointsConfig.totalPresenca?.oitoATreze || 0}`);
+            } else if (presenca >= 4 && presenca <= 7) {
+              totalPoints += pointsConfig.totalPresenca?.quatroASete || 0;
+              appliedCategories.push(`Total Presença (${presenca}): +${pointsConfig.totalPresenca?.quatroASete || 0}`);
+            } else if (presenca >= 0 && presenca <= 3) {
+              totalPoints += pointsConfig.totalPresenca?.zeroATres || 0;
+              appliedCategories.push(`Total Presença (${presenca}): +${pointsConfig.totalPresenca?.zeroATres || 0}`);
+            }
+          }
+          
+          // 10. ESCOLA SABATINA - COMUNHÃO
+          if (userData.comunhao && userData.comunhao > 0) {
+            const pontosComunhao = userData.comunhao * (pointsConfig.escolaSabatina?.comunhao || 0);
+            totalPoints += pontosComunhao;
+            appliedCategories.push(`Comunhão (${userData.comunhao}): +${pontosComunhao}`);
+          }
+          
+          // 11. ESCOLA SABATINA - MISSÃO
+          if (userData.missao && userData.missao > 0) {
+            const pontosMissao = userData.missao * (pointsConfig.escolaSabatina?.missao || 0);
+            totalPoints += pontosMissao;
+            appliedCategories.push(`Missão (${userData.missao}): +${pontosMissao}`);
+          }
+          
+          // 12. ESCOLA SABATINA - ESTUDO BÍBLICO
+          if (userData.estudoBiblico && userData.estudoBiblico > 0) {
+            const pontosEstudoBiblico = userData.estudoBiblico * (pointsConfig.escolaSabatina?.estudoBiblico || 0);
+            totalPoints += pontosEstudoBiblico;
+            appliedCategories.push(`Estudo Bíblico (${userData.estudoBiblico}): +${pontosEstudoBiblico}`);
+          }
+          
+          // 13. ESCOLA SABATINA - BATIZOU ALGUÉM
+          if (userData.batizouAlguem === true || userData.batizouAlguem === 'true' || userData.batizouAlguem === 1) {
+            totalPoints += pointsConfig.escolaSabatina?.batizouAlguem || 0;
+            appliedCategories.push(`Batizou Alguém: +${pointsConfig.escolaSabatina?.batizouAlguem || 0}`);
+          }
+          
+          // 14. ESCOLA SABATINA - DISCIPULADO PÓS-BATISMO
+          if (userData.discPosBatismal && userData.discPosBatismal > 0) {
+            const pontosDiscPosBatismo = userData.discPosBatismal * (pointsConfig.escolaSabatina?.discipuladoPosBatismo || 0);
+            totalPoints += pontosDiscPosBatismo;
+            appliedCategories.push(`Discipulado Pós-Batismo (${userData.discPosBatismal}): +${pontosDiscPosBatismo}`);
+          }
+          
+          // 15. CPF VÁLIDO
+          if (userData.cpfValido === 'Sim' || userData.cpfValido === true || userData.cpfValido === 'true') {
+            totalPoints += pointsConfig.cpfValido?.valido || 0;
+            appliedCategories.push(`CPF Válido: +${pointsConfig.cpfValido?.valido || 0}`);
+          }
+          
+          // 16. CAMPOS VAZIOS ACMS
+          if (userData.camposVaziosACMS === false || userData.camposVaziosACMS === 'false') {
+            totalPoints += pointsConfig.camposVaziosACMS?.completos || 0;
+            appliedCategories.push(`Campos Vazios ACMS (Completos): +${pointsConfig.camposVaziosACMS?.completos || 0}`);
+          }
+          
+          const roundedTotalPoints = Math.round(totalPoints);
+          totalCalculatedPoints += roundedTotalPoints;
+          
+          console.log(`🎯 Total calculado: ${roundedTotalPoints} pontos`);
+          console.log(`📊 Categorias aplicadas: ${appliedCategories.length}`);
+          appliedCategories.forEach(cat => console.log(`   ${cat}`));
+          
+          // FORÇAR ATUALIZAÇÃO DE TODOS OS USUÁRIOS PARA TESTE
+          console.log(`🔍 Comparando: ${user.points} !== ${roundedTotalPoints} = ${user.points !== roundedTotalPoints}`);
+          await sql`
+            UPDATE users 
+            SET points = ${roundedTotalPoints}, updated_at = NOW()
+            WHERE id = ${user.id}
+          `;
+          updatedCount++;
+          console.log(`✅ ${user.name}: ${user.points} → ${roundedTotalPoints} pontos`);
+        }
+        
+        console.log(`\n🎉 Cálculo limpo concluído!`);
+        console.log(`📊 ${updatedCount} usuários atualizados de ${users.length} total`);
+        console.log(`🎯 Total de pontos calculados: ${totalCalculatedPoints}`);
         
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             success: true,
-            currentAverage: currentAverage,
-            totalUsers: users.length
+            message: `Cálculo limpo concluído: ${updatedCount} usuários atualizados`,
+            updatedCount,
+            totalUsers: users.length,
+            totalCalculatedPoints,
+            averagePoints: users.length > 0 ? Math.round(totalCalculatedPoints / users.length) : 0
           })
         };
+        
       } catch (error) {
-        console.error('Erro ao calcular média de parâmetros:', error);
+        console.error('❌ Erro no cálculo limpo de pontos:', error);
         return {
           statusCode: 500,
           headers,
-          body: JSON.stringify({ error: 'Erro interno do servidor' })
+          body: JSON.stringify({ error: 'Erro interno do servidor: ' + error.message })
         };
       }
     }
-
 
     // Rota para atualizar perfis por estudo bíblico
     if (path === '/api/system/update-profiles-by-bible-study' && method === 'POST') {
@@ -2790,16 +4787,2259 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Rota para calcular pontos
-    if (path === '/api/system/calculate-points' && method === 'POST') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true, message: 'Pontos calculados com sucesso' })
-      };
+    // Rota para buscar scores de check-ins espirituais
+    if (path === '/api/spiritual-checkins/scores' && method === 'GET') {
+      try {
+        console.log('🔍 Buscando scores de check-ins espirituais...');
+        
+        // Por enquanto, retornar dados vazios para evitar erros
+        const scores = [];
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(scores)
+        };
+      } catch (error) {
+        console.error('❌ Erro ao buscar scores de check-ins:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para buscar usuários com perfis missionários
+    if (path === '/api/missionary-profiles/users' && method === 'GET') {
+      try {
+        console.log('🔍 Buscando usuários com perfis missionários...');
+        
+        const users = await sql`
+          SELECT id, name, email, role, church, points, level, status, created_at
+          FROM users 
+          WHERE role IN ('missionary', 'member') 
+          ORDER BY points DESC, name ASC
+        `;
+        
+        console.log(`📊 ${users.length} usuários missionários encontrados`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(users)
+        };
+      } catch (error) {
+        console.error('❌ Erro ao buscar usuários missionários:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para verificar/criar tabela points_configuration
+    if (path === '/api/system/setup-points-config' && method === 'POST') {
+      try {
+        console.log('🔧 Verificando/criando tabela points_configuration...');
+        
+        // Verificar se a tabela existe
+        const tableCheck = await sql`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'points_configuration'
+          );
+        `;
+        
+        if (!tableCheck[0].exists) {
+          console.log('📋 Criando tabela points_configuration...');
+          
+          // Criar tabela points_configuration
+          await sql`
+            CREATE TABLE IF NOT EXISTS points_configuration (
+              id SERIAL PRIMARY KEY,
+              engajamento JSONB DEFAULT '{"baixo": 10, "medio": 25, "alto": 50}',
+              classificacao JSONB DEFAULT '{"frequente": 30, "naoFrequente": 10}',
+              dizimista JSONB DEFAULT '{"naoDizimista": 0, "pontual": 15, "sazonal": 25, "recorrente": 40}',
+              ofertante JSONB DEFAULT '{"naoOfertante": 0, "pontual": 10, "sazonal": 20, "recorrente": 35}',
+              tempoBatismo JSONB DEFAULT '{"doisAnos": 5, "cincoAnos": 15, "dezAnos": 25, "vinteAnos": 35, "maisVinte": 50}',
+              cargos JSONB DEFAULT '{"umCargo": 20, "doisCargos": 35, "tresOuMais": 50}',
+              nomeUnidade JSONB DEFAULT '{"comUnidade": 25}',
+              temLicao JSONB DEFAULT '{"comLicao": 15}',
+              totalPresenca JSONB DEFAULT '{"zeroATres": 0, "quatroASete": 10, "oitoATreze": 20}',
+              escolaSabatina JSONB DEFAULT '{"comunhao": 5, "missao": 5, "estudoBiblico": 5, "batizouAlguem": 50, "discipuladoPosBatismo": 10}',
+              cpfValido JSONB DEFAULT '{"valido": 10}',
+              camposVaziosACMS JSONB DEFAULT '{"completos": 100}',
+              created_at TIMESTAMP DEFAULT NOW(),
+              updated_at TIMESTAMP DEFAULT NOW()
+            );
+          `;
+          
+          // Inserir configuração padrão
+          await sql`
+            INSERT INTO points_configuration (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+          `;
+          
+          console.log('✅ Tabela points_configuration criada com sucesso!');
+        } else {
+          console.log('✅ Tabela points_configuration já existe');
+          
+          // Atualizar valores padrão na tabela existente
+          console.log('🔄 Atualizando valores padrão...');
+          await sql`
+            UPDATE points_configuration SET
+              engajamento = '{"baixo": 10, "medio": 25, "alto": 50}',
+              classificacao = '{"frequente": 30, "naoFrequente": 10}',
+              dizimista = '{"naoDizimista": 0, "pontual": 15, "sazonal": 25, "recorrente": 40}',
+              ofertante = '{"naoOfertante": 0, "pontual": 10, "sazonal": 20, "recorrente": 35}',
+              tempoBatismo = '{"doisAnos": 5, "cincoAnos": 15, "dezAnos": 25, "vinteAnos": 35, "maisVinte": 50}',
+              cargos = '{"umCargo": 20, "doisCargos": 35, "tresOuMais": 50}',
+              nomeUnidade = '{"comUnidade": 25}',
+              temLicao = '{"comLicao": 15}',
+              totalPresenca = '{"zeroATres": 0, "quatroASete": 10, "oitoATreze": 20}',
+              escolaSabatina = '{"comunhao": 5, "missao": 5, "estudoBiblico": 5, "batizouAlguem": 50, "discipuladoPosBatismo": 10}',
+              cpfValido = '{"valido": 10}',
+              camposVaziosACMS = '{"completos": 100}',
+              updated_at = NOW()
+            WHERE id = 1;
+          `;
+          console.log('✅ Valores padrão atualizados!');
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: 'Tabela points_configuration configurada com sucesso!'
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao configurar tabela:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor: ' + error.message })
+        };
+      }
+    }
+
+    // Rota para correção rápida de pontuação
+    if (path === '/api/system/fix-points-calculation' && method === 'POST') {
+      try {
+        console.log('🔧 Iniciando correção rápida de pontuação...');
+        
+        // Buscar configuração de pontos
+        const pointsConfigResult = await sql`SELECT * FROM points_configuration LIMIT 1`;
+        if (pointsConfigResult.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Configuração de pontos não encontrada' })
+          };
+        }
+        
+        const pointsConfig = pointsConfigResult[0];
+        
+        // Buscar todos os usuários (exceto admin)
+        const users = await sql`
+          SELECT id, name, email, role, points, extra_data
+          FROM users 
+          WHERE email != 'admin@7care.com' AND role != 'admin'
+        `;
+        
+        let updatedCount = 0;
+        let totalCalculatedPoints = 0;
+        
+        for (const user of users) {
+          // Parse extra_data
+          let userData = {};
+          try {
+            userData = JSON.parse(user.extra_data || '{}');
+          } catch (err) {
+            continue;
+          }
+          
+          let totalPoints = 0;
+          
+          // 1. ENGAJAMENTO
+          if (userData.engajamento) {
+            const engajamento = userData.engajamento.toLowerCase();
+            if (engajamento.includes('alto')) totalPoints += pointsConfig.engajamento?.alto || 0;
+            else if (engajamento.includes('medio') || engajamento.includes('médio')) totalPoints += pointsConfig.engajamento?.medio || 0;
+            else if (engajamento.includes('baixo')) totalPoints += pointsConfig.engajamento?.baixo || 0;
+          }
+          
+          // 2. CLASSIFICAÇÃO
+          if (userData.classificacao) {
+            const classificacao = userData.classificacao.toLowerCase();
+            if (classificacao.includes('frequente')) totalPoints += pointsConfig.classificacao?.frequente || 0;
+            else totalPoints += pointsConfig.classificacao?.naoFrequente || 0;
+          }
+          
+          // 3. DIZIMISTA
+          if (userData.dizimistaType) {
+            const dizimista = userData.dizimistaType.toLowerCase();
+            if (dizimista.includes('recorrente')) totalPoints += pointsConfig.dizimista?.recorrente || 0;
+            else if (dizimista.includes('sazonal')) totalPoints += pointsConfig.dizimista?.sazonal || 0;
+            else if (dizimista.includes('pontual')) totalPoints += pointsConfig.dizimista?.pontual || 0;
+            else if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) totalPoints += pointsConfig.dizimista?.naoDizimista || 0;
+          }
+          
+          // 4. OFERTANTE
+          if (userData.ofertanteType) {
+            const ofertante = userData.ofertanteType.toLowerCase();
+            if (ofertante.includes('recorrente')) totalPoints += pointsConfig.ofertante?.recorrente || 0;
+            else if (ofertante.includes('sazonal')) totalPoints += pointsConfig.ofertante?.sazonal || 0;
+            else if (ofertante.includes('pontual')) totalPoints += pointsConfig.ofertante?.pontual || 0;
+            else if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) totalPoints += pointsConfig.ofertante?.naoOfertante || 0;
+          }
+          
+          // 5. TEMPO DE BATISMO
+          if (userData.tempoBatismoAnos && typeof userData.tempoBatismoAnos === 'number') {
+            const tempo = userData.tempoBatismoAnos;
+            if (tempo >= 30) totalPoints += pointsConfig.tempoBatismo?.maisVinte || 0;
+            else if (tempo >= 20) totalPoints += pointsConfig.tempoBatismo?.vinteAnos || 0;
+            else if (tempo >= 10) totalPoints += pointsConfig.tempoBatismo?.dezAnos || 0;
+            else if (tempo >= 5) totalPoints += pointsConfig.tempoBatismo?.cincoAnos || 0;
+            else if (tempo >= 2) totalPoints += pointsConfig.tempoBatismo?.doisAnos || 0;
+          }
+          
+          // 6. CARGOS
+          if (userData.temCargo === 'Sim' && userData.departamentosCargos) {
+            const numCargos = userData.departamentosCargos.split(';').length;
+            if (numCargos >= 3) totalPoints += pointsConfig.cargos?.tresOuMais || 0;
+            else if (numCargos === 2) totalPoints += pointsConfig.cargos?.doisCargos || 0;
+            else if (numCargos === 1) totalPoints += pointsConfig.cargos?.umCargo || 0;
+          }
+          
+          // 7. NOME DA UNIDADE
+          if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
+            totalPoints += pointsConfig.nomeUnidade?.comUnidade || 0;
+          }
+          
+          // 8. TEM LIÇÃO
+          if (userData.temLicao === true || userData.temLicao === 'true') {
+            totalPoints += pointsConfig.temLicao?.comLicao || 0;
+          }
+          
+          // 9. TOTAL DE PRESENÇA
+          if (userData.totalPresenca !== undefined && userData.totalPresenca !== null) {
+            const presenca = parseInt(userData.totalPresenca);
+            if (presenca >= 8 && presenca <= 13) totalPoints += pointsConfig.totalPresenca?.oitoATreze || 0;
+            else if (presenca >= 4 && presenca <= 7) totalPoints += pointsConfig.totalPresenca?.quatroASete || 0;
+            else if (presenca >= 0 && presenca <= 3) totalPoints += pointsConfig.totalPresenca?.zeroATres || 0;
+          }
+          
+          // 10. ESCOLA SABATINA - COMUNHÃO
+          if (userData.comunhao && userData.comunhao > 0) {
+            totalPoints += userData.comunhao * (pointsConfig.escolaSabatina?.comunhao || 0);
+          }
+          
+          // 11. ESCOLA SABATINA - MISSÃO
+          if (userData.missao && userData.missao > 0) {
+            totalPoints += userData.missao * (pointsConfig.escolaSabatina?.missao || 0);
+          }
+          
+          // 12. ESCOLA SABATINA - ESTUDO BÍBLICO
+          if (userData.estudoBiblico && userData.estudoBiblico > 0) {
+            totalPoints += userData.estudoBiblico * (pointsConfig.escolaSabatina?.estudoBiblico || 0);
+          }
+          
+          // 13. ESCOLA SABATINA - BATIZOU ALGUÉM
+          if (userData.batizouAlguem === true || userData.batizouAlguem === 'true' || userData.batizouAlguem === 1) {
+            totalPoints += pointsConfig.escolaSabatina?.batizouAlguem || 0;
+          }
+          
+          // 14. ESCOLA SABATINA - DISCIPULADO PÓS-BATISMO
+          if (userData.discPosBatismal && userData.discPosBatismal > 0) {
+            totalPoints += userData.discPosBatismal * (pointsConfig.escolaSabatina?.discipuladoPosBatismo || 0);
+          }
+          
+          // 15. CPF VÁLIDO
+          if (userData.cpfValido === 'Sim' || userData.cpfValido === true || userData.cpfValido === 'true') {
+            totalPoints += pointsConfig.cpfValido?.valido || 0;
+          }
+          
+          // 16. CAMPOS VAZIOS ACMS
+          if (userData.camposVaziosACMS === false || userData.camposVaziosACMS === 'false') {
+            totalPoints += pointsConfig.camposVaziosACMS?.completos || 0;
+          }
+          
+          const roundedTotalPoints = Math.round(totalPoints);
+          totalCalculatedPoints += roundedTotalPoints;
+          
+          // Atualizar usuário
+          await sql`
+            UPDATE users 
+            SET points = ${roundedTotalPoints}, updated_at = NOW()
+            WHERE id = ${user.id}
+          `;
+          updatedCount++;
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: `Correção de pontuação concluída! ${updatedCount} usuários atualizados.`,
+            totalUsers: users.length,
+            updatedUsers: updatedCount,
+            totalCalculatedPoints: totalCalculatedPoints
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro na correção de pontuação:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota removida - conflitante com /api/system/calculate-points-clean
+    if (false && path === '/api/system/calculate-points-correct' && method === 'POST') {
+      try {
+        console.log('🎯 Iniciando cálculo correto de pontos...');
+        
+        // Buscar configuração de pontos atual (a mesma da rota /api/system/points-config)
+        const pointsConfigResult = await sql`SELECT * FROM points_configuration LIMIT 1`;
+        if (pointsConfigResult.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Configuração de pontos não encontrada' })
+          };
+        }
+        
+        const pointsConfig = pointsConfigResult[0];
+        console.log('📋 Configuração carregada:', JSON.stringify(pointsConfig, null, 2));
+        
+        // Buscar todos os usuários (exceto admin)
+        const users = await sql`
+          SELECT id, name, email, role, points, extra_data
+          FROM users 
+          WHERE email != 'admin@7care.com' AND role != 'admin'
+        `;
+        
+        console.log(`👥 ${users.length} usuários encontrados para cálculo`);
+        
+        let updatedCount = 0;
+        let totalCalculatedPoints = 0;
+        
+        for (const user of users) {
+          console.log(`\n🔍 Processando: ${user.name} (ID: ${user.id})`);
+          console.log(`📊 Pontos atuais: ${user.points}`);
+          
+          // Parse extra_data
+          let userData = {};
+          try {
+            userData = JSON.parse(user.extra_data || '{}');
+            console.log('📋 Dados parseados:', Object.keys(userData).length, 'campos');
+          } catch (err) {
+            console.log(`⚠️ Erro ao parsear extra_data: ${err.message}`);
+            continue;
+          }
+          
+          let totalPoints = 0;
+          let appliedCategories = [];
+          
+          // 1. ENGAJAMENTO
+          if (userData.engajamento) {
+            const engajamento = userData.engajamento.toLowerCase();
+            if (engajamento.includes('alto')) {
+              totalPoints += pointsConfig.engajamento?.alto || 0;
+              appliedCategories.push(`Engajamento (Alto): +${pointsConfig.engajamento?.alto || 0}`);
+            } else if (engajamento.includes('medio') || engajamento.includes('médio')) {
+              totalPoints += pointsConfig.engajamento?.medio || 0;
+              appliedCategories.push(`Engajamento (Médio): +${pointsConfig.engajamento?.medio || 0}`);
+            } else if (engajamento.includes('baixo')) {
+              totalPoints += pointsConfig.engajamento?.baixo || 0;
+              appliedCategories.push(`Engajamento (Baixo): +${pointsConfig.engajamento?.baixo || 0}`);
+            }
+          }
+          
+          // 2. CLASSIFICAÇÃO
+          if (userData.classificacao) {
+            const classificacao = userData.classificacao.toLowerCase();
+            if (classificacao.includes('frequente')) {
+              totalPoints += pointsConfig.classificacao?.frequente || 0;
+              appliedCategories.push(`Classificação (Frequente): +${pointsConfig.classificacao?.frequente || 0}`);
+            } else {
+              totalPoints += pointsConfig.classificacao?.naoFrequente || 0;
+              appliedCategories.push(`Classificação (Não Frequente): +${pointsConfig.classificacao?.naoFrequente || 0}`);
+            }
+          }
+          
+          // 3. DIZIMISTA
+          if (userData.dizimistaType) {
+            const dizimista = userData.dizimistaType.toLowerCase();
+            if (dizimista.includes('recorrente')) {
+              totalPoints += pointsConfig.dizimista?.recorrente || 0;
+              appliedCategories.push(`Dizimista (Recorrente): +${pointsConfig.dizimista?.recorrente || 0}`);
+            } else if (dizimista.includes('sazonal')) {
+              totalPoints += pointsConfig.dizimista?.sazonal || 0;
+              appliedCategories.push(`Dizimista (Sazonal): +${pointsConfig.dizimista?.sazonal || 0}`);
+            } else if (dizimista.includes('pontual')) {
+              totalPoints += pointsConfig.dizimista?.pontual || 0;
+              appliedCategories.push(`Dizimista (Pontual): +${pointsConfig.dizimista?.pontual || 0}`);
+            } else if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) {
+              totalPoints += pointsConfig.dizimista?.naoDizimista || 0;
+              appliedCategories.push(`Dizimista (Não Dizimista): +${pointsConfig.dizimista?.naoDizimista || 0}`);
+            }
+          }
+          
+          // 4. OFERTANTE
+          if (userData.ofertanteType) {
+            const ofertante = userData.ofertanteType.toLowerCase();
+            if (ofertante.includes('recorrente')) {
+              totalPoints += pointsConfig.ofertante?.recorrente || 0;
+              appliedCategories.push(`Ofertante (Recorrente): +${pointsConfig.ofertante?.recorrente || 0}`);
+            } else if (ofertante.includes('sazonal')) {
+              totalPoints += pointsConfig.ofertante?.sazonal || 0;
+              appliedCategories.push(`Ofertante (Sazonal): +${pointsConfig.ofertante?.sazonal || 0}`);
+            } else if (ofertante.includes('pontual')) {
+              totalPoints += pointsConfig.ofertante?.pontual || 0;
+              appliedCategories.push(`Ofertante (Pontual): +${pointsConfig.ofertante?.pontual || 0}`);
+            } else if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) {
+              totalPoints += pointsConfig.ofertante?.naoOfertante || 0;
+              appliedCategories.push(`Ofertante (Não Ofertante): +${pointsConfig.ofertante?.naoOfertante || 0}`);
+            }
+          }
+          
+          // 5. TEMPO DE BATISMO
+          if (userData.tempoBatismoAnos && typeof userData.tempoBatismoAnos === 'number') {
+            const tempo = userData.tempoBatismoAnos;
+            if (tempo >= 30) {
+              totalPoints += pointsConfig.tempoBatismo?.maisVinte || 0;
+              appliedCategories.push(`Tempo Batismo (30+ anos): +${pointsConfig.tempoBatismo?.maisVinte || 0}`);
+            } else if (tempo >= 20) {
+              totalPoints += pointsConfig.tempoBatismo?.vinteAnos || 0;
+              appliedCategories.push(`Tempo Batismo (20-30 anos): +${pointsConfig.tempoBatismo?.vinteAnos || 0}`);
+            } else if (tempo >= 10) {
+              totalPoints += pointsConfig.tempoBatismo?.dezAnos || 0;
+              appliedCategories.push(`Tempo Batismo (10-20 anos): +${pointsConfig.tempoBatismo?.dezAnos || 0}`);
+            } else if (tempo >= 5) {
+              totalPoints += pointsConfig.tempoBatismo?.cincoAnos || 0;
+              appliedCategories.push(`Tempo Batismo (5-10 anos): +${pointsConfig.tempoBatismo?.cincoAnos || 0}`);
+            } else if (tempo >= 2) {
+              totalPoints += pointsConfig.tempoBatismo?.doisAnos || 0;
+              appliedCategories.push(`Tempo Batismo (2-5 anos): +${pointsConfig.tempoBatismo?.doisAnos || 0}`);
+            }
+          }
+          
+          // 6. CARGOS
+          if (userData.temCargo === 'Sim' && userData.departamentosCargos) {
+            const numCargos = userData.departamentosCargos.split(';').length;
+            if (numCargos >= 3) {
+              totalPoints += pointsConfig.cargos?.tresOuMais || 0;
+              appliedCategories.push(`Cargos (${numCargos} cargos): +${pointsConfig.cargos?.tresOuMais || 0}`);
+            } else if (numCargos === 2) {
+              totalPoints += pointsConfig.cargos?.doisCargos || 0;
+              appliedCategories.push(`Cargos (${numCargos} cargos): +${pointsConfig.cargos?.doisCargos || 0}`);
+            } else if (numCargos === 1) {
+              totalPoints += pointsConfig.cargos?.umCargo || 0;
+              appliedCategories.push(`Cargos (${numCargos} cargo): +${pointsConfig.cargos?.umCargo || 0}`);
+            }
+          }
+          
+          // 7. NOME DA UNIDADE
+          if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
+            totalPoints += pointsConfig.nomeUnidade?.comUnidade || 0;
+            appliedCategories.push(`Nome da Unidade: +${pointsConfig.nomeUnidade?.comUnidade || 0}`);
+          }
+          
+          // 8. TEM LIÇÃO
+          if (userData.temLicao === true || userData.temLicao === 'true') {
+            totalPoints += pointsConfig.temLicao?.comLicao || 0;
+            appliedCategories.push(`Tem Lição: +${pointsConfig.temLicao?.comLicao || 0}`);
+          }
+          
+          // 9. TOTAL DE PRESENÇA
+          if (userData.totalPresenca !== undefined && userData.totalPresenca !== null) {
+            const presenca = parseInt(userData.totalPresenca);
+            if (presenca >= 8 && presenca <= 13) {
+              totalPoints += pointsConfig.totalPresenca?.oitoATreze || 0;
+              appliedCategories.push(`Total Presença (${presenca}): +${pointsConfig.totalPresenca?.oitoATreze || 0}`);
+            } else if (presenca >= 4 && presenca <= 7) {
+              totalPoints += pointsConfig.totalPresenca?.quatroASete || 0;
+              appliedCategories.push(`Total Presença (${presenca}): +${pointsConfig.totalPresenca?.quatroASete || 0}`);
+            } else if (presenca >= 0 && presenca <= 3) {
+              totalPoints += pointsConfig.totalPresenca?.zeroATres || 0;
+              appliedCategories.push(`Total Presença (${presenca}): +${pointsConfig.totalPresenca?.zeroATres || 0}`);
+            }
+          }
+          
+          // 10. ESCOLA SABATINA - COMUNHÃO
+          if (userData.comunhao && userData.comunhao > 0) {
+            const pontosComunhao = userData.comunhao * (pointsConfig.escolaSabatina?.comunhao || 0);
+            totalPoints += pontosComunhao;
+            appliedCategories.push(`Comunhão (${userData.comunhao}): +${pontosComunhao}`);
+          }
+          
+          // 11. ESCOLA SABATINA - MISSÃO
+          if (userData.missao && userData.missao > 0) {
+            const pontosMissao = userData.missao * (pointsConfig.escolaSabatina?.missao || 0);
+            totalPoints += pontosMissao;
+            appliedCategories.push(`Missão (${userData.missao}): +${pontosMissao}`);
+          }
+          
+          // 12. ESCOLA SABATINA - ESTUDO BÍBLICO
+          if (userData.estudoBiblico && userData.estudoBiblico > 0) {
+            const pontosEstudoBiblico = userData.estudoBiblico * (pointsConfig.escolaSabatina?.estudoBiblico || 0);
+            totalPoints += pontosEstudoBiblico;
+            appliedCategories.push(`Estudo Bíblico (${userData.estudoBiblico}): +${pontosEstudoBiblico}`);
+          }
+          
+          // 13. ESCOLA SABATINA - BATIZOU ALGUÉM
+          if (userData.batizouAlguem === true || userData.batizouAlguem === 'true' || userData.batizouAlguem === 1) {
+            totalPoints += pointsConfig.escolaSabatina?.batizouAlguem || 0;
+            appliedCategories.push(`Batizou Alguém: +${pointsConfig.escolaSabatina?.batizouAlguem || 0}`);
+          }
+          
+          // 14. ESCOLA SABATINA - DISCIPULADO PÓS-BATISMO
+          if (userData.discPosBatismal && userData.discPosBatismal > 0) {
+            const pontosDiscPosBatismo = userData.discPosBatismal * (pointsConfig.escolaSabatina?.discipuladoPosBatismo || 0);
+            totalPoints += pontosDiscPosBatismo;
+            appliedCategories.push(`Discipulado Pós-Batismo (${userData.discPosBatismal}): +${pontosDiscPosBatismo}`);
+          }
+          
+          // 15. CPF VÁLIDO
+          if (userData.cpfValido === 'Sim' || userData.cpfValido === true || userData.cpfValido === 'true') {
+            totalPoints += pointsConfig.cpfValido?.valido || 0;
+            appliedCategories.push(`CPF Válido: +${pointsConfig.cpfValido?.valido || 0}`);
+          }
+          
+          // 16. CAMPOS VAZIOS ACMS
+          if (userData.camposVaziosACMS === false || userData.camposVaziosACMS === 'false') {
+            totalPoints += pointsConfig.camposVaziosACMS?.completos || 0;
+            appliedCategories.push(`Campos Vazios ACMS (Completos): +${pointsConfig.camposVaziosACMS?.completos || 0}`);
+          }
+          
+          const roundedTotalPoints = Math.round(totalPoints);
+          totalCalculatedPoints += roundedTotalPoints;
+          
+          console.log(`🎯 Total calculado: ${roundedTotalPoints} pontos`);
+          console.log(`📊 Categorias aplicadas: ${appliedCategories.length}`);
+          appliedCategories.forEach(cat => console.log(`   ${cat}`));
+          
+          // FORÇAR ATUALIZAÇÃO DE TODOS OS USUÁRIOS
+          console.log(`🔍 Comparando: ${user.points} !== ${roundedTotalPoints} = ${user.points !== roundedTotalPoints}`);
+          await sql`
+            UPDATE users 
+            SET points = ${roundedTotalPoints}, updated_at = NOW()
+            WHERE id = ${user.id}
+          `;
+          updatedCount++;
+          console.log(`✅ ${user.name}: ${user.points} → ${roundedTotalPoints} pontos`);
+        }
+        
+        console.log(`\n🎉 Cálculo correto concluído!`);
+        console.log(`📊 ${updatedCount} usuários atualizados de ${users.length} total`);
+        console.log(`🎯 Total de pontos calculados: ${totalCalculatedPoints}`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: `Cálculo correto concluído: ${updatedCount} usuários atualizados`,
+            updatedCount,
+            totalUsers: users.length,
+            totalCalculatedPoints,
+            averagePoints: users.length > 0 ? Math.round(totalCalculatedPoints / users.length) : 0
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro no cálculo correto de pontos:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor: ' + error.message })
+        };
+      }
+    }
+
+    // Rota para teste simples de cálculo
+    if (path === '/api/system/test-calculation' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const userId = body.userId || 754;
+        
+        console.log(`🧪 Teste de cálculo para usuário ID: ${userId}`);
+        
+        const user = await sql`SELECT * FROM users WHERE id = ${userId}`;
+        if (user.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Usuário não encontrado' })
+          };
+        }
+        
+        const userData = user[0];
+        const pointsConfigResult = await sql`SELECT * FROM points_configuration LIMIT 1`;
+        const pointsConfig = pointsConfigResult.length > 0 ? pointsConfigResult[0] : {};
+        
+        let extraData = {};
+        try {
+          extraData = JSON.parse(userData.extra_data || '{}');
+        } catch (e) {
+          console.log('⚠️ Erro ao parsear extra_data:', e.message);
+        }
+        
+        let totalPoints = 0;
+        let debug = {};
+        
+        // Engajamento
+        if (extraData.engajamento) {
+          const engajamento = extraData.engajamento.toLowerCase();
+          if (engajamento.includes('alto')) {
+            totalPoints += pointsConfig.engajamento?.alto || 0;
+            debug.engajamento = { value: extraData.engajamento, points: pointsConfig.engajamento?.alto || 0 };
+          }
+        }
+        
+        // Classificação
+        if (extraData.classificacao) {
+          const classificacao = extraData.classificacao.toLowerCase();
+          if (classificacao.includes('frequente')) {
+            totalPoints += pointsConfig.classificacao?.frequente || 0;
+            debug.classificacao = { value: extraData.classificacao, points: pointsConfig.classificacao?.frequente || 0 };
+          }
+        }
+        
+        // Dizimista
+        if (extraData.dizimistaType) {
+          const dizimista = extraData.dizimistaType.toLowerCase();
+          if (dizimista.includes('recorrente')) {
+            totalPoints += pointsConfig.dizimista?.recorrente || 0;
+            debug.dizimista = { value: extraData.dizimistaType, points: pointsConfig.dizimista?.recorrente || 0 };
+          }
+        }
+        
+        // Ofertante
+        if (extraData.ofertanteType) {
+          const ofertante = extraData.ofertanteType.toLowerCase();
+          if (ofertante.includes('recorrente')) {
+            totalPoints += pointsConfig.ofertante?.recorrente || 0;
+            debug.ofertante = { value: extraData.ofertanteType, points: pointsConfig.ofertante?.recorrente || 0 };
+          }
+        }
+        
+        // Tempo de batismo
+        if (extraData.tempoBatismoAnos && typeof extraData.tempoBatismoAnos === 'number') {
+          const tempo = extraData.tempoBatismoAnos;
+          if (tempo >= 20) {
+            totalPoints += pointsConfig.tempoBatismo?.vinteAnos || 0;
+            debug.tempoBatismo = { value: tempo, points: pointsConfig.tempoBatismo?.vinteAnos || 0 };
+          }
+        }
+        
+        // Cargos
+        if (extraData.temCargo === 'Sim' && extraData.departamentosCargos) {
+          const numCargos = extraData.departamentosCargos.split(';').length;
+          if (numCargos >= 3) {
+            totalPoints += pointsConfig.cargos?.tresOuMais || 0;
+            debug.cargos = { value: `${numCargos} cargos`, points: pointsConfig.cargos?.tresOuMais || 0 };
+          }
+        }
+        
+        // Nome da unidade
+        if (extraData.nomeUnidade && extraData.nomeUnidade.trim()) {
+          totalPoints += pointsConfig.nomeUnidade?.comUnidade || 0;
+          debug.nomeUnidade = { value: extraData.nomeUnidade, points: pointsConfig.nomeUnidade?.comUnidade || 0 };
+        }
+        
+        // Tem lição
+        if (extraData.temLicao === true || extraData.temLicao === 'true') {
+          totalPoints += pointsConfig.temLicao?.comLicao || 0;
+          debug.temLicao = { value: extraData.temLicao, points: pointsConfig.temLicao?.comLicao || 0 };
+        }
+        
+        // Total de presença
+        if (extraData.totalPresenca !== undefined && extraData.totalPresenca !== null) {
+          const presenca = parseInt(extraData.totalPresenca);
+          if (presenca >= 8 && presenca <= 13) {
+            totalPoints += pointsConfig.totalPresenca?.oitoATreze || 0;
+            debug.totalPresenca = { value: presenca, points: pointsConfig.totalPresenca?.oitoATreze || 0 };
+          }
+        }
+        
+        // Escola sabatina - Comunhão
+        if (extraData.comunhao && extraData.comunhao > 0) {
+          const pontosComunhao = extraData.comunhao * (pointsConfig.escolaSabatina?.comunhao || 0);
+          totalPoints += pontosComunhao;
+          debug.comunhao = { value: extraData.comunhao, points: pontosComunhao };
+        }
+        
+        // Escola sabatina - Missão
+        if (extraData.missao && extraData.missao > 0) {
+          const pontosMissao = extraData.missao * (pointsConfig.escolaSabatina?.missao || 0);
+          totalPoints += pontosMissao;
+          debug.missao = { value: extraData.missao, points: pontosMissao };
+        }
+        
+        // Escola sabatina - Estudo Bíblico
+        if (extraData.estudoBiblico && extraData.estudoBiblico > 0) {
+          const pontosEstudoBiblico = extraData.estudoBiblico * (pointsConfig.escolaSabatina?.estudoBiblico || 0);
+          totalPoints += pontosEstudoBiblico;
+          debug.estudoBiblico = { value: extraData.estudoBiblico, points: pontosEstudoBiblico };
+        }
+        
+        // Escola sabatina - Discipulado Pós-Batismo
+        if (extraData.discPosBatismal && extraData.discPosBatismal > 0) {
+          const pontosDiscPosBatismo = extraData.discPosBatismal * (pointsConfig.escolaSabatina?.discipuladoPosBatismo || 0);
+          totalPoints += pontosDiscPosBatismo;
+          debug.discPosBatismal = { value: extraData.discPosBatismal, points: pontosDiscPosBatismo };
+        }
+        
+        // CPF válido
+        if (extraData.cpfValido === 'Sim' || extraData.cpfValido === true || extraData.cpfValido === 'true') {
+          totalPoints += pointsConfig.cpfValido?.valido || 0;
+          debug.cpfValido = { value: extraData.cpfValido, points: pointsConfig.cpfValido?.valido || 0 };
+        }
+        
+        // Campos vazios ACMS
+        if (extraData.camposVaziosACMS === false || extraData.camposVaziosACMS === 'false') {
+          totalPoints += pointsConfig.camposVaziosACMS?.completos || 0;
+          debug.camposVaziosACMS = { value: extraData.camposVaziosACMS, points: pointsConfig.camposVaziosACMS?.completos || 0 };
+        }
+        
+        const roundedTotalPoints = Math.round(totalPoints);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            user: {
+              id: userData.id,
+              name: userData.name,
+              currentPoints: userData.points,
+              calculatedPoints: roundedTotalPoints
+            },
+            debug,
+            config: {
+              engajamento: pointsConfig.engajamento,
+              classificacao: pointsConfig.classificacao,
+              dizimista: pointsConfig.dizimista,
+              ofertante: pointsConfig.ofertante,
+              tempoBatismo: pointsConfig.tempoBatismo,
+              cargos: pointsConfig.cargos,
+              nomeUnidade: pointsConfig.nomeUnidade,
+              temLicao: pointsConfig.temLicao,
+              totalPresenca: pointsConfig.totalPresenca,
+              escolaSabatina: pointsConfig.escolaSabatina,
+              cpfValido: pointsConfig.cpfValido,
+              camposVaziosACMS: pointsConfig.camposVaziosACMS
+            }
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro no teste de cálculo:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor: ' + error.message })
+        };
+      }
+    }
+
+    // Rota removida - conflitante com /api/system/calculate-points-clean
+    if (false && path === '/api/system/debug-user-points' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const userId = body.userId || 419; // Marly da Silva Pereira por padrão
+        
+        console.log(`🔍 Debug detalhado para usuário ID: ${userId}`);
+        
+        const user = await sql`SELECT * FROM users WHERE id = ${userId}`;
+        if (user.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Usuário não encontrado' })
+          };
+        }
+        
+        const userData = user[0];
+        console.log(`👤 Usuário: ${userData.name}`);
+        console.log(`📊 Pontos atuais: ${userData.points}`);
+        console.log(`📋 Extra data:`, userData.extra_data);
+        
+        const pointsConfigResult = await sql`SELECT * FROM points_configuration LIMIT 1`;
+        const pointsConfig = pointsConfigResult.length > 0 ? pointsConfigResult[0] : {};
+        
+        let totalPoints = 0;
+        console.log('🧮 Calculando pontos...');
+        
+        // Parse extra_data
+        let extraData = {};
+        try {
+          extraData = JSON.parse(userData.extra_data || '{}');
+          console.log('📋 Dados extra parseados:', extraData);
+        } catch (e) {
+          console.log('⚠️ Erro ao parsear extra_data:', e.message);
+        }
+        
+        // Engajamento
+        if (extraData.engajamento) {
+          const engajamento = extraData.engajamento.toLowerCase();
+          console.log(`📈 Engajamento: "${extraData.engajamento}" -> ${engajamento}`);
+          if (engajamento.includes('baixo')) {
+            totalPoints += pointsConfig.engajamento?.baixo || 0;
+            console.log(`   +${pointsConfig.engajamento?.baixo || 0} pontos (baixo)`);
+          } else if (engajamento.includes('médio') || engajamento.includes('medio')) {
+            totalPoints += pointsConfig.engajamento?.medio || 0;
+            console.log(`   +${pointsConfig.engajamento?.medio || 0} pontos (médio)`);
+          } else if (engajamento.includes('alto')) {
+            totalPoints += pointsConfig.engajamento?.alto || 0;
+            console.log(`   +${pointsConfig.engajamento?.alto || 0} pontos (alto)`);
+          }
+        }
+        
+        // Classificação
+        if (extraData.classificacao) {
+          const classificacao = extraData.classificacao.toLowerCase();
+          console.log(`📊 Classificação: "${extraData.classificacao}" -> ${classificacao}`);
+          if (classificacao.includes('frequente')) {
+            totalPoints += pointsConfig.classificacao?.frequente || 0;
+            console.log(`   +${pointsConfig.classificacao?.frequente || 0} pontos (frequente)`);
+          } else {
+            totalPoints += pointsConfig.classificacao?.naoFrequente || 0;
+            console.log(`   +${pointsConfig.classificacao?.naoFrequente || 0} pontos (não frequente)`);
+          }
+        }
+        
+        // Dizimista
+        if (extraData.dizimistaType) {
+          const dizimista = extraData.dizimistaType.toLowerCase();
+          console.log(`💰 Dizimista: "${extraData.dizimistaType}" -> ${dizimista}`);
+          if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) {
+            totalPoints += pointsConfig.dizimista?.naoDizimista || 0;
+            console.log(`   +${pointsConfig.dizimista?.naoDizimista || 0} pontos (não dizimista)`);
+          } else if (dizimista.includes('pontual')) {
+            totalPoints += pointsConfig.dizimista?.pontual || 0;
+            console.log(`   +${pointsConfig.dizimista?.pontual || 0} pontos (pontual)`);
+          } else if (dizimista.includes('sazonal')) {
+            totalPoints += pointsConfig.dizimista?.sazonal || 0;
+            console.log(`   +${pointsConfig.dizimista?.sazonal || 0} pontos (sazonal)`);
+          } else if (dizimista.includes('recorrente')) {
+            totalPoints += pointsConfig.dizimista?.recorrente || 0;
+            console.log(`   +${pointsConfig.dizimista?.recorrente || 0} pontos (recorrente)`);
+          }
+        }
+        
+        // Ofertante
+        if (extraData.ofertanteType) {
+          const ofertante = extraData.ofertanteType.toLowerCase();
+          console.log(`🎁 Ofertante: "${extraData.ofertanteType}" -> ${ofertante}`);
+          if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) {
+            totalPoints += pointsConfig.ofertante?.naoOfertante || 0;
+            console.log(`   +${pointsConfig.ofertante?.naoOfertante || 0} pontos (não ofertante)`);
+          } else if (ofertante.includes('pontual')) {
+            totalPoints += pointsConfig.ofertante?.pontual || 0;
+            console.log(`   +${pointsConfig.ofertante?.pontual || 0} pontos (pontual)`);
+          } else if (ofertante.includes('sazonal')) {
+            totalPoints += pointsConfig.ofertante?.sazonal || 0;
+            console.log(`   +${pointsConfig.ofertante?.sazonal || 0} pontos (sazonal)`);
+          } else if (ofertante.includes('recorrente')) {
+            totalPoints += pointsConfig.ofertante?.recorrente || 0;
+            console.log(`   +${pointsConfig.ofertante?.recorrente || 0} pontos (recorrente)`);
+          }
+        }
+        
+        // Tempo de batismo
+        if (extraData.tempoBatismoAnos && typeof extraData.tempoBatismoAnos === 'number') {
+          const tempo = extraData.tempoBatismoAnos;
+          console.log(`⏰ Tempo de batismo: ${tempo} anos`);
+          if (tempo >= 2 && tempo < 5) {
+            totalPoints += pointsConfig.tempoBatismo?.doisAnos || 0;
+            console.log(`   +${pointsConfig.tempoBatismo?.doisAnos || 0} pontos (2-5 anos)`);
+          } else if (tempo >= 5 && tempo < 10) {
+            totalPoints += pointsConfig.tempoBatismo?.cincoAnos || 0;
+            console.log(`   +${pointsConfig.tempoBatismo?.cincoAnos || 0} pontos (5-10 anos)`);
+          } else if (tempo >= 10 && tempo < 20) {
+            totalPoints += pointsConfig.tempoBatismo?.dezAnos || 0;
+            console.log(`   +${pointsConfig.tempoBatismo?.dezAnos || 0} pontos (10-20 anos)`);
+          } else if (tempo >= 20 && tempo < 30) {
+            totalPoints += pointsConfig.tempoBatismo?.vinteAnos || 0;
+            console.log(`   +${pointsConfig.tempoBatismo?.vinteAnos || 0} pontos (20-30 anos)`);
+          } else if (tempo >= 30) {
+            totalPoints += pointsConfig.tempoBatismo?.maisVinte || 0;
+            console.log(`   +${pointsConfig.tempoBatismo?.maisVinte || 0} pontos (30+ anos)`);
+          }
+        }
+        
+        // Nome da unidade
+        if (extraData.nomeUnidade && extraData.nomeUnidade.trim()) {
+          console.log(`🏠 Nome da unidade: "${extraData.nomeUnidade}"`);
+          totalPoints += pointsConfig.nomeUnidade?.comUnidade || 0;
+          console.log(`   +${pointsConfig.nomeUnidade?.comUnidade || 0} pontos (com unidade)`);
+        }
+        
+        // Tem lição
+        if (extraData.temLicao) {
+          console.log(`📚 Tem lição: ${extraData.temLicao}`);
+          totalPoints += pointsConfig.temLicao?.comLicao || 0;
+          console.log(`   +${pointsConfig.temLicao?.comLicao || 0} pontos (com lição)`);
+        }
+        
+        // Total de presença
+        if (extraData.totalPresenca !== undefined) {
+          const presenca = extraData.totalPresenca;
+          console.log(`📅 Total presença: ${presenca}`);
+          if (presenca >= 0 && presenca <= 3) {
+            totalPoints += pointsConfig.totalPresenca?.zeroATres || 0;
+            console.log(`   +${pointsConfig.totalPresenca?.zeroATres || 0} pontos (0-3 presenças)`);
+          } else if (presenca >= 4 && presenca <= 7) {
+            totalPoints += pointsConfig.totalPresenca?.quatroASete || 0;
+            console.log(`   +${pointsConfig.totalPresenca?.quatroASete || 0} pontos (4-7 presenças)`);
+          } else if (presenca >= 8 && presenca <= 13) {
+            totalPoints += pointsConfig.totalPresenca?.oitoATreze || 0;
+            console.log(`   +${pointsConfig.totalPresenca?.oitoATreze || 0} pontos (8-13 presenças)`);
+          }
+        }
+        
+        // Cargos
+        if (extraData.temCargo === 'Sim' && extraData.departamentosCargos) {
+          const numCargos = extraData.departamentosCargos.split(';').length;
+          console.log(`💼 Cargos: ${numCargos} cargos`);
+          if (numCargos === 1) {
+            totalPoints += pointsConfig.cargos?.umCargo || 0;
+            console.log(`   +${pointsConfig.cargos?.umCargo || 0} pontos (1 cargo)`);
+          } else if (numCargos === 2) {
+            totalPoints += pointsConfig.cargos?.doisCargos || 0;
+            console.log(`   +${pointsConfig.cargos?.doisCargos || 0} pontos (2 cargos)`);
+          } else if (numCargos >= 3) {
+            totalPoints += pointsConfig.cargos?.tresOuMais || 0;
+            console.log(`   +${pointsConfig.cargos?.tresOuMais || 0} pontos (3+ cargos)`);
+          }
+        }
+        
+        // Escola sabatina
+        if (extraData.comunhao) {
+          const pontosComunhao = extraData.comunhao * (pointsConfig.escolaSabatina?.comunhao || 0);
+          totalPoints += pontosComunhao;
+          console.log(`🤝 Comunhão (${extraData.comunhao}): +${pontosComunhao} pontos`);
+        }
+        
+        if (extraData.missao) {
+          const pontosMissao = extraData.missao * (pointsConfig.escolaSabatina?.missao || 0);
+          totalPoints += pontosMissao;
+          console.log(`🌍 Missão (${extraData.missao}): +${pontosMissao} pontos`);
+        }
+        
+        if (extraData.estudoBiblico) {
+          const pontosEstudoBiblico = extraData.estudoBiblico * (pointsConfig.escolaSabatina?.estudoBiblico || 0);
+          totalPoints += pontosEstudoBiblico;
+          console.log(`📖 Estudo Bíblico (${extraData.estudoBiblico}): +${pontosEstudoBiblico} pontos`);
+        }
+        
+        if (extraData.discPosBatismal) {
+          const pontosDiscPosBatismo = extraData.discPosBatismal * (pointsConfig.escolaSabatina?.discipuladoPosBatismo || 0);
+          totalPoints += pontosDiscPosBatismo;
+          console.log(`👥 Discipulado Pós-Batismo (${extraData.discPosBatismal}): +${pontosDiscPosBatismo} pontos`);
+        }
+        
+        // CPF válido
+        if (extraData.cpfValido === 'Sim' || extraData.cpfValido === true) {
+          console.log(`🆔 CPF válido: ${extraData.cpfValido}`);
+          totalPoints += pointsConfig.cpfValido?.valido || 0;
+          console.log(`   +${pointsConfig.cpfValido?.valido || 0} pontos (CPF válido)`);
+        }
+        
+        // Campos vazios ACMS
+        if (extraData.camposVaziosACMS === false) {
+          console.log(`📝 Campos vazios ACMS: completos`);
+          totalPoints += pointsConfig.camposVaziosACMS?.completos || 0;
+          console.log(`   +${pointsConfig.camposVaziosACMS?.completos || 0} pontos (campos completos)`);
+        }
+        
+        console.log(`🎯 Total calculado: ${totalPoints} pontos`);
+        console.log(`📊 Pontos atuais no DB: ${userData.points}`);
+        console.log(`🔄 Precisa atualizar: ${userData.points !== Math.round(totalPoints) ? 'SIM' : 'NÃO'}`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            user: {
+              id: userData.id,
+              name: userData.name,
+              currentPoints: userData.points,
+              calculatedPoints: Math.round(totalPoints),
+              needsUpdate: userData.points !== Math.round(totalPoints)
+            },
+            extraData,
+            calculation: {
+              engajamento: extraData.engajamento,
+              classificacao: extraData.classificacao,
+              totalPoints
+            }
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro no debug detalhado:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor: ' + error.message })
+        };
+      }
+    }
+
+    // Rota removida - conflitante com /api/system/calculate-points-clean
+    if (false && path === '/api/system/debug-points' && method === 'POST') {
+      try {
+        console.log('🔍 Debug: Analisando dados para cálculo de pontos...');
+        
+        const users = await sql`SELECT * FROM users LIMIT 3`;
+        const pointsConfigResult = await sql`SELECT * FROM points_configuration LIMIT 1`;
+        const pointsConfig = pointsConfigResult.length > 0 ? pointsConfigResult[0] : {};
+        
+        console.log('📊 Configuração de pontos:', pointsConfig);
+        console.log('👥 Primeiros 3 usuários:', users.map(u => ({ id: u.id, name: u.name, points: u.points, role: u.role })));
+        
+        for (const user of users.slice(0, 2)) {
+          if (user.email === 'admin@7care.com' || user.role === 'admin') {
+            console.log(`⏭️ Pulando admin: ${user.name}`);
+            continue;
+          }
+          
+          console.log(`\n🔍 Analisando usuário: ${user.name} (ID: ${user.id})`);
+          console.log(`📊 Pontos atuais: ${user.points}`);
+          
+          let userData = {};
+          try {
+            const userDataResult = await sql`
+              SELECT engajamento, classificacao, dizimista, ofertante, tempo_batismo, 
+                     cargos, nome_unidade, tem_licao, total_presenca, escola_sabatina,
+                     batizou_alguem, discipulado_pos_batismo, cpf_valido, campos_vazios_acms
+              FROM users 
+              WHERE id = ${user.id}
+            `;
+            if (userDataResult.length > 0) {
+              userData = userDataResult[0];
+            }
+            console.log('📋 Dados detalhados:', userData);
+          } catch (err) {
+            console.log(`⚠️ Erro ao buscar dados para ${user.name}:`, err.message);
+            continue;
+          }
+          
+          let totalPoints = 0;
+          console.log('🧮 Calculando pontos...');
+          
+          // Engajamento
+          if (userData.engajamento) {
+            const engajamento = userData.engajamento.toLowerCase();
+            console.log(`📈 Engajamento: "${userData.engajamento}" -> ${engajamento}`);
+            if (engajamento.includes('baixo')) {
+              totalPoints += pointsConfig.engajamento?.baixo || 0;
+              console.log(`   +${pointsConfig.engajamento?.baixo || 0} pontos (baixo)`);
+            } else if (engajamento.includes('médio') || engajamento.includes('medio')) {
+              totalPoints += pointsConfig.engajamento?.medio || 0;
+              console.log(`   +${pointsConfig.engajamento?.medio || 0} pontos (médio)`);
+            } else if (engajamento.includes('alto')) {
+              totalPoints += pointsConfig.engajamento?.alto || 0;
+              console.log(`   +${pointsConfig.engajamento?.alto || 0} pontos (alto)`);
+            }
+          }
+          
+          console.log(`🎯 Total calculado: ${totalPoints} pontos`);
+          console.log(`📊 Pontos atuais no DB: ${user.points}`);
+          console.log(`🔄 Precisa atualizar: ${user.points !== Math.round(totalPoints) ? 'SIM' : 'NÃO'}`);
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: 'Debug concluído - verifique os logs',
+            usersAnalyzed: users.length,
+            config: pointsConfig
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro no debug:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor: ' + error.message })
+        };
+      }
+    }
+
+    // Rota removida - conflitante com /api/system/calculate-points-clean
+    if (false && path === '/api/system/calculate-points' && method === 'POST') {
+      try {
+        console.log('🔄 Iniciando cálculo de pontos para todos os usuários...');
+        
+        // Buscar todos os usuários
+        const users = await sql`SELECT * FROM users`;
+        console.log(`📊 Total de usuários encontrados: ${users.length}`);
+        
+        // Buscar configuração de pontos
+        const pointsConfigResult = await sql`SELECT * FROM points_configuration LIMIT 1`;
+        const pointsConfig = pointsConfigResult.length > 0 ? pointsConfigResult[0] : {};
+        
+        if (!pointsConfig || Object.keys(pointsConfig).length === 0) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ 
+              success: true, 
+              message: 'Nenhuma configuração de pontos encontrada. Configure os pontos primeiro.',
+              updatedCount: 0,
+              totalUsers: users.length
+            })
+          };
+        }
+        
+        let updatedCount = 0;
+        
+        for (const user of users) {
+          // Pular Super Admin
+          if (user.email === 'admin@7care.com' || user.role === 'admin') {
+            continue;
+          }
+          
+          // Buscar dados detalhados do usuário
+            // Parse extra_data do usuário
+            let userData = {};
+            try {
+              userData = JSON.parse(user.extra_data || '{}');
+            } catch (err) {
+              console.log(`⚠️ Erro ao parsear extra_data para ${user.name}:`, err.message);
+              continue;
+            }
+          
+          // Calcular pontos usando a mesma lógica da rota points-details
+          let totalPoints = 0;
+          
+            // Engajamento
+            if (userData.engajamento) {
+              const engajamento = userData.engajamento.toLowerCase();
+              if (engajamento.includes('baixo')) totalPoints += pointsConfig.engajamento?.baixo || 0;
+              else if (engajamento.includes('médio') || engajamento.includes('medio')) totalPoints += pointsConfig.engajamento?.medio || 0;
+              else if (engajamento.includes('alto')) totalPoints += pointsConfig.engajamento?.alto || 0;
+            }
+            
+            // Classificação
+            if (userData.classificacao) {
+              const classificacao = userData.classificacao.toLowerCase();
+              if (classificacao.includes('frequente')) {
+                totalPoints += pointsConfig.classificacao?.frequente || 0;
+              } else {
+                totalPoints += pointsConfig.classificacao?.naoFrequente || 0;
+              }
+            }
+            
+            // Dizimista
+            if (userData.dizimistaType) {
+              const dizimista = userData.dizimistaType.toLowerCase();
+              if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) totalPoints += pointsConfig.dizimista?.naoDizimista || 0;
+              else if (dizimista.includes('pontual')) totalPoints += pointsConfig.dizimista?.pontual || 0;
+              else if (dizimista.includes('sazonal')) totalPoints += pointsConfig.dizimista?.sazonal || 0;
+              else if (dizimista.includes('recorrente')) totalPoints += pointsConfig.dizimista?.recorrente || 0;
+            }
+            
+            // Ofertante
+            if (userData.ofertanteType) {
+              const ofertante = userData.ofertanteType.toLowerCase();
+              if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) totalPoints += pointsConfig.ofertante?.naoOfertante || 0;
+              else if (ofertante.includes('pontual')) totalPoints += pointsConfig.ofertante?.pontual || 0;
+              else if (ofertante.includes('sazonal')) totalPoints += pointsConfig.ofertante?.sazonal || 0;
+              else if (ofertante.includes('recorrente')) totalPoints += pointsConfig.ofertante?.recorrente || 0;
+            }
+            
+            // Tempo de batismo
+            if (userData.tempoBatismoAnos && typeof userData.tempoBatismoAnos === 'number') {
+              const tempo = userData.tempoBatismoAnos;
+              if (tempo >= 2 && tempo < 5) totalPoints += pointsConfig.tempoBatismo?.doisAnos || 0;
+              else if (tempo >= 5 && tempo < 10) totalPoints += pointsConfig.tempoBatismo?.cincoAnos || 0;
+              else if (tempo >= 10 && tempo < 20) totalPoints += pointsConfig.tempoBatismo?.dezAnos || 0;
+              else if (tempo >= 20 && tempo < 30) totalPoints += pointsConfig.tempoBatismo?.vinteAnos || 0;
+              else if (tempo >= 30) totalPoints += pointsConfig.tempoBatismo?.maisVinte || 0;
+            }
+            
+            // Cargos
+            if (userData.temCargo === 'Sim' && userData.departamentosCargos) {
+              const numCargos = userData.departamentosCargos.split(';').length;
+              if (numCargos === 1) totalPoints += pointsConfig.cargos?.umCargo || 0;
+              else if (numCargos === 2) totalPoints += pointsConfig.cargos?.doisCargos || 0;
+              else if (numCargos >= 3) totalPoints += pointsConfig.cargos?.tresOuMais || 0;
+            }
+            
+            // Nome da unidade
+            if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
+              totalPoints += pointsConfig.nomeUnidade?.comUnidade || 0;
+            }
+            
+            // Tem lição
+            if (userData.temLicao) {
+              totalPoints += pointsConfig.temLicao?.comLicao || 0;
+            }
+            
+            // Total de presença
+            if (userData.totalPresenca !== undefined) {
+              const presenca = userData.totalPresenca;
+              if (presenca >= 0 && presenca <= 3) totalPoints += pointsConfig.totalPresenca?.zeroATres || 0;
+              else if (presenca >= 4 && presenca <= 7) totalPoints += pointsConfig.totalPresenca?.quatroASete || 0;
+              else if (presenca >= 8 && presenca <= 13) totalPoints += pointsConfig.totalPresenca?.oitoATreze || 0;
+            }
+            
+            // Escola sabatina
+            if (userData.comunhao) totalPoints += (userData.comunhao * (pointsConfig.escolaSabatina?.comunhao || 0));
+            if (userData.missao) totalPoints += (userData.missao * (pointsConfig.escolaSabatina?.missao || 0));
+            if (userData.estudoBiblico) totalPoints += (userData.estudoBiblico * (pointsConfig.escolaSabatina?.estudoBiblico || 0));
+            if (userData.batizouAlguem) totalPoints += pointsConfig.escolaSabatina?.batizouAlguem || 0;
+            if (userData.discPosBatismal) totalPoints += (userData.discPosBatismal * (pointsConfig.escolaSabatina?.discipuladoPosBatismo || 0));
+            
+            // CPF válido
+            if (userData.cpfValido === 'Sim' || userData.cpfValido === true) {
+              totalPoints += pointsConfig.cpfValido?.valido || 0;
+            }
+            
+            // Campos vazios ACMS
+            if (userData.camposVaziosACMS === false) {
+              totalPoints += pointsConfig.camposVaziosACMS?.completos || 0;
+            }
+          
+          // Atualizar pontos se mudaram
+          const roundedTotalPoints = Math.round(totalPoints);
+          if (user.points !== roundedTotalPoints) {
+            await sql`
+              UPDATE users 
+              SET points = ${roundedTotalPoints}, updated_at = NOW()
+              WHERE id = ${user.id}
+            `;
+            updatedCount++;
+            console.log(`✅ ${user.name}: ${user.points} → ${roundedTotalPoints} pontos`);
+          }
+        }
+        
+        console.log(`✅ Processamento concluído: ${updatedCount} usuários atualizados`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: `Cálculo concluído: ${updatedCount} usuários atualizados`,
+            updatedCount,
+            totalUsers: users.length
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro no cálculo de pontos:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor: ' + error.message })
+        };
+      }
     }
 
 
+
+    // ===== ROTAS DO GOOGLE DRIVE =====
+    
+    // Configurar Google Drive
+    if (path === '/api/calendar/google-drive-config' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { spreadsheetUrl, autoSync, syncInterval, realtimeSync, pollingInterval, lastSync, lastCheck } = body;
+        
+        // Validar URL (opcional - pode ser vazia para limpar configuração)
+        if (spreadsheetUrl && !spreadsheetUrl.includes('docs.google.com/spreadsheets')) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'URL inválida do Google Sheets' })
+          };
+        }
+        
+        // Preparar configuração completa
+        const configData = {
+          spreadsheetUrl: spreadsheetUrl || '',
+          autoSync: autoSync || false,
+          syncInterval: syncInterval || 60,
+          realtimeSync: realtimeSync || false,
+          pollingInterval: pollingInterval || 30,
+          lastSync: lastSync || null,
+          lastCheck: lastCheck || null
+        };
+        
+        // Salvar no banco de dados
+        try {
+          await sql`
+            INSERT INTO system_settings (key, value, description, created_at, updated_at)
+            VALUES ('google_drive_config', ${JSON.stringify(configData)}, 'Configurações do Google Drive para sincronização de eventos', NOW(), NOW())
+            ON CONFLICT (key) 
+            DO UPDATE SET 
+              value = ${JSON.stringify(configData)},
+              updated_at = NOW()
+          `;
+          
+          console.log('💾 [CONFIG] Configuração Google Drive salva no banco:', configData);
+          
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              success: true,
+              message: 'Configuração salva com sucesso',
+              config: configData
+            })
+          };
+        } catch (dbError) {
+          console.error('❌ [CONFIG] Erro ao salvar no banco:', dbError);
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ error: 'Erro ao salvar configuração no banco de dados' })
+          };
+        }
+      } catch (error) {
+        console.error('❌ [CONFIG] Erro ao processar configuração Google Drive:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao salvar configuração' })
+        };
+      }
+    }
+    
+    // Buscar configuração Google Drive
+    if (path === '/api/calendar/google-drive-config' && method === 'GET') {
+      try {
+        // Buscar configuração salva da tabela system_settings ou usar padrão
+        try {
+          console.log('🔍 [CONFIG] Buscando configuração no banco...');
+          const result = await sql`
+            SELECT value FROM system_settings 
+            WHERE key = 'google_drive_config'
+            LIMIT 1
+          `;
+          
+          console.log('🔍 [CONFIG] Resultado da query:', result);
+          
+          if (result.length > 0 && result[0].value) {
+            console.log('🔍 [CONFIG] Valor encontrado:', result[0].value);
+            
+            // Se o valor já é um objeto, usar diretamente
+            let savedConfig;
+            if (typeof result[0].value === 'object') {
+              savedConfig = result[0].value;
+            } else {
+              savedConfig = JSON.parse(result[0].value);
+            }
+            
+            console.log('📋 [CONFIG] Configuração encontrada no banco:', savedConfig);
+            return {
+              statusCode: 200,
+              headers,
+              body: JSON.stringify(savedConfig)
+            };
+          } else {
+            console.log('⚠️ [CONFIG] Nenhuma configuração encontrada no banco');
+          }
+        } catch (dbError) {
+          console.log('⚠️ [CONFIG] Erro ao buscar do banco, usando padrão:', dbError.message);
+        }
+        
+        // Configuração padrão se não houver nenhuma salva
+        const defaultConfig = {
+          spreadsheetUrl: '',
+          autoSync: false,
+          syncInterval: 60,
+          realtimeSync: false,
+          pollingInterval: 30
+        };
+        
+        console.log('📋 [CONFIG] Usando configuração padrão');
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(defaultConfig)
+        };
+      } catch (error) {
+        console.error('❌ [CONFIG] Erro ao buscar configuração Google Drive:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+    
+    // Testar conexão Google Drive
+    if (path === '/api/calendar/test-google-drive' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { csvUrl } = body;
+        
+        if (!csvUrl) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'URL CSV não fornecida' })
+          };
+        }
+        
+        // Testar conexão com diferentes formatos de URL
+        let response;
+        let finalUrl = csvUrl;
+        
+        try {
+          response = await fetch(csvUrl, { 
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; GoogleSheetsBot/1.0)',
+              'Accept': 'text/csv,application/csv,*/*'
+            },
+            redirect: 'follow'
+          });
+        } catch (error) {
+          // Tentar com URL alternativa sem gid
+          const altUrl = csvUrl.replace('&gid=0', '').replace('?gid=0', '');
+          try {
+            response = await fetch(altUrl, { 
+              method: 'GET',
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; GoogleSheetsBot/1.0)',
+                'Accept': 'text/csv,application/csv,*/*'
+              },
+              redirect: 'follow'
+            });
+            finalUrl = altUrl;
+          } catch (altError) {
+            throw new Error(`Erro de conexão: ${error.message}`);
+          }
+        }
+        
+        if (!response.ok) {
+          let errorMessage = `Erro HTTP: ${response.status}`;
+          if (response.status === 400) {
+            errorMessage = `Erro 400: Problema de acesso à planilha. Verifique se:
+1. A planilha está compartilhada como "Qualquer pessoa com o link pode ver"
+2. A planilha não está vazia
+3. A URL está correta
+4. A planilha não tem proteção adicional`;
+          } else if (response.status === 403) {
+            errorMessage = `Erro 403: Acesso negado. A planilha pode estar privada ou protegida.`;
+          } else if (response.status === 404) {
+            errorMessage = `Erro 404: Planilha não encontrada. Verifique se a URL está correta.`;
+          }
+          throw new Error(errorMessage);
+        }
+        
+        const csvContent = await response.text();
+        const lines = csvContent.split('\n').filter(line => line.trim());
+        
+        return {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
+          },
+          body: JSON.stringify({
+            success: true,
+            message: `Conexão bem-sucedida! ${lines.length} linhas encontradas.`,
+            lineCount: lines.length
+          })
+        };
+      } catch (error) {
+        console.error('❌ Erro ao testar Google Drive:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: `Erro ao testar conexão: ${error.message}` })
+        };
+      }
+    }
+    
+    // Verificar mudanças na planilha (polling inteligente)
+    if (path === '/api/calendar/check-changes' && method === 'POST') {
+      try {
+        console.log('🔍 [POLLING] Verificando mudanças na planilha...');
+        
+        const body = JSON.parse(event.body || '{}');
+        const { spreadsheetUrl, lastCheck } = body;
+        
+        if (!spreadsheetUrl) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'URL da planilha não fornecida' })
+          };
+        }
+        
+        // Extrair ID da planilha e gid
+        const match = spreadsheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+).*[#?].*gid=([0-9]+)/);
+        if (!match) {
+          throw new Error('URL inválida da planilha');
+        }
+        
+        const spreadsheetId = match[1];
+        const gid = match[2];
+        
+        // Fazer requisição HEAD para verificar se houve mudanças
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+        
+        try {
+          const response = await fetch(csvUrl, { 
+            method: 'HEAD',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; GoogleSheetsBot/1.0)',
+              'Accept': 'text/csv,application/csv,*/*'
+            },
+            redirect: 'follow',
+            follow: 10
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Erro HTTP: ${response.status}`);
+          }
+          
+          // Verificar headers de modificação
+          const lastModified = response.headers.get('last-modified');
+          const contentLength = response.headers.get('content-length');
+          const etag = response.headers.get('etag');
+          
+          console.log('📊 [POLLING] Headers da planilha:', {
+            lastModified,
+            contentLength,
+            etag
+          });
+          
+          // Verificar se houve mudanças
+          let hasChanges = false;
+          let changeReason = '';
+          
+          if (lastModified) {
+            const sheetModified = new Date(lastModified);
+            const lastCheckDate = lastCheck ? new Date(lastCheck) : new Date(0);
+            
+            if (sheetModified > lastCheckDate) {
+              hasChanges = true;
+              changeReason = `Planilha modificada em ${sheetModified.toISOString()}`;
+            }
+          }
+          
+          if (!hasChanges && lastCheck) {
+            // Verificar se o tamanho mudou (indicativo de mudanças)
+            const currentCheck = new Date().toISOString();
+            console.log('⏰ [POLLING] Verificação de mudanças:', {
+              lastCheck,
+              currentCheck,
+              hasChanges,
+              changeReason
+            });
+          }
+          
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              hasChanges,
+              changeReason,
+              lastModified,
+              contentLength,
+              etag,
+              checkedAt: new Date().toISOString()
+            })
+          };
+          
+        } catch (fetchError) {
+          console.error('❌ [POLLING] Erro ao verificar planilha:', fetchError);
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              hasChanges: false,
+              error: fetchError.message,
+              checkedAt: new Date().toISOString()
+            })
+          };
+        }
+        
+      } catch (error) {
+        console.error('❌ [POLLING] Erro geral:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: `Erro ao verificar mudanças: ${error.message}` })
+        };
+      }
+    }
+
+    // Status da sincronização automática
+    if (path === '/api/calendar/sync-status' && method === 'GET') {
+      try {
+        // Buscar configuração salva
+        const configResponse = await fetch(`${process.env.URL || 'https://7care.netlify.app'}/api/calendar/google-drive-config`);
+        if (!configResponse.ok) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Configuração não encontrada' })
+          };
+        }
+        
+        const config = await configResponse.json();
+        
+        if (!config.spreadsheetUrl || !config.autoSync) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ 
+              autoSync: false,
+              message: 'Sincronização automática desabilitada' 
+            })
+          };
+        }
+        
+        // Calcular próximo sync
+        const now = new Date();
+        const lastSync = config.lastSync ? new Date(config.lastSync) : new Date(0);
+        const timeSinceLastSync = now.getTime() - lastSync.getTime();
+        const syncIntervalMs = config.syncInterval * 60 * 1000;
+        const nextSyncIn = Math.max(0, syncIntervalMs - timeSinceLastSync);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            autoSync: true,
+            syncInterval: config.syncInterval,
+            lastSync: config.lastSync,
+            nextSyncIn: Math.ceil(nextSyncIn / (60 * 1000)), // em minutos
+            nextSyncAt: new Date(now.getTime() + nextSyncIn).toISOString()
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao buscar status:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar status' })
+        };
+      }
+    }
+
+    // Sincronização automática Google Drive
+    if (path === '/api/calendar/auto-sync' && method === 'POST') {
+      try {
+        console.log('🔄 [AUTO-SYNC] Iniciando sincronização automática...');
+        
+        // Buscar configuração salva diretamente do banco
+        let config;
+        try {
+          const result = await sql`
+            SELECT value FROM system_settings 
+            WHERE key = 'google_drive_config'
+            LIMIT 1
+          `;
+          
+          if (result.length === 0 || !result[0].value) {
+            return {
+              statusCode: 404,
+              headers,
+              body: JSON.stringify({ error: 'Configuração do Google Drive não encontrada' })
+            };
+          }
+          
+          config = typeof result[0].value === 'object' ? result[0].value : JSON.parse(result[0].value);
+          
+          if (!config.spreadsheetUrl || !config.autoSync) {
+          console.log('⚠️ [AUTO-SYNC] Sincronização automática desabilitada ou URL não configurada');
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ 
+              success: false, 
+              message: 'Sincronização automática desabilitada' 
+            })
+          };
+        }
+        
+        } catch (configError) {
+          console.error('❌ [AUTO-SYNC] Erro ao buscar configuração:', configError);
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ error: 'Erro ao buscar configuração do Google Drive' })
+          };
+        }
+        
+        // Verificar se é hora de sincronizar
+        const now = new Date();
+        const lastSync = config.lastSync ? new Date(config.lastSync) : new Date(0);
+        const timeSinceLastSync = now.getTime() - lastSync.getTime();
+        const syncIntervalMs = config.syncInterval * 60 * 1000; // converter minutos para ms
+        
+        if (timeSinceLastSync < syncIntervalMs) {
+          const nextSyncIn = Math.ceil((syncIntervalMs - timeSinceLastSync) / (60 * 1000));
+          console.log(`⏰ [AUTO-SYNC] Próxima sincronização em ${nextSyncIn} minutos`);
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ 
+              success: false, 
+              message: `Próxima sincronização em ${nextSyncIn} minutos`,
+              nextSyncIn
+            })
+          };
+        }
+        
+        // Executar sincronização
+        console.log('🚀 [AUTO-SYNC] Executando sincronização...');
+        
+        // Extrair ID da planilha e GID
+        const url = config.spreadsheetUrl.trim();
+        let spreadsheetId = '';
+        let gid = '0';
+        
+        const match1 = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+        if (match1) {
+          spreadsheetId = match1[1];
+        }
+        
+        const gidMatch = url.match(/[?&]gid=(\d+)/);
+        if (gidMatch) {
+          gid = gidMatch[1];
+        }
+        
+        if (!spreadsheetId) {
+          throw new Error('Não foi possível extrair o ID da planilha');
+        }
+        
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+        
+        // Fazer a chamada para a API de sincronização
+        const syncResponse = await fetch(`${process.env.URL || 'https://7care.netlify.app'}/api/calendar/sync-google-drive`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            csvUrl,
+            spreadsheetUrl: url
+          }),
+        });
+        
+        const syncResult = await syncResponse.json();
+        
+        if (syncResult.success) {
+          // Atualizar timestamp da última sincronização
+          await fetch(`${process.env.URL || 'https://7care.netlify.app'}/api/calendar/google-drive-config`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...config,
+              lastSync: now.toISOString()
+            }),
+          });
+          
+          console.log('✅ [AUTO-SYNC] Sincronização automática concluída:', syncResult.importedCount, 'eventos');
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: `Sincronização automática concluída: ${syncResult.importedCount || 0} eventos importados`,
+            importedCount: syncResult.importedCount,
+            totalEvents: syncResult.totalEvents
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ [AUTO-SYNC] Erro na sincronização automática:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: `Erro na sincronização automática: ${error.message}` 
+          })
+        };
+      }
+    }
+
+    // Sincronizar Google Drive
+    if (path === '/api/calendar/sync-google-drive' && method === 'POST') {
+      try {
+        console.log('🔄 [SYNC] Iniciando sincronização Google Drive...');
+        console.log('🔄 [SYNC] Event body:', event.body);
+        
+        const body = JSON.parse(event.body || '{}');
+        const { spreadsheetUrl, csvUrl } = body;
+        
+        // Converter spreadsheetUrl para csvUrl se necessário
+        let finalCsvUrl = csvUrl;
+        if (spreadsheetUrl && !csvUrl) {
+          const match = spreadsheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+          if (match) {
+            const spreadsheetId = match[1];
+            
+            // Extrair GID da URL se existir
+            const gidMatch = spreadsheetUrl.match(/[?&]gid=(\d+)/);
+            const gid = gidMatch ? gidMatch[1] : '0';
+            
+            finalCsvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+            console.log('🔄 [SYNC] GID extraído:', gid);
+            console.log('🔄 [SYNC] URL CSV gerada:', finalCsvUrl);
+          }
+        }
+        
+        console.log('🔄 [SYNC] CSV URL final:', finalCsvUrl);
+        
+        if (!finalCsvUrl) {
+          console.log('❌ [SYNC] URL CSV não fornecida');
+          return {
+            statusCode: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+            },
+            body: JSON.stringify({ error: 'URL CSV não fornecida' })
+          };
+        }
+        
+        // Buscar dados CSV com diferentes formatos de URL
+        let response;
+        let finalUrl = finalCsvUrl;
+        
+        try {
+          console.log('🌐 [SYNC] Fazendo fetch da URL:', finalCsvUrl);
+          response = await fetch(finalCsvUrl, { 
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; GoogleSheetsBot/1.0)',
+              'Accept': 'text/csv,application/csv,*/*'
+            },
+            redirect: 'follow',
+            follow: 10
+          });
+          console.log('🌐 [SYNC] Resposta recebida:', response.status);
+        } catch (error) {
+          console.log('⚠️ [SYNC] Erro na primeira tentativa:', error.message);
+          // Tentar com URL alternativa sem gid
+          const altUrl = csvUrl.replace('&gid=0', '').replace('?gid=0', '');
+          try {
+            console.log('🌐 [SYNC] Tentando URL alternativa:', altUrl);
+            response = await fetch(altUrl, { 
+              method: 'GET',
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; GoogleSheetsBot/1.0)',
+                'Accept': 'text/csv,application/csv,*/*'
+              },
+              redirect: 'follow'
+            });
+            finalUrl = altUrl;
+            console.log('🌐 [SYNC] Resposta alternativa:', response.status);
+          } catch (altError) {
+            console.log('❌ [SYNC] Erro na segunda tentativa:', altError.message);
+            throw new Error(`Erro de conexão: ${error.message}`);
+          }
+        }
+        
+        if (!response.ok) {
+          let errorMessage = `Erro HTTP: ${response.status}`;
+          if (response.status === 400) {
+            errorMessage = `Erro 400: Problema de acesso à planilha. Verifique se:
+1. A planilha está compartilhada como "Qualquer pessoa com o link pode ver"
+2. A planilha não está vazia
+3. A URL está correta
+4. A planilha não tem proteção adicional`;
+          } else if (response.status === 403) {
+            errorMessage = `Erro 403: Acesso negado. A planilha pode estar privada ou protegida.`;
+          } else if (response.status === 404) {
+            errorMessage = `Erro 404: Planilha não encontrada. Verifique se a URL está correta.`;
+          }
+          console.log('❌ [SYNC] Erro HTTP:', errorMessage);
+          throw new Error(errorMessage);
+        }
+        
+        const csvContent = await response.text();
+        console.log('📄 [SYNC] CSV Content Preview:', csvContent.substring(0, 500));
+        
+        const lines = csvContent.split('\n').filter(line => line.trim());
+        console.log('📊 [SYNC] Total lines found:', lines.length);
+        
+        if (lines.length < 2) {
+          console.log('❌ [SYNC] Planilha vazia');
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Planilha vazia ou sem dados' })
+          };
+        }
+        
+        // Melhor parsing CSV para lidar com vírgulas dentro de aspas
+        function parseCSVLine(line) {
+          const result = [];
+          let current = '';
+          let inQuotes = false;
+          
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              result.push(current.trim());
+              current = '';
+            } else {
+              current += char;
+            }
+          }
+          result.push(current.trim());
+          return result;
+        }
+        
+        const headers = parseCSVLine(lines[0]);
+        console.log('📋 [SYNC] Headers:', headers);
+        const events = [];
+        
+        // Converter data brasileira (DD/MM/YYYY) para ISO
+        function parseBrazilianDate(dateStr) {
+          if (!dateStr) {
+            console.log('⚠️ [SYNC] Data vazia, usando data atual');
+            return new Date().toISOString().split('T')[0]; // Apenas YYYY-MM-DD
+          }
+          try {
+            const cleanDate = dateStr.trim();
+            console.log('📅 [SYNC] Processando data:', cleanDate);
+            const [day, month, year] = cleanDate.split('/');
+            if (day && month && year) {
+              const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+              const dateOnly = date.toISOString().split('T')[0]; // Apenas YYYY-MM-DD
+              console.log('📅 [SYNC] Data convertida:', dateOnly);
+              return dateOnly;
+            }
+          } catch (error) {
+            console.log('⚠️ [SYNC] Erro ao converter data:', dateStr, error.message);
+          }
+          console.log('⚠️ [SYNC] Usando data padrão para:', dateStr);
+          return new Date().toISOString().split('T')[0]; // Apenas YYYY-MM-DD
+        }
+        
+        // Mapear categoria flexível com cores dinâmicas
+        function mapEventType(categoryStr) {
+          if (!categoryStr) {
+            console.log('⚠️ [SYNC] Categoria vazia, usando padrão');
+            return { type: 'igreja-local', color: '#ef4444' };
+          }
+          
+          const category = categoryStr.toLowerCase().trim();
+          console.log('🏷️ [SYNC] Mapeando categoria:', category);
+          
+          // Categorias estabelecidas com suas cores
+          const establishedCategories = {
+            // Igreja Local - Vermelho
+            'igreja-local': { 
+              variations: ['igreja local', 'igreja-local', 'local', 'igreja', 'culto', 'cultos', 'culto dominical', 'culto de domingo', 'escola sabatina', 'escola sabática', 'escola sabatica', 'reunião de oração', 'reuniao de oracao', 'oração', 'oracao', 'jovem', 'jovens', 'culto jovem', 'culto de jovens', 'batismo', 'batismos', 'cerimônia de batismo', 'cerimonia de batismo', 'ação de graças', 'acao de gracas', 'ação', 'acao', 'escola bíblica', 'escola biblica', 'escola bíblica dominical'],
+              color: '#ef4444' // Vermelho
+            },
+            
+            // ASR Geral - Laranja
+            'asr-geral': { 
+              variations: ['asr geral', 'asr-geral', 'asr_geral', 'asr', 'conferência', 'conferencia', 'conferência geral', 'conferencia geral', 'conferência anual', 'conferencia anual', 'conferência de fim de ano', 'conferencia de fim de ano', 'retiro', 'retiros', 'retiro espiritual', 'retiro de fim de ano', 'missões', 'missoes', 'conferência de missões', 'conferencia de missoes'],
+              color: '#f97316' // Laranja
+            },
+            
+            // ASR Administrativo - Ciano
+            'asr-administrativo': { 
+              variations: ['asr administrativo', 'asr-administrativo', 'asr_administrativo', 'administrativo', 'admin', 'reunião administrativa', 'reuniao administrativa', 'reuniões administrativas', 'reunioes administrativas', 'plenária', 'plenaria', 'cd plenária', 'cd plenaria'],
+              color: '#06b6d4' // Ciano
+            },
+            
+            // ASR Pastores - Roxo
+            'asr-pastores': { 
+              variations: ['asr pastores', 'asr-pastores', 'asr_pastores', 'pastores', 'pastor', 'reunião de pastores', 'reuniao de pastores', 'concílio ministerial', 'concilio ministerial', 'concílio anual', 'concilio anual', 'formação teológica', 'formacao teologica', 'vocações ministeriais', 'vocacoes ministeriais'],
+              color: '#8b5cf6' // Roxo
+            },
+            
+            // Visitas - Verde
+            'visitas': { 
+              variations: ['visitas', 'visita', 'visitação', 'visitacao'],
+              color: '#10b981' // Verde
+            },
+            
+            // Reuniões - Azul
+            'reuniões': { 
+              variations: ['reuniões', 'reunioes', 'reunião', 'reuniao'],
+              color: '#3b82f6' // Azul
+            },
+            
+            // Pregações - Índigo
+            'pregacoes': { 
+              variations: ['pregacoes', 'pregações', 'pregacao', 'pregação', 'sermão', 'sermao', 'pregação especial', 'pregacao especial'],
+              color: '#6366f1' // Índigo
+            }
+          };
+          
+          // Buscar categoria correspondente - ordem de prioridade: mais específico primeiro
+          const priorityOrder = ['asr-administrativo', 'asr-pastores', 'asr-geral', 'igreja-local', 'visitas', 'reuniões', 'pregacoes'];
+          
+          for (const standardCategory of priorityOrder) {
+            const data = establishedCategories[standardCategory];
+            if (data) {
+              for (const variation of data.variations) {
+                if (category.includes(variation) || variation.includes(category)) {
+                  console.log(`✅ [SYNC] Categoria estabelecida mapeada: "${category}" -> "${standardCategory}" (${data.color})`);
+                  return { type: standardCategory, color: data.color };
+                }
+              }
+            }
+          }
+          
+          // Se não encontrar correspondência, tentar detectar por palavras-chave
+          // Ordem de prioridade: mais específico primeiro
+          
+          if (category.includes('plenária') || category.includes('plenaria') || 
+              (category.includes('administrativ') && category.includes('reuni')) ||
+              (category.includes('cd') && category.includes('plenaria'))) {
+            console.log(`✅ [SYNC] Categoria detectada por palavra-chave: "${category}" -> "asr-administrativo"`);
+            return { type: 'asr-administrativo', color: '#06b6d4' };
+          }
+          
+          if (category.includes('concílio') || category.includes('concilio') ||
+              category.includes('ministerial') || category.includes('formação teológica') ||
+              category.includes('formacao teologica') || category.includes('vocações ministeriais') ||
+              (category.includes('pastor') && (category.includes('formação') || category.includes('teológica') || category.includes('ministerial')))) {
+            console.log(`✅ [SYNC] Categoria detectada por palavra-chave: "${category}" -> "asr-pastores"`);
+            return { type: 'asr-pastores', color: '#8b5cf6' };
+          }
+          
+          if (category.includes('administrativo') || category.includes('admin')) {
+            console.log(`✅ [SYNC] Categoria detectada por palavra-chave: "${category}" -> "asr-administrativo"`);
+            return { type: 'asr-administrativo', color: '#06b6d4' };
+          }
+          
+          if (category.includes('pastor')) {
+            console.log(`✅ [SYNC] Categoria detectada por palavra-chave: "${category}" -> "asr-pastores"`);
+            return { type: 'asr-pastores', color: '#8b5cf6' };
+          }
+          
+          if (category.includes('conferência') || category.includes('conferencia')) {
+            console.log(`✅ [SYNC] Categoria detectada por palavra-chave: "${category}" -> "asr-geral"`);
+            return { type: 'asr-geral', color: '#f97316' };
+          }
+          
+          if (category.includes('retiro') || category.includes('espiritual')) {
+            console.log(`✅ [SYNC] Categoria detectada por palavra-chave: "${category}" -> "asr-geral"`);
+            return { type: 'asr-geral', color: '#f97316' };
+          }
+          
+          if (category.includes('missões') || category.includes('missoes')) {
+            console.log(`✅ [SYNC] Categoria detectada por palavra-chave: "${category}" -> "asr-geral"`);
+            return { type: 'asr-geral', color: '#f97316' };
+          }
+          
+          if (category.includes('visita')) {
+            console.log(`✅ [SYNC] Categoria detectada por palavra-chave: "${category}" -> "visitas"`);
+            return { type: 'visitas', color: '#10b981' };
+          }
+          
+          if (category.includes('pregação') || category.includes('pregacao') || category.includes('sermão') || category.includes('sermao')) {
+            console.log(`✅ [SYNC] Categoria detectada por palavra-chave: "${category}" -> "pregacoes"`);
+            return { type: 'pregacoes', color: '#6366f1' };
+          }
+          
+          // Nova categoria - gerar cor dinâmica
+          const newCategoryColor = generateDynamicColor(category);
+          console.log(`🆕 [SYNC] Nova categoria detectada: "${category}" -> cor dinâmica: ${newCategoryColor}`);
+          return { type: category, color: newCategoryColor };
+        }
+        
+        // Gerar cor dinâmica para novas categorias
+        function generateDynamicColor(categoryName) {
+          // Paleta de cores para novas categorias
+          const dynamicColors = [
+            '#ec4899', // Rosa
+            '#f59e0b', // Âmbar
+            '#84cc16', // Lima
+            '#14b8a6', // Teal
+            '#a855f7', // Violeta
+            '#ef4444', // Vermelho
+            '#f97316', // Laranja
+            '#06b6d4', // Ciano
+            '#8b5cf6', // Roxo
+            '#10b981', // Verde
+            '#3b82f6', // Azul
+            '#6366f1', // Índigo
+            '#64748b', // Slate
+            '#dc2626', // Vermelho escuro
+            '#ea580c', // Laranja escuro
+            '#0891b2', // Ciano escuro
+            '#7c3aed', // Roxo escuro
+            '#059669', // Verde escuro
+            '#2563eb', // Azul escuro
+            '#4f46e5'  // Índigo escuro
+          ];
+          
+          // Gerar hash simples baseado no nome da categoria
+          let hash = 0;
+          for (let i = 0; i < categoryName.length; i++) {
+            hash = ((hash << 5) - hash + categoryName.charCodeAt(i)) & 0xffffffff;
+          }
+          
+          // Usar hash para selecionar cor
+          const colorIndex = Math.abs(hash) % dynamicColors.length;
+          return dynamicColors[colorIndex];
+        }
+
+        
+        for (let i = 1; i < lines.length; i++) {
+          const values = parseCSVLine(lines[i]);
+          console.log(`📝 [SYNC] Line ${i}:`, values);
+          
+          // Verificar se a linha tem dados suficientes
+          if (values.length >= 3 && values[0] && values[1] && values[2]) {
+            console.log(`✅ [SYNC] Line ${i} has sufficient data`);
+            
+            const categoryData = mapEventType(values[3]);
+            console.log(`🏷️ [SYNC] Line ${i} category mapped:`, categoryData);
+            
+            const parsedStartDate = parseBrazilianDate(values[1]);
+            const parsedEndDate = parseBrazilianDate(values[2]);
+            console.log(`📅 [SYNC] Line ${i} dates parsed:`, {
+              start: values[1], parsedStart: parsedStartDate,
+              end: values[2], parsedEnd: parsedEndDate
+            });
+            
+            if (parsedStartDate && parsedEndDate) {
+              const event = {
+                title: values[0] || 'Evento',
+                date: parsedStartDate,
+                end_date: parsedEndDate,
+                type: categoryData.type,
+                color: categoryData.color,
+                description: values[4] || ''
+              };
+              events.push(event);
+              console.log('✅ [SYNC] Event created and added:', event);
+            } else {
+              console.log('❌ [SYNC] Line skipped (invalid dates):', {
+                start: values[1], parsedStart: parsedStartDate,
+                end: values[2], parsedEnd: parsedEndDate
+              });
+            }
+          } else {
+            console.log('❌ [SYNC] Line skipped (insufficient data):', {
+              valuesLength: values.length,
+              title: values[0],
+              startDate: values[1],
+              endDate: values[2]
+            });
+          }
+        }
+        
+        if (events.length === 0) {
+          console.log('❌ [SYNC] Nenhum evento válido encontrado');
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Nenhum evento válido encontrado' })
+          };
+        }
+        
+        console.log('🗑️ [SYNC] Limpando eventos existentes...');
+        try {
+          await sql`DELETE FROM events`;
+          console.log('🗑️ [SYNC] Eventos existentes removidos');
+        } catch (dbError) {
+          console.log('⚠️ [SYNC] Erro ao limpar eventos:', dbError.message);
+          // Continuar mesmo com erro de limpeza
+        }
+        
+        // Inserir novos eventos
+        let importedCount = 0;
+        for (const eventData of events) {
+          try {
+            console.log(`🔄 [SYNC] Inserindo evento no banco:`, {
+              title: eventData.title,
+              date: eventData.date,
+              end_date: eventData.end_date,
+              type: eventData.type,
+              color: eventData.color,
+              description: eventData.description
+            });
+            
+            const result = await sql`
+              INSERT INTO events (title, date, end_date, type, color, description, created_at, updated_at)
+              VALUES (${eventData.title}, ${eventData.date}::date, ${eventData.end_date}::date, ${eventData.type}, ${eventData.color}, ${eventData.description}, NOW(), NOW())
+              RETURNING id
+            `;
+            
+            importedCount++;
+            console.log(`✅ [SYNC] Evento ${importedCount} inserido com sucesso:`, eventData.title, `(ID: ${result[0]?.id}, categoria: ${eventData.type}, cor: ${eventData.color})`);
+          } catch (error) {
+            console.error('❌ [SYNC] Erro ao inserir evento:', error.message);
+            console.error('❌ [SYNC] Detalhes completos do erro:', error);
+          }
+        }
+        
+        console.log(`✅ [SYNC] Sincronização concluída: ${importedCount} eventos importados de ${events.length} eventos processados`);
+        
+        return {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
+          },
+          body: JSON.stringify({
+            success: true,
+            message: `Sincronização concluída: ${importedCount} eventos importados`,
+            importedCount,
+            totalEvents: events.length
+          })
+        };
+      } catch (error) {
+        console.error('💥 [SYNC] ERRO CRÍTICO na sincronização Google Drive:', error);
+        console.error('💥 [SYNC] Stack trace:', error.stack);
+        return {
+          statusCode: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
+          },
+          body: JSON.stringify({ 
+            error: `Erro na sincronização: ${error.message}`,
+            details: error.stack
+          })
+        };
+      }
+    }
 
     // Rota padrão - retornar erro 404
     return {

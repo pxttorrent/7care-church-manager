@@ -26,33 +26,59 @@ export const ScheduleVisitModal = ({ user, isOpen, onClose }: ScheduleVisitModal
   });
 
   const scheduleVisitMutation = useMutation({
-    mutationFn: (data: any) => 
-      fetch('/api/meetings', { 
+    mutationFn: async (data: any) => {
+      // Primeiro, criar o evento no calendário
+      const eventResponse = await fetch('/api/calendar/events', { 
         method: 'POST', 
         body: JSON.stringify({
-          ...data,
-          requesterId: user?.id,
-          typeId: 9, // Tipo 9 é "Visita" conforme o schema
-          title: `Visita - ${user?.name}`,
-          scheduledAt: data.scheduledAt + 'T' + data.scheduledTime,
-          duration: 60,
-          priority: 'medium',
-          location: user?.address || '',
+          events: [{
+            title: `Visita - ${user?.name}`,
+            description: data.notes || `Visita agendada para ${user?.name}`,
+            startDate: data.scheduledAt + 'T' + data.scheduledTime,
+            endDate: data.scheduledAt + 'T' + data.scheduledTime, // Data de início e fim sempre iguais
+            category: 'Visitas', // Categoria sempre "Visitas"
+            location: user?.address || '',
+            maxAttendees: 2
+          }]
         }),
         headers: { 'Content-Type': 'application/json' }
-      }).then(res => res.json()),
+      });
+      
+      const eventResult = await eventResponse.json();
+      
+      if (!eventResponse.ok) {
+        throw new Error(eventResult.error || 'Erro ao criar evento no calendário');
+      }
+      
+      // Depois, sincronizar com a planilha do Google Drive
+      try {
+        const syncResponse = await fetch('/api/google-drive/process-pending', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const syncResult = await syncResponse.json();
+        console.log('📊 Sincronização com planilha:', syncResult);
+      } catch (syncError) {
+        console.warn('⚠️ Erro na sincronização com planilha:', syncError);
+        // Não falha o agendamento se a sincronização falhar
+      }
+      
+      return eventResult;
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/meetings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/calendar/events'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
       toast({
         title: "Visita agendada",
-        description: "A visita foi agendada com sucesso na agenda.",
+        description: "A visita foi agendada com sucesso na agenda e sincronizada com a planilha.",
       });
       onClose();
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Erro",
-        description: "Erro ao agendar visita. Tente novamente.",
+        description: `Erro ao agendar visita: ${error.message}`,
         variant: "destructive"
       });
     }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar as CalendarIcon, Filter, Upload, Trash2, Cake } from 'lucide-react';
+import { Calendar as CalendarIcon, Filter, Cake, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -10,8 +10,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MonthlyCalendarView } from '@/components/calendar/MonthlyCalendarView';
 import { EventModal } from '@/components/calendar/EventModal';
-import { ImportExcelModal } from '@/components/calendar/ImportExcelModal';
-import { EventPermissionsModal } from '@/components/calendar/EventPermissionsModal';
 import { useEventFilterPermissions } from '@/hooks/useEventFilterPermissions';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,11 +23,10 @@ export default function Calendar() {
   const queryClient = useQueryClient();
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [showBirthdays, setShowBirthdays] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const isAdmin = user?.role === 'admin';
   const { getAvailableEventTypes, canFilterEventType, permissions, isLoading: permissionsLoading } = useEventFilterPermissions();
@@ -150,7 +147,81 @@ export default function Calendar() {
     });
     setShowEventModal(false);
     // In a real app, this would delete from the backend
-    console.log('Deleting event:', eventId);
+  };
+
+  // Função para sincronização rápida do Google Drive
+  const handleQuickSync = async () => {
+    setIsSyncing(true);
+    try {
+      // Primeiro, buscar a configuração salva
+      const configResponse = await fetch('/api/calendar/google-drive-config');
+      const config = await configResponse.json();
+      
+      if (!config.spreadsheetUrl) {
+        toast({
+          title: "❌ Configuração não encontrada",
+          description: "Configure a planilha do Google Drive em Settings > Calendário",
+          variant: "destructive"
+        });
+        setIsSyncing(false);
+        return;
+      }
+
+      // Passo 1: Processar eventos pendentes para enviar à planilha
+      const sendResponse = await fetch('/api/google-drive/process-pending', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const sendResult = await sendResponse.json();
+      let sentCount = sendResult.processed || 0;
+      
+      // Passo 2: Importar novos eventos da planilha
+      const importResponse = await fetch('/api/calendar/sync-google-drive', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          spreadsheetUrl: config.spreadsheetUrl
+        })
+      });
+
+      const importResult = await importResponse.json();
+      let importedCount = importResult.importedCount || 0;
+      
+      // Recarregar eventos e aniversariantes
+      await queryClient.invalidateQueries({ queryKey: ['events'] });
+      await queryClient.invalidateQueries({ queryKey: ['birthdays'] });
+      
+      // Mostrar resultado da sincronização bidirecional
+      const messages = [];
+      if (sentCount > 0) messages.push(`${sentCount} eventos enviados`);
+      if (importedCount > 0) messages.push(`${importedCount} eventos importados`);
+      
+      if (messages.length > 0) {
+        toast({
+          title: "✅ Sincronização concluída!",
+          description: messages.join(' e ') + ' da/para o Google Drive.',
+        });
+      } else {
+        toast({
+          title: "✅ Sincronização concluída!",
+          description: "Planilha já está sincronizada.",
+        });
+      }
+    } catch (error) {
+      console.error('Erro na sincronização:', error);
+      toast({
+        title: "❌ Erro na sincronização",
+        description: "Erro ao conectar com o servidor",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleFilterChange = (filterId: string, checked: boolean) => {
@@ -183,88 +254,6 @@ export default function Calendar() {
       setActiveFilters(EVENT_TYPES.map(type => type.id));
     }
   };
-
-  const handleImportComplete = () => {
-    // Invalidar cache e recarregar eventos após importação
-    queryClient.invalidateQueries({ queryKey: ['events'] });
-    toast({
-      title: "Agenda atualizada",
-      description: "Os eventos foram importados e a agenda foi atualizada.",
-    });
-  };
-
-  const handleClearAllEvents = async () => {
-    const confirmed = window.confirm(
-      "⚠️ ATENÇÃO: Esta ação irá excluir TODOS os eventos da agenda permanentemente!\n\n" +
-      "Isso inclui:\n" +
-      "• Todos os eventos criados\n" +
-      "• Todos os eventos importados\n" +
-      "• Todos os tipos de eventos\n\n" +
-      "Esta ação NÃO PODE SER DESFEITA!\n\n" +
-      "Tem certeza que deseja continuar?"
-    );
-
-    if (!confirmed) return;
-
-    const doubleConfirm = window.confirm(
-      "ÚLTIMA CONFIRMAÇÃO:\n\n" +
-      "Você tem ABSOLUTA CERTEZA que deseja excluir TODOS os eventos da agenda?\n\n" +
-      "Digite 'CONFIRMAR' no próximo prompt para prosseguir."
-    );
-
-    if (!doubleConfirm) return;
-
-    const finalConfirm = prompt(
-      "Para confirmar a exclusão de TODOS os eventos, digite exatamente: CONFIRMAR"
-    );
-
-    if (finalConfirm !== "CONFIRMAR") {
-      toast({
-        title: "Operação cancelada",
-        description: "A limpeza dos eventos foi cancelada.",
-      });
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/events', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        // Invalidar e remover cache de eventos
-        queryClient.invalidateQueries({ queryKey: ['events'] });
-        queryClient.invalidateQueries({ queryKey: ['events', user?.role] });
-        queryClient.removeQueries({ queryKey: ['events'] });
-        queryClient.removeQueries({ queryKey: ['events', user?.role] });
-        
-        // Forçar refetch imediato
-        queryClient.refetchQueries({ queryKey: ['events'] });
-        queryClient.refetchQueries({ queryKey: ['events', user?.role] });
-        
-        toast({
-          title: "Eventos removidos",
-          description: result.message || "Todos os eventos foram removidos com sucesso.",
-        });
-      } else {
-        throw new Error(result.error || 'Falha ao limpar eventos');
-      }
-      
-    } catch (error) {
-      console.error('Clear events error:', error);
-      toast({
-        title: "Erro ao limpar eventos",
-        description: error instanceof Error ? error.message : "Ocorreu um erro inesperado.",
-        variant: "destructive"
-      });
-    }
-  };
-
 
 
   return (
@@ -330,44 +319,20 @@ export default function Calendar() {
               <Cake className="h-4 w-4 mr-2" />
               {showBirthdays ? "Ocultar Aniversariantes" : "Mostrar Aniversariantes"}
             </Button>
+
+            {/* Botão de Sincronização Google Drive */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleQuickSync}
+              disabled={isSyncing}
+              className="h-8 flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? "Sincronizando..." : "Sincronizar Google Drive"}
+            </Button>
           </div>
 
-          {/* Ações Administrativas */}
-          {isAdmin && (
-            <div className="flex flex-wrap gap-2 items-center pt-2 border-t">
-              <span className="text-sm text-muted-foreground mr-2">Ações:</span>
-              
-              <Button 
-                onClick={() => setShowPermissionsModal(true)} 
-                variant="outline" 
-                size="sm" 
-                className="h-8"
-              >
-                <Filter className="h-4 w-4 mr-2" />
-                Gerenciar Permissões
-              </Button>
-              
-              <Button 
-                onClick={() => setShowImportModal(true)} 
-                variant="outline" 
-                size="sm" 
-                className="h-8"
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Importar Excel
-              </Button>
-              
-              <Button 
-                onClick={handleClearAllEvents} 
-                variant="destructive" 
-                size="sm" 
-                className="h-8"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Limpar Eventos
-              </Button>
-            </div>
-          )}
         </div>
 
         {/* Filtros Ativos */}
@@ -409,18 +374,6 @@ export default function Calendar() {
           eventTypes={EVENT_TYPES}
         />
 
-        {/* Import Excel Modal */}
-        <ImportExcelModal
-          isOpen={showImportModal}
-          onClose={() => setShowImportModal(false)}
-          onImportComplete={handleImportComplete}
-        />
-
-        {/* Event Permissions Modal */}
-        <EventPermissionsModal
-          isOpen={showPermissionsModal}
-          onClose={() => setShowPermissionsModal(false)}
-        />
 
       </div>
     </MobileLayout>

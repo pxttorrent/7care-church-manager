@@ -187,7 +187,25 @@ const eventTypeColors = {
 
 // Função para determinar a cor baseada no tipo do evento
 const getEventColor = (event: CalendarEvent) => {
-  // Primeiro, tentar usar o tipo do evento se estiver disponível
+  // Primeiro, tentar usar a cor salva no banco de dados
+  if (event.color) {
+    // Converter cor hexadecimal para classes Tailwind
+    const colorMap: { [key: string]: string } = {
+      '#ef4444': 'bg-gradient-to-r from-red-500 to-red-600 text-white border-red-700 shadow-red-200',
+      '#f97316': 'bg-gradient-to-r from-orange-500 to-orange-600 text-white border-orange-700 shadow-orange-200',
+      '#06b6d4': 'bg-gradient-to-r from-cyan-500 to-cyan-600 text-white border-cyan-700 shadow-cyan-200',
+      '#8b5cf6': 'bg-gradient-to-r from-purple-500 to-purple-600 text-white border-purple-700 shadow-purple-200',
+      '#22c55e': 'bg-gradient-to-r from-green-500 to-green-600 text-white border-green-700 shadow-green-200',
+      '#3b82f6': 'bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-700 shadow-blue-200',
+      '#6366f1': 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white border-indigo-700 shadow-indigo-200'
+    };
+    
+    if (colorMap[event.color]) {
+      return colorMap[event.color];
+    }
+  }
+  
+  // Segundo, tentar usar o tipo do evento se estiver disponível
   if (event.type && eventTypeColors[event.type]) {
     return eventTypeColors[event.type];
   }
@@ -410,9 +428,9 @@ export function MonthlyCalendarView({
       return [];
     }
     
-    // CORRIGIDO: Usar UTC para evitar problemas de fuso horário
-    const currentMonth = date.getUTCMonth();
-    const currentDay = date.getUTCDate();
+    // Usar data local para consistência com o servidor
+    const currentMonth = date.getMonth();
+    const currentDay = date.getDate();
     
     console.log(`🎂 Verificando aniversariantes para ${currentDay}/${currentMonth + 1}`);
     console.log(`🎂 Total de aniversariantes disponíveis: ${birthdays.all?.length || 0}`);
@@ -421,8 +439,13 @@ export function MonthlyCalendarView({
     const filteredBirthdays = (birthdays.all || []).filter(user => {
       if (!user.birthDate) return false;
       
-      // Parse da data de nascimento - CORRIGIDO para evitar problema de fuso horário
-      const [year, month, day] = user.birthDate.split('-');
+      // Parse da data de nascimento - CORRIGIDO para lidar com datas ISO
+      let datePart = user.birthDate;
+      if (user.birthDate.includes('T') && user.birthDate.includes('Z')) {
+        datePart = user.birthDate.split('T')[0]; // Pega apenas YYYY-MM-DD
+      }
+      
+      const [year, month, day] = datePart.split('-');
       const birthMonth = parseInt(month) - 1; // Mês começa em 0
       const birthDay = parseInt(day);
       
@@ -734,7 +757,7 @@ export function MonthlyCalendarView({
                 {/* Aniversariantes do dia selecionado */}
                 {(() => {
                   const [year, month, day] = selectedDate.split('-');
-                  const date = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+                  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
                   const dayBirthdays = getBirthdaysForDate(date);
                   
                   return dayBirthdays.length > 0 && (
@@ -782,9 +805,9 @@ export function MonthlyCalendarView({
               // Obter aniversariantes para este dia
               let dayBirthdays: BirthdayUser[] = [];
               if (dateString) {
-                // CORRIGIDO: Usar UTC para evitar problemas de fuso horário
+                // CORRIGIDO: Usar data local para evitar problemas de fuso horário
                 const [year, month, day] = dateString.split('-');
-                const date = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+                const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
                 
                 dayBirthdays = getBirthdaysForDate(date);
                 console.log(`🎂 Dia ${dateString} (${day}/${month}): ${dayBirthdays.length} aniversariantes encontrados`);

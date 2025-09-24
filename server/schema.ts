@@ -55,6 +55,7 @@ export const events = pgTable('events', {
   endDate: timestamp('end_date'),
   location: text('location'),
   type: text('type').notNull(),
+  color: text('color'),
   capacity: integer('capacity'),
   isRecurring: boolean('is_recurring').default(false),
   recurrencePattern: text('recurrence_pattern'),

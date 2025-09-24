@@ -202,31 +202,31 @@ export const DiscipuladoresManager: React.FC<DiscipuladoresManagerProps> = React
           Nenhum discipulador atribuído
         </div>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1">
           {currentDiscipuladores.map((discipulador) => (
-            <Badge
+            <div
               key={discipulador.id}
-              variant="secondary"
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-150"
+              className="flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 border border-blue-200 rounded-sm hover:bg-blue-100 transition-colors"
             >
-              <span className="truncate max-w-24" title={discipulador.missionaryName}>
-                {discipulador.missionaryName}
+              <div className="w-0.5 h-0.5 bg-blue-500 rounded-full"></div>
+              <span className="text-[10px] font-medium text-blue-800" title={discipulador.missionaryName}>
+                {discipulador.missionaryName.split(' ')[0]}
               </span>
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-4 w-4 p-0 ml-1 hover:bg-blue-200 hover:text-blue-800"
+                className="h-3 w-3 p-0 hover:bg-blue-200 hover:text-blue-800"
                 onClick={() => handleRemoveDiscipulador(discipulador.id)}
                 disabled={isRemoving === discipulador.id}
                 title="Remover discipulador"
               >
                 {isRemoving === discipulador.id ? (
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current" />
+                  <div className="animate-spin rounded-full h-1.5 w-1.5 border-b-2 border-current" />
                 ) : (
-                  <X className="h-3 w-3" />
+                  <X className="h-1.5 w-1.5" />
                 )}
               </Button>
-            </Badge>
+            </div>
           ))}
         </div>
       )}

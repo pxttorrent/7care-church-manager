@@ -21,10 +21,12 @@ import {
   Mountain,
   Save,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Calculator
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { usePointsConfig } from '@/hooks/usePointsConfig';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface PointsConfig {
   engajamento: {
@@ -155,6 +157,7 @@ const defaultConfig: PointsConfig = {
 export const PointsConfiguration = () => {
   const { config, isLoading, saveConfig, resetConfig, updateConfig, getTotalMaxPoints, getConfigSummary, getCurrentParameterAverage, getCurrentUserAverage } = usePointsConfig();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   
 
   // Ensure config is always defined
@@ -175,6 +178,38 @@ export const PointsConfiguration = () => {
 
   const handleReset = () => {
     resetConfig();
+  };
+
+  const handleCalculatePoints = async () => {
+    try {
+      toast({
+        title: "🔄 Calculando pontos...",
+        description: "Recalculando pontuação para todos os usuários com a configuração correta. Isso pode levar alguns minutos.",
+      });
+      
+      const response = await fetch('/api/system/calculate-points-clean', { method: 'POST' });
+      const result = await response.json();
+      
+      if (result.success) {
+        // Invalidar cache das queries relacionadas aos usuários
+        queryClient.invalidateQueries({ queryKey: ['/api/users/with-points'] });
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+        queryClient.invalidateQueries({ queryKey: ['missionary-profiles'] });
+        
+        toast({
+          title: "✅ Pontuação Calculada Corretamente",
+          description: `${result.updatedCount} usuários foram atualizados com sucesso! Total de pontos: ${result.totalCalculatedPoints}`,
+        });
+      } else {
+        throw new Error(result.error || 'Erro desconhecido');
+      }
+    } catch (error) {
+      toast({
+        title: "❌ Erro",
+        description: "Falha ao calcular pontuação. Tente novamente.",
+        variant: "destructive",
+      });
+    }
   };
 
 
@@ -267,6 +302,34 @@ export const PointsConfiguration = () => {
             <span className="text-sm font-medium">
               Atenção: Alterações afetam a base de cálculo de pontuação de todos os usuários. Os pontos serão recalculados automaticamente após salvar.
             </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Calculate Points Button */}
+      <Card className="border-blue-200 bg-blue-50">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Calculator className="h-5 w-5 text-blue-600" />
+              <div>
+                <h3 className="text-sm font-medium text-blue-900">
+                  Calcular Pontos de Cada Usuário
+                </h3>
+                <p className="text-xs text-blue-700">
+                  Recalcula a pontuação de todos os usuários com base na configuração atual
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={handleCalculatePoints}
+              variant="outline"
+              size="sm"
+              className="border-blue-600 text-blue-600 hover:bg-blue-100"
+            >
+              <Calculator className="h-4 w-4 mr-2" />
+              Calcular Pontos
+            </Button>
           </div>
         </CardContent>
       </Card>

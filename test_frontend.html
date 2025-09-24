@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Visitas - Frontend</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .user-card { border: 1px solid #ccc; margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .visited { background-color: #d4edda; border-color: #c3e6cb; }
+        .not-visited { background-color: #f8f9fa; }
+        .visit-info { color: #28a745; font-weight: bold; }
+        .debug { background-color: #f8f9fa; padding: 10px; margin: 10px 0; border-radius: 5px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>Teste de Visitas - Frontend</h1>
+    <div id="debug"></div>
+    <div id="users"></div>
+
+    <script>
+        async function testVisits() {
+            const debugDiv = document.getElementById('debug');
+            const usersDiv = document.getElementById('users');
+            
+            try {
+                // Buscar usuários
+                debugDiv.innerHTML = '<p>🔄 Buscando usuários...</p>';
+                const usersResponse = await fetch('https://7care.netlify.app/api/users');
+                const users = await usersResponse.json();
+                
+                debugDiv.innerHTML += `<p>✅ ${users.length} usuários carregados</p>`;
+                
+                // Buscar dados do visitômetro
+                debugDiv.innerHTML += '<p>🔄 Buscando dados do visitômetro...</p>';
+                const visitsResponse = await fetch('https://7care.netlify.app/api/dashboard/visits');
+                const visitsData = await visitsResponse.json();
+                
+                debugDiv.innerHTML += `<p>✅ Visitômetro: ${visitsData.visitedPeople}/${visitsData.expected} usuários visitados (${visitsData.percentage}%)</p>`;
+                
+                // Processar usuários e mostrar visitas
+                const memberUsers = users.filter(user => user.role === 'member' || user.role === 'missionary');
+                debugDiv.innerHTML += `<p>📊 ${memberUsers.length} usuários member/missionary encontrados</p>`;
+                
+                let visitedCount = 0;
+                let totalVisits = 0;
+                
+                memberUsers.forEach(user => {
+                    let extraData = {};
+                    if (user.extraData) {
+                        if (typeof user.extraData === 'string') {
+                            try {
+                                extraData = JSON.parse(user.extraData);
+                            } catch (e) {
+                                console.error('Erro ao parsear extraData:', e);
+                            }
+                        } else if (typeof user.extraData === 'object') {
+                            extraData = user.extraData;
+                        }
+                    }
+                    
+                    const isVisited = extraData.visited === true;
+                    const visitCount = extraData.visitCount || 0;
+                    const lastVisitDate = extraData.lastVisitDate || null;
+                    
+                    if (isVisited) {
+                        visitedCount++;
+                        totalVisits += visitCount;
+                    }
+                    
+                    const userCard = document.createElement('div');
+                    userCard.className = `user-card ${isVisited ? 'visited' : 'not-visited'}`;
+                    userCard.innerHTML = `
+                        <h3>${user.name}</h3>
+                        <p><strong>Role:</strong> ${user.role}</p>
+                        <p><strong>Visited:</strong> ${isVisited ? 'Sim' : 'Não'}</p>
+                        <p><strong>Visit Count:</strong> ${visitCount}</p>
+                        <p><strong>Last Visit:</strong> ${lastVisitDate || 'N/A'}</p>
+                        <div class="debug">
+                            <strong>ExtraData Raw:</strong> ${JSON.stringify(user.extraData, null, 2)}
+                        </div>
+                    `;
+                    usersDiv.appendChild(userCard);
+                });
+                
+                debugDiv.innerHTML += `<p>✅ Processamento concluído: ${visitedCount} usuários visitados, ${totalVisits} visitas totais</p>`;
+                
+            } catch (error) {
+                debugDiv.innerHTML += `<p>❌ Erro: ${error.message}</p>`;
+                console.error('Erro:', error);
+            }
+        }
+        
+        // Executar teste quando a página carregar
+        window.addEventListener('load', testVisits);
+    </script>
+</body>
+</html>

@@ -36,7 +36,11 @@ import {
   EyeOff,
   Plus,
   Star,
-  Edit2
+  Edit2,
+  Calendar,
+  Filter,
+  Cloud,
+  Cake
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -45,6 +49,11 @@ import { MountainProgress } from '@/components/dashboard/MountainProgress';
 import { PointsConfiguration } from '@/components/settings/PointsConfiguration';
 import { useLastImportDate } from '@/hooks/useLastImportDate';
 import { useSystemLogo } from '@/hooks/useSystemLogo';
+import { ImportExcelModal } from '@/components/calendar/ImportExcelModal';
+import { GoogleDriveImportModal } from '@/components/calendar/GoogleDriveImportModal';
+import { EventPermissionsModal } from '@/components/calendar/EventPermissionsModal';
+import { useQueryClient } from '@tanstack/react-query';
+import * as XLSX from 'xlsx';
 
 
 interface SettingsData {
@@ -133,6 +142,14 @@ export default function Settings() {
   // Logo management states
   const [currentLogo, setCurrentLogo] = useState<string>('');
   const { refreshLogo, clearLogoSystem } = useSystemLogo();
+
+  // Calendar modal states
+  const [showImportExcelModal, setShowImportExcelModal] = useState(false);
+  const [showGoogleDriveModal, setShowGoogleDriveModal] = useState(false);
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  
+  // Query client for cache invalidation
+  const queryClient = useQueryClient();
 
   // Mobile Header Layout states
   const [mobileHeaderLayout, setMobileHeaderLayout] = useState({
@@ -568,7 +585,204 @@ export default function Settings() {
     }
   };
 
+  // Calendar functions
+  const handleImportComplete = () => {
+    // Invalidar cache e recarregar eventos após importação
+    queryClient.invalidateQueries({ queryKey: ['events'] });
+    toast({
+      title: "Agenda atualizada",
+      description: "Os eventos foram importados e a agenda foi atualizada.",
+    });
+  };
 
+  const handleClearAllEvents = async () => {
+    const confirmed = window.confirm(
+      "⚠️ ATENÇÃO: Esta ação irá excluir TODOS os eventos da agenda permanentemente!\n\n" +
+      "Isso inclui:\n" +
+      "• Todos os eventos criados\n" +
+      "• Todos os eventos importados\n" +
+      "• Todos os tipos de eventos\n\n" +
+      "Esta ação NÃO PODE SER DESFEITA!\n\n" +
+      "Tem certeza que deseja continuar?"
+    );
+
+    if (!confirmed) return;
+
+    const doubleConfirm = window.confirm(
+      "ÚLTIMA CONFIRMAÇÃO:\n\n" +
+      "Você tem ABSOLUTA CERTEZA que deseja excluir TODOS os eventos da agenda?\n\n" +
+      "Digite 'CONFIRMAR' no próximo prompt para prosseguir."
+    );
+
+    if (!doubleConfirm) return;
+
+    const finalConfirm = prompt(
+      "Para confirmar a exclusão de TODOS os eventos, digite exatamente: CONFIRMAR"
+    );
+
+    if (finalConfirm !== "CONFIRMAR") {
+      toast({
+        title: "Operação cancelada",
+        description: "A limpeza dos eventos foi cancelada.",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/events', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        // Invalidar e remover cache de eventos
+        queryClient.invalidateQueries({ queryKey: ['events'] });
+        queryClient.invalidateQueries({ queryKey: ['events', user?.role] });
+        queryClient.removeQueries({ queryKey: ['events'] });
+        queryClient.removeQueries({ queryKey: ['events', user?.role] });
+        
+        // Forçar refetch imediato
+        queryClient.refetchQueries({ queryKey: ['events'] });
+        queryClient.refetchQueries({ queryKey: ['events', user?.role] });
+        
+        toast({
+          title: "Eventos removidos",
+          description: result.message || "Todos os eventos foram removidos com sucesso.",
+        });
+      } else {
+        throw new Error(result.error || 'Falha ao limpar eventos');
+      }
+      
+    } catch (error) {
+      console.error('Clear events error:', error);
+      toast({
+        title: "Erro ao limpar eventos",
+        description: error instanceof Error ? error.message : "Ocorreu um erro inesperado.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleExportCalendar = async () => {
+    try {
+      // Buscar todos os eventos
+      const response = await fetch('/api/events');
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao buscar eventos');
+      }
+
+      const events = Array.isArray(result) ? result : (result.events || []);
+      
+      console.log('🔍 Debug Export - Total eventos encontrados:', events.length);
+      console.log('🔍 Debug Export - Primeiro evento:', events[0]);
+      
+      if (events.length === 0) {
+        toast({
+          title: "Agenda vazia",
+          description: "Não há eventos para exportar.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Preparar dados para exportação
+      const exportData = events.map((event: any) => {
+        // Formatar mês - usar 'date' em vez de 'startDate'
+        const eventDate = event.date || event.startDate;
+        const month = eventDate ? new Date(eventDate).toLocaleDateString('pt-BR', { month: 'long' }) : '';
+        
+        // Formatar categoria
+        const category = event.type || '';
+        
+        // Formatar data (DD/MM, DD/MM/YYYY, DD/MM-DD/MM, DD/MM/YYYY - DD/MM/YYYY)
+        let formattedDate = '';
+        if (eventDate) {
+          const startDate = new Date(eventDate);
+          const startDay = String(startDate.getDate()).padStart(2, '0');
+          const startMonth = String(startDate.getMonth() + 1).padStart(2, '0');
+          const startYear = startDate.getFullYear();
+          
+          const endDateValue = event.end_date || event.endDate;
+          if (endDateValue && endDateValue !== eventDate) {
+            // Evento com data de fim diferente
+            const endDate = new Date(endDateValue);
+            const endDay = String(endDate.getDate()).padStart(2, '0');
+            const endMonth = String(endDate.getMonth() + 1).padStart(2, '0');
+            const endYear = endDate.getFullYear();
+            
+            if (startYear === endYear && startMonth === endMonth) {
+              // Mesmo mês e ano: DD/MM - DD/MM
+              formattedDate = `${startDay}/${startMonth} - ${endDay}/${endMonth}`;
+            } else if (startYear === endYear) {
+              // Mesmo ano: DD/MM - DD/MM
+              formattedDate = `${startDay}/${startMonth} - ${endDay}/${endMonth}`;
+            } else {
+              // Anos diferentes: DD/MM/YYYY - DD/MM/YYYY
+              formattedDate = `${startDay}/${startMonth}/${startYear} - ${endDay}/${endMonth}/${endYear}`;
+            }
+          } else {
+            // Evento de um dia só: DD/MM/YYYY
+            formattedDate = `${startDay}/${startMonth}/${startYear}`;
+          }
+        }
+        
+        // Título do evento
+        const eventTitle = event.title || '';
+        
+        return {
+          'Mês': month,
+          'Categoria': category,
+          'Data': formattedDate,
+          'Evento': eventTitle
+        };
+      });
+
+      console.log('🔍 Debug Export - Dados processados para Excel:', exportData.slice(0, 3));
+      
+      // Criar workbook e worksheet
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+
+      // Ajustar largura das colunas
+      const columnWidths = [
+        { wch: 12 }, // Mês
+        { wch: 20 }, // Categoria
+        { wch: 25 }, // Data
+        { wch: 40 }  // Evento
+      ];
+      worksheet['!cols'] = columnWidths;
+
+      // Adicionar worksheet ao workbook
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Agenda');
+
+      // Gerar nome do arquivo com data atual
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('pt-BR').replace(/\//g, '-');
+      const fileName = `agenda-${dateStr}.xlsx`;
+
+      // Baixar arquivo
+      XLSX.writeFile(workbook, fileName);
+
+      toast({
+        title: "Exportação concluída",
+        description: `${events.length} eventos exportados com sucesso para ${fileName}`,
+      });
+
+    } catch (error) {
+      console.error('Erro ao exportar agenda:', error);
+      toast({
+        title: "Erro na exportação",
+        description: "Não foi possível exportar a agenda. Tente novamente.",
+        variant: "destructive"
+      });
+    }
+  };
 
   const validateImportData = () => {
     const errors: string[] = [];
@@ -1285,7 +1499,7 @@ export default function Settings() {
         </div>
 
         <Tabs defaultValue={defaultTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8">
+          <TabsList className="grid w-full grid-cols-9">
             <TabsTrigger value="notifications" className="text-xs">Notificações</TabsTrigger>
             {!isMemberOnlyNotifications && (
               <>
@@ -1294,6 +1508,9 @@ export default function Settings() {
               </>
             )}
 
+            {user?.role === 'admin' && (
+              <TabsTrigger value="calendar" className="text-xs">Calendário</TabsTrigger>
+            )}
             {user?.role === 'admin' && (
               <TabsTrigger value="points-config" className="text-xs">Base de Cálculo</TabsTrigger>
             )}
@@ -2049,6 +2266,123 @@ export default function Settings() {
             </TabsContent>
           )}
 
+          {/* Calendar Management (Admin only) */}
+          {user?.role === 'admin' && (
+            <TabsContent value="calendar" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    Gerenciamento do Calendário
+                  </CardTitle>
+                  <CardDescription>
+                    Importar, exportar e gerenciar eventos da agenda
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Ações de Importação */}
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-lg font-semibold mb-3">Importação de Eventos</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <Button 
+                          onClick={() => setShowImportExcelModal(true)} 
+                          variant="outline" 
+                          className="h-auto p-4 flex flex-col items-start gap-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Upload className="h-4 w-4" />
+                            <span className="font-medium">Importar Excel</span>
+                          </div>
+                          <span className="text-sm text-muted-foreground text-left">
+                            Importar eventos de um arquivo Excel (.xlsx)
+                          </span>
+                        </Button>
+                        
+                        <Button 
+                          onClick={() => setShowGoogleDriveModal(true)} 
+                          variant="outline" 
+                          className="h-auto p-4 flex flex-col items-start gap-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Cloud className="h-4 w-4" />
+                            <span className="font-medium">Google Drive</span>
+                          </div>
+                          <span className="text-sm text-muted-foreground text-left">
+                            Sincronizar com planilha do Google Drive
+                          </span>
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Ações de Gerenciamento */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-3">Gerenciamento</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <Button 
+                          onClick={() => setShowPermissionsModal(true)} 
+                          variant="outline" 
+                          className="h-auto p-4 flex flex-col items-start gap-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Filter className="h-4 w-4" />
+                            <span className="font-medium">Permissões</span>
+                          </div>
+                          <span className="text-sm text-muted-foreground text-left">
+                            Gerenciar permissões de visualização de eventos
+                          </span>
+                        </Button>
+                        
+                        <Button 
+                          onClick={handleExportCalendar} 
+                          variant="outline" 
+                          className="h-auto p-4 flex flex-col items-start gap-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Download className="h-4 w-4" />
+                            <span className="font-medium">Exportar Agenda</span>
+                          </div>
+                          <span className="text-sm text-muted-foreground text-left">
+                            Baixar todos os eventos em formato Excel
+                          </span>
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Ações de Limpeza */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-3">Limpeza de Dados</h3>
+                      <div className="flex flex-col gap-3">
+                        <Button 
+                          onClick={handleClearAllEvents} 
+                          variant="destructive" 
+                          className="h-auto p-4 flex flex-col items-start gap-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Trash2 className="h-4 w-4" />
+                            <span className="font-medium">Limpar Todos os Eventos</span>
+                          </div>
+                          <span className="text-sm text-muted-foreground text-left">
+                            ⚠️ Remove permanentemente todos os eventos da agenda
+                          </span>
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Informações */}
+                    <Alert>
+                      <Calendar className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>Dica:</strong> Use o Google Drive para sincronização em tempo real com uma planilha online. 
+                        As alterações na planilha serão automaticamente refletidas no calendário.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
           {/* Data Management (Admin only) */}
           {user?.role === 'admin' && (
             <TabsContent value="data-management" className="space-y-4">
@@ -2544,6 +2878,24 @@ export default function Settings() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modais do Calendário */}
+      <ImportExcelModal
+        isOpen={showImportExcelModal}
+        onClose={() => setShowImportExcelModal(false)}
+        onImportComplete={handleImportComplete}
+      />
+
+      <GoogleDriveImportModal
+        isOpen={showGoogleDriveModal}
+        onClose={() => setShowGoogleDriveModal(false)}
+        onImportComplete={handleImportComplete}
+      />
+
+      <EventPermissionsModal
+        isOpen={showPermissionsModal}
+        onClose={() => setShowPermissionsModal(false)}
+      />
 
     </MobileLayout>
   );
