@@ -28,9 +28,13 @@ const Dashboard = React.memo(() => {
 
   // Fetch real dashboard statistics from API with optimized caching
   const { data: dashboardStats, isLoading } = useQuery({
-    queryKey: ['/api/dashboard/stats'],
+    queryKey: ['/api/dashboard/stats', user?.id],
     queryFn: async () => {
-      const response = await fetch('/api/dashboard/stats');
+      const response = await fetch('/api/dashboard/stats', {
+        headers: {
+          'x-user-id': user?.id?.toString() || ''
+        }
+      });
       if (!response.ok) throw new Error('Failed to fetch dashboard stats');
       return response.json();
     },
@@ -40,6 +44,7 @@ const Dashboard = React.memo(() => {
     refetchOnWindowFocus: true, // Atualizar quando a janela ganha foco
     refetchOnMount: true, // Atualizar quando o componente é montado
     refetchOnReconnect: true, // Atualizar quando reconecta
+    enabled: !!user?.id, // Só executar se tiver usuário
   });
 
   // Fetch birthday data with shorter cache for real-time updates
@@ -99,7 +104,7 @@ const Dashboard = React.memo(() => {
       console.log('🔍 Dashboard: Relationships data:', data);
       return data;
     },
-    enabled: !!user?.id && user.role === 'missionary',
+    enabled: !!user?.id && user.role.includes('missionary'),
     refetchInterval: 300000, // Refresh every 5 minutes
     staleTime: 4 * 60 * 1000, // 4 minutes
     gcTime: 10 * 60 * 1000, // 15 minutes
@@ -285,7 +290,7 @@ const Dashboard = React.memo(() => {
       console.log('🔍 Dashboard: Church interested data:', data);
       return data;
     },
-    enabled: !!user?.id && (user.role === 'member' || user.role === 'missionary'),
+    enabled: !!user?.id && (user.role.includes('member') || user.role.includes('missionary')),
     refetchInterval: 300000, // Refresh every 5 minutes
     staleTime: 4 * 60 * 1000, // 4 minutes
     gcTime: 10 * 60 * 1000, // 15 minutes
@@ -308,7 +313,7 @@ const Dashboard = React.memo(() => {
       console.log('🔍 Dashboard: User relationships data:', data);
       return data;
     },
-    enabled: !!user?.id && (user.role === 'member' || user.role === 'missionary'),
+    enabled: !!user?.id && (user.role.includes('member') || user.role.includes('missionary')),
     refetchInterval: 300000, // Refresh every 5 minutes
     staleTime: 4 * 60 * 1000, // 4 minutes
     gcTime: 10 * 60 * 1000, // 15 minutes
@@ -1087,7 +1092,7 @@ const Dashboard = React.memo(() => {
 
   const renderQuickActions = () => {
     // Usar as mesmas ações do member para missionary e member
-    const roleForActions = (user?.role === 'missionary' || user?.role === 'member') ? 'member' : user?.role;
+    const roleForActions = (user?.role.includes('missionary') || user?.role.includes('member')) ? 'member' : user?.role;
     const actions = quickActions[roleForActions as keyof typeof quickActions] || [];
     
     return (
@@ -1151,7 +1156,7 @@ const Dashboard = React.memo(() => {
               {renderAdminDashboard()}
             </>
           )}
-          {(user.role === 'missionary' || user.role === 'member') && renderMemberDashboard()}
+          {(user.role.includes('missionary') || user.role.includes('member')) && renderMemberDashboard()}
           {user.role === 'interested' && renderInterestedDashboard()}
 
                       {/* Spiritual Check-in Modal */}

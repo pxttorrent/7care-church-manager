@@ -1,61 +1,78 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Check, ChevronsUpDown, X, UserPlus, BookOpen } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
-
-interface Discipulador {
-  id: number;
-  missionaryId: number;
-  interestedId: number;
-  status: string;
-  assignedAt: string;
-  notes: string;
-  missionaryName: string;
-  missionaryEmail: string;
-  missionaryPhone: string;
-}
+import React, { useState, useEffect, useCallback } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { X, Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface DiscipuladoresManagerProps {
   interestedId: number;
-  currentDiscipuladores: Discipulador[];
-  potentialMissionaries: any[];
-  onDiscipuladoresChange: (discipuladores: Discipulador[]) => void;
+  currentDiscipuladores: any[];
+  onDiscipuladoresChange: (discipuladores: any[]) => void;
 }
 
-export const DiscipuladoresManager: React.FC<DiscipuladoresManagerProps> = React.memo(({
-  interestedId,
-  currentDiscipuladores,
-  potentialMissionaries,
-  onDiscipuladoresChange
-}) => {
-  const [openPopover, setOpenPopover] = useState(false);
+export function DiscipuladoresManager({ 
+  interestedId, 
+  currentDiscipuladores, 
+  onDiscipuladoresChange 
+}: DiscipuladoresManagerProps) {
+  const [potentialMissionaries, setPotentialMissionaries] = useState<any[]>([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [isRemoving, setIsRemoving] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // Memoizar a lista de missionários disponíveis para evitar recálculos desnecessários
-  const availableMissionaries = useMemo(() => {
-    return potentialMissionaries.filter(missionary => 
-      !currentDiscipuladores.some(d => d.missionaryId === missionary.id)
-    );
-  }, [potentialMissionaries, currentDiscipuladores]);
+  // Carregar membros disponíveis
+  useEffect(() => {
+    loadPotentialMissionaries();
+  }, []);
+
+  const loadPotentialMissionaries = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/users');
+      if (!response.ok) {
+        throw new Error('Erro ao carregar usuários');
+      }
+      
+      const users = await response.json();
+      
+      // Filtrar apenas membros/missionários que não são discipuladores atuais
+      const currentIds = currentDiscipuladores.map(d => d.id);
+      const members = users.filter((user: any) => 
+        (user.role.includes('member') || user.role.includes('missionary')) && 
+        !currentIds.includes(user.id)
+      );
+      
+      setPotentialMissionaries(members);
+    } catch (error) {
+      console.error('Erro ao carregar membros:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar a lista de membros",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAddDiscipulador = useCallback(async (missionaryId: number) => {
     setIsAdding(true);
     try {
+      console.log('🔍 Adicionando discipulador via API...');
+      
       const response = await fetch('/api/relationships', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          missionaryId,
           interestedId,
-          notes: 'Discipulador adicionado via interface'
+          missionaryId,
+          status: 'active'
         }),
       });
 
@@ -65,40 +82,42 @@ export const DiscipuladoresManager: React.FC<DiscipuladoresManagerProps> = React
 
       const newRelationship = await response.json();
       
-      // Buscar dados completos do missionário
-      const missionary = potentialMissionaries.find(m => m.id === missionaryId);
-      const newDiscipulador: Discipulador = {
-        id: newRelationship.id,
-        missionaryId: newRelationship.missionaryId,
-        interestedId: newRelationship.interestedId,
-        status: newRelationship.status,
-        assignedAt: newRelationship.assignedAt,
-        notes: newRelationship.notes,
-        missionaryName: missionary?.name || 'Nome não encontrado',
-        missionaryEmail: missionary?.email || '',
-        missionaryPhone: missionary?.phone || ''
-      };
+      // Atualizar lista local
+      const newDiscipulador = potentialMissionaries.find(m => m.id === missionaryId);
+      if (newDiscipulador) {
+        const updatedDiscipuladores = [
+          ...currentDiscipuladores,
+          {
+            id: missionaryId,
+            name: newDiscipulador.name,
+            relationshipId: newRelationship.id
+          }
+        ];
+        onDiscipuladoresChange(updatedDiscipuladores);
+        
+        // Atualizar lista de disponíveis
+        setPotentialMissionaries(prev => 
+          prev.filter(m => m.id !== missionaryId)
+        );
+      }
 
-      const updatedDiscipuladores = [...currentDiscipuladores, newDiscipulador];
-      onDiscipuladoresChange(updatedDiscipuladores);
-      
       toast({
-        title: "Discipulador adicionado",
-        description: `${missionary?.name} foi adicionado como discipulador.`,
+        title: "Sucesso",
+        description: "Discipulador adicionado com sucesso",
       });
 
-      setOpenPopover(false);
+      setShowAddModal(false);
     } catch (error) {
       console.error('Erro ao adicionar discipulador:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível adicionar o discipulador.",
+        description: "Não foi possível adicionar o discipulador",
         variant: "destructive",
       });
     } finally {
       setIsAdding(false);
     }
-  }, [interestedId, currentDiscipuladores, potentialMissionaries, onDiscipuladoresChange, toast]);
+  }, [interestedId, potentialMissionaries, currentDiscipuladores, onDiscipuladoresChange, toast]);
 
   const handleRemoveDiscipulador = useCallback(async (relationshipId: number) => {
     setIsRemoving(relationshipId);
@@ -111,18 +130,24 @@ export const DiscipuladoresManager: React.FC<DiscipuladoresManagerProps> = React
         throw new Error('Erro ao remover discipulador');
       }
 
-      const updatedDiscipuladores = currentDiscipuladores.filter(d => d.id !== relationshipId);
+      // Atualizar lista local
+      const updatedDiscipuladores = currentDiscipuladores.filter(
+        d => d.relationshipId !== relationshipId
+      );
       onDiscipuladoresChange(updatedDiscipuladores);
-      
+
       toast({
-        title: "Discipulador removido",
-        description: "O discipulador foi removido com sucesso.",
+        title: "Sucesso",
+        description: "Discipulador removido com sucesso",
       });
+
+      // Recarregar lista de disponíveis
+      loadPotentialMissionaries();
     } catch (error) {
       console.error('Erro ao remover discipulador:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível remover o discipulador.",
+        description: "Não foi possível remover o discipulador",
         variant: "destructive",
       });
     } finally {
@@ -130,108 +155,109 @@ export const DiscipuladoresManager: React.FC<DiscipuladoresManagerProps> = React
     }
   }, [currentDiscipuladores, onDiscipuladoresChange, toast]);
 
+  if (currentDiscipuladores.length === 0) {
+    return (
+      <div className="flex items-center justify-start py-2">
+        <span className="text-sm text-gray-500">Nenhum discipulador atribuído</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-3">
-      {/* Título e botão de adicionar */}
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-2">
-          <BookOpen className="h-4 w-4 text-blue-500" />
-          <span className="text-sm font-medium text-gray-700">Discipuladores</span>
-        </div>
-        
-        <Popover open={openPopover} onOpenChange={setOpenPopover}>
-          <PopoverTrigger asChild>
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1 justify-start">
+        {currentDiscipuladores.map((discipulador) => (
+          <Badge
+            key={discipulador.id}
+            variant="secondary"
+            className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border-blue-200"
+          >
+            {discipulador.name}
             <Button
               size="sm"
               variant="ghost"
-              className="h-5 w-5 p-0 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full"
-              disabled={isAdding || availableMissionaries.length === 0}
-              title="Adicionar discipulador"
+              className="h-4 w-4 p-0 ml-1 hover:bg-blue-100"
+              onClick={() => handleRemoveDiscipulador(discipulador.relationshipId)}
+              disabled={isRemoving === discipulador.relationshipId}
             >
-              <span className="text-sm font-bold">+</span>
+              {isRemoving === discipulador.relationshipId ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <X className="h-3 w-3" />
+              )}
             </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80 p-0 z-50" side="bottom" align="end">
-            <div className="flex justify-between items-center p-2 border-b">
-              <span className="text-sm font-medium">Adicionar Discipulador</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setOpenPopover(false)}
-                className="h-6 w-6 p-0"
-              >
-                ✕
-              </Button>
-            </div>
-            <Command>
-              <CommandInput placeholder="Digite o nome do membro..." />
-              <CommandList>
-                <CommandEmpty>
-                  {availableMissionaries.length === 0 
-                    ? "Todos os membros já são discipuladores" 
-                    : "Nenhum membro encontrado."
-                  }
-                </CommandEmpty>
-                <CommandGroup>
-                  {availableMissionaries.map((missionary) => (
-                    <CommandItem
-                      key={missionary.id}
-                      value={missionary.name}
-                      onSelect={() => handleAddDiscipulador(missionary.id)}
-                      disabled={isAdding}
-                    >
-                      <Check className="mr-2 h-4 w-4 opacity-0" />
-                      <span className="flex-1">{missionary.name}</span>
-                      {missionary.status !== 'approved' && (
-                        <Badge variant="outline" className="ml-2 text-xs">
-                          {missionary.status}
-                        </Badge>
-                      )}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
+          </Badge>
+        ))}
       </div>
+      
 
-      {/* Lista de discipuladores atuais */}
-      {currentDiscipuladores.length === 0 ? (
-        <div className="text-sm text-gray-500 italic">
-          Nenhum discipulador atribuído
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-1">
-          {currentDiscipuladores.map((discipulador) => (
-            <div
-              key={discipulador.id}
-              className="flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 border border-blue-200 rounded-sm hover:bg-blue-100 transition-colors"
-            >
-              <div className="w-0.5 h-0.5 bg-blue-500 rounded-full"></div>
-              <span className="text-[10px] font-medium text-blue-800" title={discipulador.missionaryName}>
-                {discipulador.missionaryName.split(' ')[0]}
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-3 w-3 p-0 hover:bg-blue-200 hover:text-blue-800"
-                onClick={() => handleRemoveDiscipulador(discipulador.id)}
-                disabled={isRemoving === discipulador.id}
-                title="Remover discipulador"
-              >
-                {isRemoving === discipulador.id ? (
-                  <div className="animate-spin rounded-full h-1.5 w-1.5 border-b-2 border-current" />
-                ) : (
-                  <X className="h-1.5 w-1.5" />
-                )}
+      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+        <DialogContent className="w-[95vw] max-w-[840px] max-h-[85vh] flex flex-col p-0 overflow-hidden">
+          <div className="p-6 pb-0">
+            <DialogHeader>
+              <DialogTitle>Adicionar Discipulador</DialogTitle>
+              <DialogDescription>
+                Selecione um membro para ser o discipulador deste interessado.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+          
+          <div className="flex-1 min-h-0 px-6 py-4">
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                <span className="ml-2">Carregando membros...</span>
+              </div>
+            ) : (
+              <Command className="h-full">
+                <CommandInput 
+                  placeholder="Buscar membros..." 
+                  id="search-members"
+                  name="search-members"
+                  className="border-0 focus:ring-0"
+                />
+                <CommandList className="max-h-[350px] overflow-auto">
+                  <CommandEmpty>Nenhum membro disponível.</CommandEmpty>
+                  <CommandGroup>
+                    {potentialMissionaries.map((member) => (
+                      <CommandItem
+                        key={member.id}
+                        value={member.name}
+                        onSelect={() => handleAddDiscipulador(member.id)}
+                        disabled={isAdding}
+                        className="flex items-center justify-between px-3 py-2 rounded-md hover:bg-accent"
+                      >
+                        <div className="flex items-center space-x-3 min-w-0 flex-1">
+                          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                            <span className="text-sm font-medium text-blue-600">
+                              {member.name.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <div className="font-medium truncate text-sm">{member.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">{member.email}</div>
+                          </div>
+                        </div>
+                        {isAdding && (
+                          <Loader2 className="h-4 w-4 animate-spin flex-shrink-0 ml-2" />
+                        )}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            )}
+          </div>
+
+          <div className="p-6 pt-0">
+            <DialogFooter className="flex justify-end">
+              <Button variant="outline" onClick={() => setShowAddModal(false)}>
+                Cancelar
               </Button>
-            </div>
-          ))}
-        </div>
-      )}
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
-});
-
-DiscipuladoresManager.displayName = 'DiscipuladoresManager';
+}

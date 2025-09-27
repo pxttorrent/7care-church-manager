@@ -2882,236 +2882,139 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Relationships endpoints
-  app.get("/api/relationships", async (req, res) => {
-    try {
-      const { missionaryId, interestedId } = req.query;
-      
-      if (missionaryId) {
-        const relationships = await storage.getRelationshipsByMissionary(parseInt(missionaryId as string));
-        res.json(relationships);
-      } else if (interestedId) {
-        const relationships = await storage.getRelationshipsByInterested(parseInt(interestedId as string));
-        res.json(relationships);
-      } else {
-        const allRelationships = await storage.getAllRelationships();
-        res.json(allRelationships);
-      }
-    } catch (error) {
-      console.error("Get relationships error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
+// ===== RELATIONSHIPS API ENDPOINTS =====
+app.get("/api/relationships", async (req, res) => {
+  try {
+    console.log('🔍 [API] GET /api/relationships - Iniciando...');
+    
+    // Retornar resposta simples primeiro
+    const response = {
+      message: 'API de relacionamentos funcionando',
+      environment: process.env.NODE_ENV,
+      hasDatabaseUrl: !!process.env.DATABASE_URL,
+      timestamp: new Date().toISOString(),
+      relationships: []
+    };
+    
+    console.log('✅ [API] Resposta preparada:', response);
+    res.json(response);
+    
+  } catch (error: any) {
+    console.error('❌ [API] Erro ao buscar relacionamentos:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      details: error.message 
+    });
+  }
+});
 
-  app.get("/api/relationships/missionary/:missionaryId", async (req, res) => {
-    try {
-      const missionaryId = parseInt(req.params.missionaryId);
-      const relationships = await storage.getRelationshipsByMissionary(missionaryId);
-      res.json(relationships);
-    } catch (error) {
-      console.error("Get relationships error:", error);
-      res.status(500).json({ error: "Internal server error" });
+app.post("/api/relationships", async (req, res) => {
+  try {
+    console.log('🔍 [API] POST /api/relationships', req.body);
+    const { interestedId, missionaryId, status = 'active', notes = '' } = req.body;
+    
+    if (!interestedId || !missionaryId) {
+      return res.status(400).json({ error: 'interestedId e missionaryId são obrigatórios' });
     }
-  });
 
-  app.post("/api/relationships", async (req, res) => {
-    try {
-      const { missionaryId, interestedId, notes } = req.body;
-      
-      // Criar o relacionamento
-      const relationship = await storage.createRelationship({
-        missionaryId,
-        interestedId,
-        status: 'active',
-        notes
-      });
-      
-      // Atualizar o role do usuário para missionary se ainda não for
-      try {
-        const missionaryUser = await storage.getUserById(missionaryId);
-        if (missionaryUser && missionaryUser.role !== 'missionary') {
-          console.log(`🔄 Atualizando role do usuário ${missionaryId} de '${missionaryUser.role}' para 'missionary'`);
-          
-          await storage.updateUser(missionaryId, { 
-            role: 'missionary',
-            updatedAt: new Date().toISOString()
-          });
-          
-          console.log(`✅ Role atualizado para 'missionary' para usuário ${missionaryId}`);
-        } else if (missionaryUser) {
-          console.log(`ℹ️ Usuário ${missionaryId} já possui role 'missionary'`);
-        }
-      } catch (roleError) {
-        console.warn(`⚠️ Aviso: Não foi possível atualizar role do usuário:`, roleError);
-        // Não falhar a operação principal por causa da atualização de role
-      }
-      
-      // Verificar se o usuário missionário já tem perfil missionário
-      try {
-        const existingProfile = await storage.getMissionaryProfileByUserId(missionaryId);
-        
-        if (!existingProfile) {
-          // Se não tem perfil missionário, criar um automaticamente
-          console.log(`🔄 Criando perfil missionário automático para usuário ${missionaryId}`);
-          
-          await storage.createMissionaryProfile({
-            userId: missionaryId,
-            notes: `Perfil missionário criado automaticamente ao ser indicado como discipulador para ${interestedId}`,
-            isActive: true,
-            assignedAt: new Date().toISOString()
-            // createdAt: new Date().toISOString() // Propriedade não existe no tipo
-          });
-          
-          console.log(`✅ Perfil missionário criado com sucesso para usuário ${missionaryId}`);
-        } else {
-          console.log(`ℹ️ Usuário ${missionaryId} já possui perfil missionário`);
-        }
-      } catch (profileError) {
-        console.warn(`⚠️ Aviso: Não foi possível criar/verificar perfil missionário:`, profileError);
-        // Não falhar a operação principal por causa do perfil missionário
-      }
-      
-      res.json(relationship);
-    } catch (error) {
-      console.error("Create relationship error:", error);
-      res.status(400).json({ error: "Invalid relationship data" });
-    }
-  });
+    const relationship = await storage.createRelationship({
+      interestedId: parseInt(interestedId),
+      missionaryId: parseInt(missionaryId),
+      status,
+      notes
+    });
 
-  app.delete("/api/relationships/:relationshipId", async (req, res) => {
-    try {
-      const relationshipId = parseInt(req.params.relationshipId);
-      console.log(`🔍 Tentando deletar relacionamento ID: ${relationshipId}`);
-      
-      // Primeiro, buscar o relacionamento para obter o interestedId
-      const relationship = await storage.getRelationshipById(relationshipId);
-      if (!relationship) {
-        console.log(`❌ Relacionamento ${relationshipId} não encontrado`);
-        res.status(404).json({ error: "Relationship not found" });
-        return;
-      }
-      
-      console.log(`📋 Relacionamento encontrado:`, relationship);
-      
-      // Deletar o relacionamento
-      // const success = await storage.deleteRelationship(relationshipId); // Função removida
-      console.log(`✅ Resultado da deleção: disabled`);
-      
-      // Limpar o campo biblicalInstructor do usuário interessado
-      try {
-        console.log(`🧹 Limpando biblicalInstructor para usuário ${relationship.interestedId}`);
-        await storage.updateUser(relationship.interestedId, { biblicalInstructor: null });
-        console.log(`✅ Campo biblicalInstructor limpo para usuário ${relationship.interestedId}`);
-      } catch (updateError) {
-        console.warn(`⚠️ Aviso: Não foi possível limpar biblicalInstructor:`, updateError);
-      }
-      
-      // Verificar se o missionário ainda tem outros relacionamentos ativos
-      try {
-        const remainingRelationships = await storage.getRelationshipsByMissionary(relationship.missionaryId);
-        const activeRelationships = remainingRelationships.filter(rel => rel.status === 'active' || rel.status === null);
-        
-        if (activeRelationships.length === 0) {
-          console.log(`🔄 Missionário ${relationship.missionaryId} não tem mais relacionamentos ativos, revertendo role para 'member'`);
-          
-          await storage.updateUser(relationship.missionaryId, { 
-            role: 'member',
-            updatedAt: new Date().toISOString()
-          });
-          
-          console.log(`✅ Role revertido para 'member' para usuário ${relationship.missionaryId}`);
-        } else {
-          console.log(`ℹ️ Missionário ${relationship.missionaryId} ainda tem ${activeRelationships.length} relacionamentos ativos`);
-        }
-      } catch (roleError) {
-        console.warn(`⚠️ Aviso: Não foi possível verificar/atualizar role do missionário:`, roleError);
-      }
-      
-      // Executar limpeza automática de aprovações órfãs após deletar relacionamento
-      try {
-        const cleanedCount = await executeAutoCleanup();
-        if (cleanedCount > 0) {
-          console.log(`🧹 Limpeza automática executada após deletar relacionamento: ${cleanedCount} aprovações órfãs rejeitadas`);
-        }
-      } catch (cleanupError) {
-        console.warn(`⚠️ Aviso: Limpeza automática falhou após deletar relacionamento:`, cleanupError);
-      }
-      
-      res.json({ success: true, message: "Relationship deleted successfully" });
-    } catch (error) {
-      console.error("Delete relationship error:", error);
-      res.status(500).json({ error: "Internal server error" });
+    console.log('✅ [API] Relacionamento criado:', relationship.id);
+    res.json(relationship);
+  } catch (error: any) {
+    console.error('❌ [API] Erro ao criar relacionamento:', error);
+    if (error.message.includes('Já existe um discipulador ativo')) {
+      res.status(409).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
     }
-  });
+  }
+});
 
-  // Rota para remover relacionamento ativo por interessado
-  app.delete("/api/relationships/active/:interestedId", async (req, res) => {
-    try {
-      const interestedId = parseInt(req.params.interestedId);
-      console.log(`🔍 Tentando remover relacionamento ativo para interessado ID: ${interestedId}`);
-      
-      // Buscar relacionamento ativo para este interessado
-      const relationships = await storage.getRelationshipsByInterested(interestedId);
-      const activeRelationship = relationships.find(rel => rel.status === 'active');
-      
-      if (!activeRelationship) {
-        console.log(`❌ Nenhum relacionamento ativo encontrado para interessado ${interestedId}`);
-        res.status(404).json({ error: "No active relationship found for this interested user" });
-        return;
-      }
-      
-      console.log(`📋 Relacionamento ativo encontrado:`, activeRelationship);
-      
-      // Deletar o relacionamento
-      // const success = await storage.deleteRelationship(activeRelationship.id); // Função removida
-      console.log(`✅ Resultado da deleção: disabled`);
-      
-      // Limpar o campo biblicalInstructor do usuário interessado
-      try {
-        console.log(`🧹 Limpando biblicalInstructor para usuário ${interestedId}`);
-        await storage.updateUser(interestedId, { biblicalInstructor: null });
-        console.log(`✅ Campo biblicalInstructor limpo para usuário ${interestedId}`);
-      } catch (updateError) {
-        console.warn(`⚠️ Aviso: Não foi possível limpar biblicalInstructor:`, updateError);
-      }
-      
-      // Verificar se o missionário ainda tem outros relacionamentos ativos
-      try {
-        const remainingRelationships = await storage.getRelationshipsByMissionary(activeRelationship.missionaryId);
-        const activeRelationships = remainingRelationships.filter(rel => rel.status === 'active' || rel.status === null);
-        
-        if (activeRelationships.length === 0) {
-          console.log(`🔄 Missionário ${activeRelationship.missionaryId} não tem mais relacionamentos ativos, revertendo role para 'member'`);
-          
-          await storage.updateUser(activeRelationship.missionaryId, { 
-            role: 'member',
-            updatedAt: new Date().toISOString()
-          });
-          
-          console.log(`✅ Role revertido para 'member' para usuário ${activeRelationship.missionaryId}`);
-        } else {
-          console.log(`ℹ️ Missionário ${activeRelationship.missionaryId} ainda tem ${activeRelationships.length} relacionamentos ativos`);
-        }
-      } catch (roleError) {
-        console.warn(`⚠️ Aviso: Não foi possível verificar/atualizar role do missionário:`, roleError);
-      }
-      
-      // Executar limpeza automática de aprovações órfãs após remover relacionamento ativo
-      try {
-        const cleanedCount = await executeAutoCleanup();
-        if (cleanedCount > 0) {
-          console.log(`🧹 Limpeza automática executada após remover relacionamento ativo: ${cleanedCount} aprovações órfãs rejeitadas`);
-        }
-      } catch (cleanupError) {
-        console.warn(`⚠️ Aviso: Limpeza automática falhou após remover relacionamento ativo:`, cleanupError);
-      }
-      
-      res.json({ success: true, message: "Active relationship removed successfully" });
-    } catch (error) {
-      console.error("Remove active relationship error:", error);
-      res.status(500).json({ error: "Internal server error" });
+app.delete("/api/relationships/:id", async (req, res) => {
+  try {
+    console.log('🔍 [API] DELETE /api/relationships/', req.params.id);
+    const { id } = req.params;
+    const success = await storage.deleteRelationship(parseInt(id));
+    
+    if (success) {
+      console.log('✅ [API] Relacionamento removido:', id);
+      res.json({ message: 'Relacionamento removido com sucesso' });
+    } else {
+      console.log('❌ [API] Relacionamento não encontrado:', id);
+      res.status(404).json({ error: 'Relacionamento não encontrado' });
     }
-  });
+  } catch (error) {
+    console.error('❌ [API] Erro ao remover relacionamento:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Rota para buscar relacionamentos por interessado
+app.get("/api/relationships/interested/:interestedId", async (req, res) => {
+  try {
+    console.log('🔍 [API] GET /api/relationships/interested/', req.params.interestedId);
+    const interestedId = parseInt(req.params.interestedId);
+    const relationships = await storage.getRelationshipsByInterested(interestedId);
+    console.log('✅ [API] Relacionamentos encontrados para interessado:', relationships.length);
+    res.json(relationships);
+  } catch (error) {
+    console.error('❌ [API] Erro ao buscar relacionamentos por interessado:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Rota para buscar relacionamentos por missionário
+app.get("/api/relationships/missionary/:missionaryId", async (req, res) => {
+  try {
+    console.log('🔍 [API] GET /api/relationships/missionary/', req.params.missionaryId);
+    const missionaryId = parseInt(req.params.missionaryId);
+    const relationships = await storage.getRelationshipsByMissionary(missionaryId);
+    console.log('✅ [API] Relacionamentos encontrados para missionário:', relationships.length);
+    res.json(relationships);
+  } catch (error) {
+    console.error('❌ [API] Erro ao buscar relacionamentos por missionário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+
+
+
+// Rota para remover relacionamento ativo por interessado
+app.delete("/api/relationships/active/:interestedId", async (req, res) => {
+  try {
+    console.log('🔍 [API] DELETE /api/relationships/active/', req.params.interestedId);
+    const interestedId = parseInt(req.params.interestedId);
+    
+    // Buscar relacionamento ativo para este interessado
+    const relationships = await storage.getRelationshipsByInterested(interestedId);
+    const activeRelationship = relationships.find(rel => rel.status === 'active');
+    
+    if (!activeRelationship) {
+      console.log('❌ [API] Nenhum relacionamento ativo encontrado para interessado', interestedId);
+      res.status(404).json({ error: "Nenhum relacionamento ativo encontrado" });
+      return;
+    }
+    
+    const success = await storage.deleteRelationship(activeRelationship.id);
+    
+    if (success) {
+      console.log('✅ [API] Relacionamento ativo removido:', activeRelationship.id);
+      res.json({ message: 'Relacionamento ativo removido com sucesso' });
+    } else {
+      res.status(500).json({ error: 'Erro ao remover relacionamento ativo' });
+    }
+  } catch (error) {
+    console.error('❌ [API] Erro ao remover relacionamento ativo:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
 
   // Discipleship requests endpoints
   app.get("/api/discipleship-requests", async (req, res) => {
@@ -4149,7 +4052,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
       ];
 
-      const createdEvents = [];
+      const createdEvents: any[] = [];
       for (const eventData of eventsToAdd) {
         const newEvent = await storage.createEvent(eventData);
         createdEvents.push(newEvent);
@@ -4662,7 +4565,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`📄 ${lines.length} linhas encontradas na planilha`);
       
       // Processar CSV
-      const events = [];
+      const events: any[] = [];
       let importedCount = 0;
       let errorCount = 0;
       

@@ -237,6 +237,8 @@ export default function MyInterested() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['discipleship-requests'] });
       queryClient.invalidateQueries({ queryKey: ['relationships'] });
+      queryClient.invalidateQueries({ queryKey: ['church-interested'] });
+      queryClient.invalidateQueries({ queryKey: ['my-interested'] });
       toast({
         title: "✅ Solicitação processada!",
         description: "A solicitação foi processada com sucesso.",
@@ -357,29 +359,19 @@ export default function MyInterested() {
   // Função para obter o nome do missionário que está discipulando a partir do relacionamento
   const getMissionaryNameFromRelationship = (interestedId: number) => {
     // Buscar em todos os relacionamentos ativos (não apenas do usuário atual)
-    const activeRelationship = allRelationships.find((rel: Relationship) => 
+    const activeRelationship = allRelationships.find((rel: any) => 
       rel.interestedId === interestedId && rel.status === 'active'
     );
     
     if (activeRelationship) {
-      // Primeiro, tentar encontrar na lista de usuários da igreja
-      const missionary = churchInterested.find((u: any) => u.id === activeRelationship.missionaryId);
-      
-      if (missionary) {
+      // Usar o nome do missionário que já vem do backend
+      if (activeRelationship.missionaryName) {
         // Extrair apenas o primeiro nome
-        const firstName = missionary.name.split(' ')[0];
+        const firstName = activeRelationship.missionaryName.split(' ')[0];
         return firstName;
       }
       
-      // Se não encontrar na igreja, buscar na lista de todos os usuários
-      const missionaryUser = allUsers.find((u: any) => u.id === activeRelationship.missionaryId);
-      if (missionaryUser && missionaryUser.name) {
-        // Extrair apenas o primeiro nome
-        const firstName = missionaryUser.name.split(' ')[0];
-        return firstName;
-      }
-      
-      // Se ainda não encontrou, retornar o fallback
+      // Fallback para casos onde o nome não está disponível
       return `Usuário ${activeRelationship.missionaryId}`;
     }
     
@@ -388,18 +380,17 @@ export default function MyInterested() {
 
   // Função para obter primeiros nomes de TODOS os discipuladores ativos de um interessado
   const getMissionaryFirstNames = (interestedId: number): string[] => {
-    const activeRelationships = allRelationships.filter((rel: Relationship) =>
+    const activeRelationships = allRelationships.filter((rel: any) =>
       rel.interestedId === interestedId && rel.status === 'active'
     );
 
-    const firstNames = activeRelationships.map((rel: Relationship) => {
-      const userMatch =
-        churchInterested.find((u: any) => u.id === rel.missionaryId) ||
-        allUsers.find((u: any) => u.id === rel.missionaryId);
-
-      if (userMatch && userMatch.name) {
-        return String(userMatch.name).split(' ')[0];
+    const firstNames = activeRelationships.map((rel: any) => {
+      // Usar o nome do missionário que já vem do backend
+      if (rel.missionaryName) {
+        return rel.missionaryName.split(' ')[0];
       }
+
+      // Fallback para casos onde o nome não está disponível
       return `Usuário ${rel.missionaryId}`;
     });
 
@@ -441,6 +432,7 @@ export default function MyInterested() {
       // Atualizar o cache
       queryClient.invalidateQueries({ queryKey: ['relationships'] });
       queryClient.invalidateQueries({ queryKey: ['my-interested'] });
+      queryClient.invalidateQueries({ queryKey: ['church-interested'] });
       queryClient.invalidateQueries({ queryKey: ['all-discipleship-requests'] });
 
       toast({
@@ -676,6 +668,7 @@ export default function MyInterested() {
               queryClient.invalidateQueries({ queryKey: ['relationships'] });
               queryClient.invalidateQueries({ queryKey: ['all-relationships'] });
               queryClient.invalidateQueries({ queryKey: ['my-interested'] });
+              queryClient.invalidateQueries({ queryKey: ['church-interested'] });
               queryClient.invalidateQueries({ queryKey: ['all-users'] });
             }}
             className="flex items-center gap-2"

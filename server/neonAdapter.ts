@@ -98,11 +98,6 @@ export interface IStorage {
   getMessagesByConversationId(conversationId: number): Promise<any[]>;
   getMeetingTypes(): Promise<any[]>;
   deleteMissionaryProfile(id: number): Promise<boolean>;
-  getAllRelationships(): Promise<any[]>;
-  getRelationshipById(id: number): Promise<any | null>;
-  createRelationship(data: any): Promise<any>;
-  updateRelationship(id: number, updates: any): Promise<any | null>;
-  deleteRelationship(id: number): Promise<boolean>;
   getAllMeetings(): Promise<any[]>;
   getMeetingById(id: number): Promise<any | null>;
   createMeeting(data: any): Promise<any>;
@@ -2748,31 +2743,6 @@ export class NeonAdapter implements IStorage {
     }
   }
 
-  async getPrayerById(prayerId: number): Promise<any | null> {
-    try {
-      const result = await db.select()
-        .from(schema.prayers)
-        .where(eq(schema.prayers.id, prayerId))
-        .limit(1);
-      
-      return result[0] || null;
-    } catch (error) {
-      console.error('Erro ao buscar oração:', error);
-      return null;
-    }
-  }
-
-  async deletePrayer(prayerId: number): Promise<boolean> {
-    try {
-      await db.delete(schema.prayers)
-        .where(eq(schema.prayers.id, prayerId));
-      
-      return true;
-    } catch (error) {
-      console.error('Erro ao deletar oração:', error);
-      return false;
-    }
-  }
 
   async addPrayerIntercessor(prayerId: number, intercessorId: number): Promise<boolean> {
     try {
@@ -2832,17 +2802,6 @@ export class NeonAdapter implements IStorage {
   // ===== MÉTODOS DE REUNIÕES =====
   // Implementação duplicada removida
 
-  async getMeetingsByStatus(status: string): Promise<any[]> {
-    try {
-      return await db.select()
-        .from(schema.meetings)
-        .where(sql`1=1`) // Removido filtro por status - não existe na tabela
-        .orderBy(desc(schema.meetings.createdAt));
-    } catch (error) {
-      console.error('Erro ao buscar reuniões por status:', error);
-      return [];
-    }
-  }
 
   // Implementação duplicada removida
 
@@ -2864,55 +2823,231 @@ export class NeonAdapter implements IStorage {
   // ===== MÉTODOS DE RELACIONAMENTOS =====
   async getAllRelationships(): Promise<any[]> {
     try {
-      return await db.select()
-        .from(schema.relationships)
-        .orderBy(desc(schema.relationships.createdAt));
+      console.log('🔍 [RELATIONSHIPS] Buscando todos os relacionamentos...');
+      console.log('🔍 [RELATIONSHIPS] Environment:', process.env.NODE_ENV);
+      console.log('🔍 [RELATIONSHIPS] DATABASE_URL exists:', !!process.env.DATABASE_URL);
+      
+      // Teste de conectividade básica
+      try {
+        await sql`SELECT 1 as test`;
+        console.log('✅ [RELATIONSHIPS] Conexão com banco OK');
+      } catch (connError) {
+        console.error('❌ [RELATIONSHIPS] Erro de conectividade:', connError.message);
+        throw new Error(`Erro de conectividade com banco: ${connError.message}`);
+      }
+      
+      // Verificar se a tabela existe primeiro
+      const tableCheck = await sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'relationships'
+        );
+      `;
+      
+      console.log('🔍 [RELATIONSHIPS] Tabela relationships existe?', tableCheck[0]?.exists);
+      
+      if (!tableCheck[0]?.exists) {
+        console.log('⚠️ [RELATIONSHIPS] Tabela relationships não existe, retornando array vazio');
+        return [];
+      }
+      
+      // Buscar relacionamentos com nomes dos usuários
+      const result = await sql`
+        SELECT 
+          r.id,
+          r.interested_id as "interestedId",
+          r.missionary_id as "missionaryId",
+          r.status,
+          r.notes,
+          r.created_at as "createdAt",
+          r.updated_at as "updatedAt",
+          COALESCE(ui.name, 'Usuário não encontrado') as "interestedName",
+          COALESCE(um.name, 'Usuário não encontrado') as "missionaryName"
+        FROM relationships r
+        LEFT JOIN users ui ON r.interested_id = ui.id
+        LEFT JOIN users um ON r.missionary_id = um.id
+        ORDER BY r.created_at DESC
+      `;
+      
+      console.log('✅ [RELATIONSHIPS] Relacionamentos encontrados:', result.length);
+      return result;
     } catch (error) {
-      console.error('Erro ao buscar todos os relacionamentos:', error);
+      console.error('❌ [RELATIONSHIPS] Erro ao buscar relacionamentos:', error);
+      console.error('❌ [RELATIONSHIPS] Tipo do erro:', error.constructor.name);
+      console.error('❌ [RELATIONSHIPS] Mensagem:', error.message);
+      console.error('❌ [RELATIONSHIPS] Stack:', error.stack);
+      
+      // Verificar se é erro de SSL/conectividade
+      if (error.message.includes('SSL') || error.message.includes('certificate') || error.message.includes('connection')) {
+        console.error('🔒 [RELATIONSHIPS] Possível problema de SSL/conectividade');
+      }
+      
+      return [];
+    }
+  }
+
+  async createRelationship(data: {
+    interestedId: number;
+    missionaryId: number;
+    status: string;
+    notes?: string;
+  }): Promise<any> {
+    try {
+      console.log('🔍 [RELATIONSHIPS] Criando relacionamento:', data);
+      
+      // Criar tabela se não existir
+      await this.ensureRelationshipsTable();
+      
+      // Verificar se já existe relacionamento ativo para este interessado
+      const existing = await sql`
+        SELECT id FROM relationships 
+        WHERE interested_id = ${data.interestedId} 
+        AND status = 'active'
+      `;
+      
+      if (existing.length > 0) {
+        console.log('⚠️ [RELATIONSHIPS] Já existe relacionamento ativo para este interessado');
+        throw new Error('Já existe um discipulador ativo para este interessado');
+      }
+      
+      // Criar novo relacionamento
+      const result = await sql`
+        INSERT INTO relationships (interested_id, missionary_id, status, notes, created_at, updated_at)
+        VALUES (${data.interestedId}, ${data.missionaryId}, ${data.status}, ${data.notes || ''}, NOW(), NOW())
+        RETURNING *
+      `;
+      
+      const newRelationship = result[0];
+      console.log('✅ [RELATIONSHIPS] Relacionamento criado com sucesso:', newRelationship.id);
+      
+      // Buscar nomes dos usuários para retornar dados completos
+      const enriched = await sql`
+        SELECT 
+          r.id,
+          r.interested_id as "interestedId",
+          r.missionary_id as "missionaryId",
+          r.status,
+          r.notes,
+          r.created_at as "createdAt",
+          r.updated_at as "updatedAt",
+          ui.name as "interestedName",
+          um.name as "missionaryName"
+        FROM relationships r
+        LEFT JOIN users ui ON r.interested_id = ui.id
+        LEFT JOIN users um ON r.missionary_id = um.id
+        WHERE r.id = ${newRelationship.id}
+      `;
+      
+      return enriched[0];
+    } catch (error) {
+      console.error('❌ [RELATIONSHIPS] Erro ao criar relacionamento:', error);
+      throw error;
+    }
+  }
+
+
+  async getRelationshipsByInterested(interestedId: number): Promise<any[]> {
+    try {
+      console.log('🔍 [RELATIONSHIPS] Buscando relacionamentos para interessado:', interestedId);
+      
+      const result = await sql`
+        SELECT 
+          r.id,
+          r.interested_id as "interestedId",
+          r.missionary_id as "missionaryId",
+          r.status,
+          r.notes,
+          r.created_at as "createdAt",
+          r.updated_at as "updatedAt",
+          ui.name as "interestedName",
+          um.name as "missionaryName"
+        FROM relationships r
+        LEFT JOIN users ui ON r.interested_id = ui.id
+        LEFT JOIN users um ON r.missionary_id = um.id
+        WHERE r.interested_id = ${interestedId}
+        ORDER BY r.created_at DESC
+      `;
+      
+      console.log('✅ [RELATIONSHIPS] Relacionamentos encontrados para interessado:', result.length);
+      return result;
+    } catch (error) {
+      console.error('❌ [RELATIONSHIPS] Erro ao buscar relacionamentos por interessado:', error);
       return [];
     }
   }
 
   async getRelationshipsByMissionary(missionaryId: number): Promise<any[]> {
     try {
-      return await db.select()
-        .from(schema.relationships)
-        .where(eq(schema.relationships.missionaryId, missionaryId))
-        .orderBy(desc(schema.relationships.createdAt));
-    } catch (error) {
-      console.error('Erro ao buscar relacionamentos por missionário:', error);
-      return [];
-    }
-  }
-
-  async getRelationshipsByInterested(interestedId: number): Promise<any[]> {
-    try {
-      return await db.select()
-        .from(schema.relationships)
-        .where(eq(schema.relationships.interestedId, interestedId))
-        .orderBy(desc(schema.relationships.createdAt));
-    } catch (error) {
-      console.error('Erro ao buscar relacionamentos por interessado:', error);
-      return [];
-    }
-  }
-
-  async createRelationship(data: any): Promise<any> {
-    try {
-      const result = await db.insert(schema.relationships)
-        .values({
-          ...data,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        })
-        .returning();
+      console.log('🔍 [RELATIONSHIPS] Buscando relacionamentos para missionário:', missionaryId);
       
-      return result[0];
+      const result = await sql`
+        SELECT 
+          r.id,
+          r.interested_id as "interestedId",
+          r.missionary_id as "missionaryId",
+          r.status,
+          r.notes,
+          r.created_at as "createdAt",
+          r.updated_at as "updatedAt",
+          ui.name as "interestedName",
+          um.name as "missionaryName"
+        FROM relationships r
+        LEFT JOIN users ui ON r.interested_id = ui.id
+        LEFT JOIN users um ON r.missionary_id = um.id
+        WHERE r.missionary_id = ${missionaryId}
+        ORDER BY r.created_at DESC
+      `;
+      
+      console.log('✅ [RELATIONSHIPS] Relacionamentos encontrados para missionário:', result.length);
+      return result;
     } catch (error) {
-      console.error('Erro ao criar relacionamento:', error);
+      console.error('❌ [RELATIONSHIPS] Erro ao buscar relacionamentos por missionário:', error);
+      return [];
+    }
+  }
+
+  private async ensureRelationshipsTable(): Promise<void> {
+    try {
+      console.log('🔍 [RELATIONSHIPS] Verificando se tabela relationships existe...');
+      
+      // Primeiro, verificar se a tabela existe
+      const tableExists = await sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'relationships'
+        );
+      `;
+      
+      console.log('🔍 [RELATIONSHIPS] Tabela existe?', tableExists[0]?.exists);
+      
+      if (!tableExists[0]?.exists) {
+        console.log('🔍 [RELATIONSHIPS] Criando tabela relationships...');
+        await sql`
+          CREATE TABLE relationships (
+            id SERIAL PRIMARY KEY,
+            interested_id INTEGER NOT NULL,
+            missionary_id INTEGER NOT NULL,
+            status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'pending')),
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(interested_id, missionary_id)
+          );
+        `;
+        console.log('✅ [RELATIONSHIPS] Tabela relationships criada com sucesso');
+      } else {
+        console.log('✅ [RELATIONSHIPS] Tabela relationships já existe');
+      }
+    } catch (error) {
+      console.error('❌ [RELATIONSHIPS] Erro ao verificar/criar tabela:', error);
+      console.error('❌ [RELATIONSHIPS] Detalhes do erro:', error.message);
       throw error;
     }
   }
+
+
 
   async getRelationshipById(relationshipId: number): Promise<any | null> {
     try {
@@ -2964,49 +3099,9 @@ export class NeonAdapter implements IStorage {
     }
   }
 
-  // ===== MÉTODOS DE CONVERSAS =====
-  async getConversationsByUserId(userId: number): Promise<any[]> {
-    try {
-      return await db.select()
-        .from(schema.conversations)
-        .where(
-          or(
-            sql`1=1`, // Removido filtro por userAId/userBId - não existem na tabela
-            sql`1=1` // Removido filtro por userAId/userBId - não existem na tabela
-          )
-        )
-        .orderBy(desc(schema.conversations.updatedAt));
-    } catch (error) {
-      console.error('Erro ao buscar conversas do usuário:', error);
-      return [];
-    }
-  }
 
   // Implementação duplicada removida - usando a primeira implementação
 
-  async getMessagesByConversationId(conversationId: number): Promise<any[]> {
-    try {
-      return await db.select()
-        .from(schema.messages)
-        .where(eq(schema.messages.conversationId, conversationId))
-        .orderBy(asc(schema.messages.createdAt));
-    } catch (error) {
-      console.error('Erro ao buscar mensagens da conversa:', error);
-      return [];
-    }
-  }
-
-  // ===== MÉTODOS DE TIPOS DE REUNIÃO =====
-  async getMeetingTypes(): Promise<any[]> {
-    try {
-      return await db.select()
-        .from(schema.meetingTypes)
-        .orderBy(asc(schema.meetingTypes.name));
-    } catch (error) {
-      console.error('Erro ao buscar tipos de reunião:', error);
-      return [];
-    }
-  }
 
   // ===== MÉTODO AUXILIAR PARA CÁLCULO DE PONTOS =====
   private calculateUserPoints(user: any): number {

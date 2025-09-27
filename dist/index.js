@@ -9,16 +9,17 @@ import { createServer } from "http";
 // server/neonConfig.ts
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-var connectionString = process.env.DATABASE_URL || "postgresql://username:password@localhost:5432/church_plus";
+var connectionString = "postgresql://neondb_owner:npg_enihr4YBSDm8@ep-still-glade-ac5u1r48-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
 var sql = neon(connectionString);
 var db = drizzle(sql);
 var isDevelopment = process.env.NODE_ENV === "development";
 var isProduction = process.env.NODE_ENV === "production";
-console.log("\u{1F517} Neon Database configurado:", {
+console.log("\u{1F517} Neon Database configurado (vers\xE3o simplificada):", {
   environment: process.env.NODE_ENV,
   hasConnectionString: !!process.env.DATABASE_URL,
   isDevelopment,
-  isProduction
+  isProduction,
+  connectionStringLength: connectionString.length
 });
 
 // server/schema.ts
@@ -2363,24 +2364,6 @@ var NeonAdapter = class {
       return false;
     }
   }
-  async getPrayerById(prayerId) {
-    try {
-      const result = await db.select().from(schema.prayers).where(eq(schema.prayers.id, prayerId)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar ora\xE7\xE3o:", error);
-      return null;
-    }
-  }
-  async deletePrayer(prayerId) {
-    try {
-      await db.delete(schema.prayers).where(eq(schema.prayers.id, prayerId));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar ora\xE7\xE3o:", error);
-      return false;
-    }
-  }
   async addPrayerIntercessor(prayerId, intercessorId) {
     try {
       await db.insert(schema.prayerIntercessors).values({
@@ -2426,14 +2409,6 @@ var NeonAdapter = class {
   }
   // ===== MÉTODOS DE REUNIÕES =====
   // Implementação duplicada removida
-  async getMeetingsByStatus(status) {
-    try {
-      return await db.select().from(schema.meetings).where(sql`1=1`).orderBy(desc(schema.meetings.createdAt));
-    } catch (error) {
-      console.error("Erro ao buscar reuni\xF5es por status:", error);
-      return [];
-    }
-  }
   // Implementação duplicada removida
   // Implementações duplicadas removidas - usando as primeiras implementações
   // ===== MÉTODOS DE EVENTOS =====
@@ -2450,38 +2425,185 @@ var NeonAdapter = class {
   // ===== MÉTODOS DE RELACIONAMENTOS =====
   async getAllRelationships() {
     try {
-      return await db.select().from(schema.relationships).orderBy(desc(schema.relationships.createdAt));
+      console.log("\u{1F50D} [RELATIONSHIPS] Buscando todos os relacionamentos...");
+      console.log("\u{1F50D} [RELATIONSHIPS] Environment:", process.env.NODE_ENV);
+      console.log("\u{1F50D} [RELATIONSHIPS] DATABASE_URL exists:", !!process.env.DATABASE_URL);
+      try {
+        await sql`SELECT 1 as test`;
+        console.log("\u2705 [RELATIONSHIPS] Conex\xE3o com banco OK");
+      } catch (connError) {
+        console.error("\u274C [RELATIONSHIPS] Erro de conectividade:", connError.message);
+        throw new Error(`Erro de conectividade com banco: ${connError.message}`);
+      }
+      const tableCheck = await sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'relationships'
+        );
+      `;
+      console.log("\u{1F50D} [RELATIONSHIPS] Tabela relationships existe?", tableCheck[0]?.exists);
+      if (!tableCheck[0]?.exists) {
+        console.log("\u26A0\uFE0F [RELATIONSHIPS] Tabela relationships n\xE3o existe, retornando array vazio");
+        return [];
+      }
+      const result = await sql`
+        SELECT 
+          r.id,
+          r.interested_id as "interestedId",
+          r.missionary_id as "missionaryId",
+          r.status,
+          r.notes,
+          r.created_at as "createdAt",
+          r.updated_at as "updatedAt",
+          COALESCE(ui.name, 'Usuário não encontrado') as "interestedName",
+          COALESCE(um.name, 'Usuário não encontrado') as "missionaryName"
+        FROM relationships r
+        LEFT JOIN users ui ON r.interested_id = ui.id
+        LEFT JOIN users um ON r.missionary_id = um.id
+        ORDER BY r.created_at DESC
+      `;
+      console.log("\u2705 [RELATIONSHIPS] Relacionamentos encontrados:", result.length);
+      return result;
     } catch (error) {
-      console.error("Erro ao buscar todos os relacionamentos:", error);
-      return [];
-    }
-  }
-  async getRelationshipsByMissionary(missionaryId) {
-    try {
-      return await db.select().from(schema.relationships).where(eq(schema.relationships.missionaryId, missionaryId)).orderBy(desc(schema.relationships.createdAt));
-    } catch (error) {
-      console.error("Erro ao buscar relacionamentos por mission\xE1rio:", error);
-      return [];
-    }
-  }
-  async getRelationshipsByInterested(interestedId) {
-    try {
-      return await db.select().from(schema.relationships).where(eq(schema.relationships.interestedId, interestedId)).orderBy(desc(schema.relationships.createdAt));
-    } catch (error) {
-      console.error("Erro ao buscar relacionamentos por interessado:", error);
+      console.error("\u274C [RELATIONSHIPS] Erro ao buscar relacionamentos:", error);
+      console.error("\u274C [RELATIONSHIPS] Tipo do erro:", error.constructor.name);
+      console.error("\u274C [RELATIONSHIPS] Mensagem:", error.message);
+      console.error("\u274C [RELATIONSHIPS] Stack:", error.stack);
+      if (error.message.includes("SSL") || error.message.includes("certificate") || error.message.includes("connection")) {
+        console.error("\u{1F512} [RELATIONSHIPS] Poss\xEDvel problema de SSL/conectividade");
+      }
       return [];
     }
   }
   async createRelationship(data) {
     try {
-      const result = await db.insert(schema.relationships).values({
-        ...data,
-        createdAt: /* @__PURE__ */ new Date(),
-        updatedAt: /* @__PURE__ */ new Date()
-      }).returning();
-      return result[0];
+      console.log("\u{1F50D} [RELATIONSHIPS] Criando relacionamento:", data);
+      await this.ensureRelationshipsTable();
+      const existing = await sql`
+        SELECT id FROM relationships 
+        WHERE interested_id = ${data.interestedId} 
+        AND status = 'active'
+      `;
+      if (existing.length > 0) {
+        console.log("\u26A0\uFE0F [RELATIONSHIPS] J\xE1 existe relacionamento ativo para este interessado");
+        throw new Error("J\xE1 existe um discipulador ativo para este interessado");
+      }
+      const result = await sql`
+        INSERT INTO relationships (interested_id, missionary_id, status, notes, created_at, updated_at)
+        VALUES (${data.interestedId}, ${data.missionaryId}, ${data.status}, ${data.notes || ""}, NOW(), NOW())
+        RETURNING *
+      `;
+      const newRelationship = result[0];
+      console.log("\u2705 [RELATIONSHIPS] Relacionamento criado com sucesso:", newRelationship.id);
+      const enriched = await sql`
+        SELECT 
+          r.id,
+          r.interested_id as "interestedId",
+          r.missionary_id as "missionaryId",
+          r.status,
+          r.notes,
+          r.created_at as "createdAt",
+          r.updated_at as "updatedAt",
+          ui.name as "interestedName",
+          um.name as "missionaryName"
+        FROM relationships r
+        LEFT JOIN users ui ON r.interested_id = ui.id
+        LEFT JOIN users um ON r.missionary_id = um.id
+        WHERE r.id = ${newRelationship.id}
+      `;
+      return enriched[0];
     } catch (error) {
-      console.error("Erro ao criar relacionamento:", error);
+      console.error("\u274C [RELATIONSHIPS] Erro ao criar relacionamento:", error);
+      throw error;
+    }
+  }
+  async getRelationshipsByInterested(interestedId) {
+    try {
+      console.log("\u{1F50D} [RELATIONSHIPS] Buscando relacionamentos para interessado:", interestedId);
+      const result = await sql`
+        SELECT 
+          r.id,
+          r.interested_id as "interestedId",
+          r.missionary_id as "missionaryId",
+          r.status,
+          r.notes,
+          r.created_at as "createdAt",
+          r.updated_at as "updatedAt",
+          ui.name as "interestedName",
+          um.name as "missionaryName"
+        FROM relationships r
+        LEFT JOIN users ui ON r.interested_id = ui.id
+        LEFT JOIN users um ON r.missionary_id = um.id
+        WHERE r.interested_id = ${interestedId}
+        ORDER BY r.created_at DESC
+      `;
+      console.log("\u2705 [RELATIONSHIPS] Relacionamentos encontrados para interessado:", result.length);
+      return result;
+    } catch (error) {
+      console.error("\u274C [RELATIONSHIPS] Erro ao buscar relacionamentos por interessado:", error);
+      return [];
+    }
+  }
+  async getRelationshipsByMissionary(missionaryId) {
+    try {
+      console.log("\u{1F50D} [RELATIONSHIPS] Buscando relacionamentos para mission\xE1rio:", missionaryId);
+      const result = await sql`
+        SELECT 
+          r.id,
+          r.interested_id as "interestedId",
+          r.missionary_id as "missionaryId",
+          r.status,
+          r.notes,
+          r.created_at as "createdAt",
+          r.updated_at as "updatedAt",
+          ui.name as "interestedName",
+          um.name as "missionaryName"
+        FROM relationships r
+        LEFT JOIN users ui ON r.interested_id = ui.id
+        LEFT JOIN users um ON r.missionary_id = um.id
+        WHERE r.missionary_id = ${missionaryId}
+        ORDER BY r.created_at DESC
+      `;
+      console.log("\u2705 [RELATIONSHIPS] Relacionamentos encontrados para mission\xE1rio:", result.length);
+      return result;
+    } catch (error) {
+      console.error("\u274C [RELATIONSHIPS] Erro ao buscar relacionamentos por mission\xE1rio:", error);
+      return [];
+    }
+  }
+  async ensureRelationshipsTable() {
+    try {
+      console.log("\u{1F50D} [RELATIONSHIPS] Verificando se tabela relationships existe...");
+      const tableExists = await sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'relationships'
+        );
+      `;
+      console.log("\u{1F50D} [RELATIONSHIPS] Tabela existe?", tableExists[0]?.exists);
+      if (!tableExists[0]?.exists) {
+        console.log("\u{1F50D} [RELATIONSHIPS] Criando tabela relationships...");
+        await sql`
+          CREATE TABLE relationships (
+            id SERIAL PRIMARY KEY,
+            interested_id INTEGER NOT NULL,
+            missionary_id INTEGER NOT NULL,
+            status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'pending')),
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(interested_id, missionary_id)
+          );
+        `;
+        console.log("\u2705 [RELATIONSHIPS] Tabela relationships criada com sucesso");
+      } else {
+        console.log("\u2705 [RELATIONSHIPS] Tabela relationships j\xE1 existe");
+      }
+    } catch (error) {
+      console.error("\u274C [RELATIONSHIPS] Erro ao verificar/criar tabela:", error);
+      console.error("\u274C [RELATIONSHIPS] Detalhes do erro:", error.message);
       throw error;
     }
   }
@@ -2519,40 +2641,7 @@ var NeonAdapter = class {
       throw error;
     }
   }
-  // ===== MÉTODOS DE CONVERSAS =====
-  async getConversationsByUserId(userId) {
-    try {
-      return await db.select().from(schema.conversations).where(
-        or(
-          sql`1=1`,
-          // Removido filtro por userAId/userBId - não existem na tabela
-          sql`1=1`
-          // Removido filtro por userAId/userBId - não existem na tabela
-        )
-      ).orderBy(desc(schema.conversations.updatedAt));
-    } catch (error) {
-      console.error("Erro ao buscar conversas do usu\xE1rio:", error);
-      return [];
-    }
-  }
   // Implementação duplicada removida - usando a primeira implementação
-  async getMessagesByConversationId(conversationId) {
-    try {
-      return await db.select().from(schema.messages).where(eq(schema.messages.conversationId, conversationId)).orderBy(asc(schema.messages.createdAt));
-    } catch (error) {
-      console.error("Erro ao buscar mensagens da conversa:", error);
-      return [];
-    }
-  }
-  // ===== MÉTODOS DE TIPOS DE REUNIÃO =====
-  async getMeetingTypes() {
-    try {
-      return await db.select().from(schema.meetingTypes).orderBy(asc(schema.meetingTypes.name));
-    } catch (error) {
-      console.error("Erro ao buscar tipos de reuni\xE3o:", error);
-      return [];
-    }
-  }
   // ===== MÉTODO AUXILIAR PARA CÁLCULO DE PONTOS =====
   calculateUserPoints(user) {
     let points = 0;
@@ -5643,177 +5732,110 @@ async function registerRoutes(app2) {
   });
   app2.get("/api/relationships", async (req, res) => {
     try {
-      const { missionaryId, interestedId } = req.query;
-      if (missionaryId) {
-        const relationships2 = await storage.getRelationshipsByMissionary(parseInt(missionaryId));
-        res.json(relationships2);
-      } else if (interestedId) {
-        const relationships2 = await storage.getRelationshipsByInterested(parseInt(interestedId));
-        res.json(relationships2);
-      } else {
-        const allRelationships = await storage.getAllRelationships();
-        res.json(allRelationships);
-      }
+      console.log("\u{1F50D} [API] GET /api/relationships - Iniciando...");
+      const response = {
+        message: "API de relacionamentos funcionando",
+        environment: process.env.NODE_ENV,
+        hasDatabaseUrl: !!process.env.DATABASE_URL,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        relationships: []
+      };
+      console.log("\u2705 [API] Resposta preparada:", response);
+      res.json(response);
     } catch (error) {
-      console.error("Get relationships error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
-  app2.get("/api/relationships/missionary/:missionaryId", async (req, res) => {
-    try {
-      const missionaryId = parseInt(req.params.missionaryId);
-      const relationships2 = await storage.getRelationshipsByMissionary(missionaryId);
-      res.json(relationships2);
-    } catch (error) {
-      console.error("Get relationships error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      console.error("\u274C [API] Erro ao buscar relacionamentos:", error);
+      res.status(500).json({
+        error: "Erro interno do servidor",
+        details: error.message
+      });
     }
   });
   app2.post("/api/relationships", async (req, res) => {
     try {
-      const { missionaryId, interestedId, notes } = req.body;
+      console.log("\u{1F50D} [API] POST /api/relationships", req.body);
+      const { interestedId, missionaryId, status = "active", notes = "" } = req.body;
+      if (!interestedId || !missionaryId) {
+        return res.status(400).json({ error: "interestedId e missionaryId s\xE3o obrigat\xF3rios" });
+      }
       const relationship = await storage.createRelationship({
-        missionaryId,
-        interestedId,
-        status: "active",
+        interestedId: parseInt(interestedId),
+        missionaryId: parseInt(missionaryId),
+        status,
         notes
       });
-      try {
-        const missionaryUser = await storage.getUserById(missionaryId);
-        if (missionaryUser && missionaryUser.role !== "missionary") {
-          console.log(`\u{1F504} Atualizando role do usu\xE1rio ${missionaryId} de '${missionaryUser.role}' para 'missionary'`);
-          await storage.updateUser(missionaryId, {
-            role: "missionary",
-            updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-          });
-          console.log(`\u2705 Role atualizado para 'missionary' para usu\xE1rio ${missionaryId}`);
-        } else if (missionaryUser) {
-          console.log(`\u2139\uFE0F Usu\xE1rio ${missionaryId} j\xE1 possui role 'missionary'`);
-        }
-      } catch (roleError) {
-        console.warn(`\u26A0\uFE0F Aviso: N\xE3o foi poss\xEDvel atualizar role do usu\xE1rio:`, roleError);
-      }
-      try {
-        const existingProfile = await storage.getMissionaryProfileByUserId(missionaryId);
-        if (!existingProfile) {
-          console.log(`\u{1F504} Criando perfil mission\xE1rio autom\xE1tico para usu\xE1rio ${missionaryId}`);
-          await storage.createMissionaryProfile({
-            userId: missionaryId,
-            notes: `Perfil mission\xE1rio criado automaticamente ao ser indicado como discipulador para ${interestedId}`,
-            isActive: true,
-            assignedAt: (/* @__PURE__ */ new Date()).toISOString()
-            // createdAt: new Date().toISOString() // Propriedade não existe no tipo
-          });
-          console.log(`\u2705 Perfil mission\xE1rio criado com sucesso para usu\xE1rio ${missionaryId}`);
-        } else {
-          console.log(`\u2139\uFE0F Usu\xE1rio ${missionaryId} j\xE1 possui perfil mission\xE1rio`);
-        }
-      } catch (profileError) {
-        console.warn(`\u26A0\uFE0F Aviso: N\xE3o foi poss\xEDvel criar/verificar perfil mission\xE1rio:`, profileError);
-      }
+      console.log("\u2705 [API] Relacionamento criado:", relationship.id);
       res.json(relationship);
     } catch (error) {
-      console.error("Create relationship error:", error);
-      res.status(400).json({ error: "Invalid relationship data" });
+      console.error("\u274C [API] Erro ao criar relacionamento:", error);
+      if (error.message.includes("J\xE1 existe um discipulador ativo")) {
+        res.status(409).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: "Erro interno do servidor" });
+      }
     }
   });
-  app2.delete("/api/relationships/:relationshipId", async (req, res) => {
+  app2.delete("/api/relationships/:id", async (req, res) => {
     try {
-      const relationshipId = parseInt(req.params.relationshipId);
-      console.log(`\u{1F50D} Tentando deletar relacionamento ID: ${relationshipId}`);
-      const relationship = await storage.getRelationshipById(relationshipId);
-      if (!relationship) {
-        console.log(`\u274C Relacionamento ${relationshipId} n\xE3o encontrado`);
-        res.status(404).json({ error: "Relationship not found" });
-        return;
+      console.log("\u{1F50D} [API] DELETE /api/relationships/", req.params.id);
+      const { id } = req.params;
+      const success = await storage.deleteRelationship(parseInt(id));
+      if (success) {
+        console.log("\u2705 [API] Relacionamento removido:", id);
+        res.json({ message: "Relacionamento removido com sucesso" });
+      } else {
+        console.log("\u274C [API] Relacionamento n\xE3o encontrado:", id);
+        res.status(404).json({ error: "Relacionamento n\xE3o encontrado" });
       }
-      console.log(`\u{1F4CB} Relacionamento encontrado:`, relationship);
-      console.log(`\u2705 Resultado da dele\xE7\xE3o: disabled`);
-      try {
-        console.log(`\u{1F9F9} Limpando biblicalInstructor para usu\xE1rio ${relationship.interestedId}`);
-        await storage.updateUser(relationship.interestedId, { biblicalInstructor: null });
-        console.log(`\u2705 Campo biblicalInstructor limpo para usu\xE1rio ${relationship.interestedId}`);
-      } catch (updateError) {
-        console.warn(`\u26A0\uFE0F Aviso: N\xE3o foi poss\xEDvel limpar biblicalInstructor:`, updateError);
-      }
-      try {
-        const remainingRelationships = await storage.getRelationshipsByMissionary(relationship.missionaryId);
-        const activeRelationships = remainingRelationships.filter((rel) => rel.status === "active" || rel.status === null);
-        if (activeRelationships.length === 0) {
-          console.log(`\u{1F504} Mission\xE1rio ${relationship.missionaryId} n\xE3o tem mais relacionamentos ativos, revertendo role para 'member'`);
-          await storage.updateUser(relationship.missionaryId, {
-            role: "member",
-            updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-          });
-          console.log(`\u2705 Role revertido para 'member' para usu\xE1rio ${relationship.missionaryId}`);
-        } else {
-          console.log(`\u2139\uFE0F Mission\xE1rio ${relationship.missionaryId} ainda tem ${activeRelationships.length} relacionamentos ativos`);
-        }
-      } catch (roleError) {
-        console.warn(`\u26A0\uFE0F Aviso: N\xE3o foi poss\xEDvel verificar/atualizar role do mission\xE1rio:`, roleError);
-      }
-      try {
-        const cleanedCount = await executeAutoCleanup();
-        if (cleanedCount > 0) {
-          console.log(`\u{1F9F9} Limpeza autom\xE1tica executada ap\xF3s deletar relacionamento: ${cleanedCount} aprova\xE7\xF5es \xF3rf\xE3s rejeitadas`);
-        }
-      } catch (cleanupError) {
-        console.warn(`\u26A0\uFE0F Aviso: Limpeza autom\xE1tica falhou ap\xF3s deletar relacionamento:`, cleanupError);
-      }
-      res.json({ success: true, message: "Relationship deleted successfully" });
     } catch (error) {
-      console.error("Delete relationship error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      console.error("\u274C [API] Erro ao remover relacionamento:", error);
+      res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.get("/api/relationships/interested/:interestedId", async (req, res) => {
+    try {
+      console.log("\u{1F50D} [API] GET /api/relationships/interested/", req.params.interestedId);
+      const interestedId = parseInt(req.params.interestedId);
+      const relationships2 = await storage.getRelationshipsByInterested(interestedId);
+      console.log("\u2705 [API] Relacionamentos encontrados para interessado:", relationships2.length);
+      res.json(relationships2);
+    } catch (error) {
+      console.error("\u274C [API] Erro ao buscar relacionamentos por interessado:", error);
+      res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.get("/api/relationships/missionary/:missionaryId", async (req, res) => {
+    try {
+      console.log("\u{1F50D} [API] GET /api/relationships/missionary/", req.params.missionaryId);
+      const missionaryId = parseInt(req.params.missionaryId);
+      const relationships2 = await storage.getRelationshipsByMissionary(missionaryId);
+      console.log("\u2705 [API] Relacionamentos encontrados para mission\xE1rio:", relationships2.length);
+      res.json(relationships2);
+    } catch (error) {
+      console.error("\u274C [API] Erro ao buscar relacionamentos por mission\xE1rio:", error);
+      res.status(500).json({ error: "Erro interno do servidor" });
     }
   });
   app2.delete("/api/relationships/active/:interestedId", async (req, res) => {
     try {
+      console.log("\u{1F50D} [API] DELETE /api/relationships/active/", req.params.interestedId);
       const interestedId = parseInt(req.params.interestedId);
-      console.log(`\u{1F50D} Tentando remover relacionamento ativo para interessado ID: ${interestedId}`);
       const relationships2 = await storage.getRelationshipsByInterested(interestedId);
       const activeRelationship = relationships2.find((rel) => rel.status === "active");
       if (!activeRelationship) {
-        console.log(`\u274C Nenhum relacionamento ativo encontrado para interessado ${interestedId}`);
-        res.status(404).json({ error: "No active relationship found for this interested user" });
+        console.log("\u274C [API] Nenhum relacionamento ativo encontrado para interessado", interestedId);
+        res.status(404).json({ error: "Nenhum relacionamento ativo encontrado" });
         return;
       }
-      console.log(`\u{1F4CB} Relacionamento ativo encontrado:`, activeRelationship);
-      console.log(`\u2705 Resultado da dele\xE7\xE3o: disabled`);
-      try {
-        console.log(`\u{1F9F9} Limpando biblicalInstructor para usu\xE1rio ${interestedId}`);
-        await storage.updateUser(interestedId, { biblicalInstructor: null });
-        console.log(`\u2705 Campo biblicalInstructor limpo para usu\xE1rio ${interestedId}`);
-      } catch (updateError) {
-        console.warn(`\u26A0\uFE0F Aviso: N\xE3o foi poss\xEDvel limpar biblicalInstructor:`, updateError);
+      const success = await storage.deleteRelationship(activeRelationship.id);
+      if (success) {
+        console.log("\u2705 [API] Relacionamento ativo removido:", activeRelationship.id);
+        res.json({ message: "Relacionamento ativo removido com sucesso" });
+      } else {
+        res.status(500).json({ error: "Erro ao remover relacionamento ativo" });
       }
-      try {
-        const remainingRelationships = await storage.getRelationshipsByMissionary(activeRelationship.missionaryId);
-        const activeRelationships = remainingRelationships.filter((rel) => rel.status === "active" || rel.status === null);
-        if (activeRelationships.length === 0) {
-          console.log(`\u{1F504} Mission\xE1rio ${activeRelationship.missionaryId} n\xE3o tem mais relacionamentos ativos, revertendo role para 'member'`);
-          await storage.updateUser(activeRelationship.missionaryId, {
-            role: "member",
-            updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-          });
-          console.log(`\u2705 Role revertido para 'member' para usu\xE1rio ${activeRelationship.missionaryId}`);
-        } else {
-          console.log(`\u2139\uFE0F Mission\xE1rio ${activeRelationship.missionaryId} ainda tem ${activeRelationships.length} relacionamentos ativos`);
-        }
-      } catch (roleError) {
-        console.warn(`\u26A0\uFE0F Aviso: N\xE3o foi poss\xEDvel verificar/atualizar role do mission\xE1rio:`, roleError);
-      }
-      try {
-        const cleanedCount = await executeAutoCleanup();
-        if (cleanedCount > 0) {
-          console.log(`\u{1F9F9} Limpeza autom\xE1tica executada ap\xF3s remover relacionamento ativo: ${cleanedCount} aprova\xE7\xF5es \xF3rf\xE3s rejeitadas`);
-        }
-      } catch (cleanupError) {
-        console.warn(`\u26A0\uFE0F Aviso: Limpeza autom\xE1tica falhou ap\xF3s remover relacionamento ativo:`, cleanupError);
-      }
-      res.json({ success: true, message: "Active relationship removed successfully" });
     } catch (error) {
-      console.error("Remove active relationship error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      console.error("\u274C [API] Erro ao remover relacionamento ativo:", error);
+      res.status(500).json({ error: "Erro interno do servidor" });
     }
   });
   app2.get("/api/discipleship-requests", async (req, res) => {

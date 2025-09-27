@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { 
   Users, MessageSquare, Video, BarChart3, Settings, Clock, 
-  Heart, FileText, UserPlus, Phone, LogOut, User, Bell 
+  Heart, FileText, UserPlus, Phone, LogOut, User, Bell, Vote, Eye
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,8 @@ const Menu = () => {
       { title: 'Videochamadas', icon: Video, path: '/video-calls', color: 'bg-red-500', description: 'Reuniões online' },
       { title: 'Relatórios', icon: BarChart3, path: '/reports', color: 'bg-orange-500', description: 'Análises' },
       { title: 'Agendamentos', icon: Clock, path: '/meetings', color: 'bg-teal-500', description: 'Marcar reuniões' },
+      { title: 'Configurar Nomeações', icon: Vote, path: '/election-config', color: 'bg-indigo-500', description: 'Liderança da igreja' },
+      { title: 'Dashboard Nomeações', icon: Eye, path: '/election-dashboard', color: 'bg-cyan-500', description: 'Acompanhar nomeações' },
       { title: 'Configurações', icon: Settings, path: '/settings', color: 'bg-gray-500', description: 'Sistema' }
     ],
     missionary: [
@@ -44,6 +46,7 @@ const Menu = () => {
       { title: 'Interessados Gerais', icon: UserPlus, path: '/my-interested', color: 'bg-green-500', description: 'Todos os contatos' }
     ],
     member: [
+      { title: 'Nomeações', icon: Vote, path: '/election-voting', color: 'bg-indigo-500', description: 'Nomeação de liderança' },
       { title: 'Videochamadas', icon: Video, path: '/video-calls', color: 'bg-blue-500', description: 'Reuniões online' },
       { title: 'Agendamentos', icon: Clock, path: '/meetings', color: 'bg-teal-500', description: 'Marcar reuniões' },
       { title: 'Configurações', icon: Settings, path: '/settings', color: 'bg-gray-500', description: 'Notificações' }

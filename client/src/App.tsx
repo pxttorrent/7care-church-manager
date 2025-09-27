@@ -29,6 +29,10 @@ const Gamification = lazy(() => import("./pages/Gamification"));
 const Prayers = lazy(() => import("./pages/Prayers"));
 // const TestCalendar = lazy(() => import("./pages/TestCalendar")); // Arquivo removido
 const Contact = lazy(() => import("./pages/Contact"));
+const ElectionConfig = lazy(() => import("./pages/ElectionConfig"));
+const ElectionVoting = lazy(() => import("./pages/ElectionVoting"));
+const ElectionDashboard = lazy(() => import("./pages/ElectionDashboard"));
+const ElectionResults = lazy(() => import("./pages/ElectionResults"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Loading component for lazy loaded pages
@@ -88,6 +92,10 @@ const App = () => {
               <Route path="/reports" element={<Reports />} />
               <Route path="/my-reports" element={<Reports />} />
               <Route path="/contact" element={<Contact />} />
+              <Route path="/election-config" element={<ElectionConfig />} />
+              <Route path="/election-voting" element={<ElectionVoting />} />
+              <Route path="/election-dashboard" element={<ElectionDashboard />} />
+              <Route path="/election-dashboard/:configId" element={<ElectionResults />} />
               {/* <Route path="/test-calendar" element={<TestCalendar />} /> */}
               <Route path="/video-call/:meetingId" element={<VideoCallRoom />} />
               <Route path="*" element={<NotFound />} />

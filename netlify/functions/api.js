@@ -463,6 +463,24 @@ exports.handler = async (event, context) => {
 
     // Rota para estatísticas do dashboard
     if (path === '/api/dashboard/stats' && method === 'GET') {
+      try {
+        // Obter ID do usuário do header (se fornecido)
+        const userId = event.headers['x-user-id'];
+        let userChurch = null;
+        
+        // Se userId fornecido, buscar igreja do usuário
+        if (userId) {
+          const userData = await sql`SELECT church, role FROM users WHERE id = ${userId} LIMIT 1`;
+          if (userData.length > 0) {
+            userChurch = userData[0].church;
+            const userRole = userData[0].role;
+            console.log(`🔍 Dashboard stats para usuário ${userId} (${userRole}) da igreja: ${userChurch}`);
+          }
+        }
+
+        // Se for admin ou não tiver userId, mostrar estatísticas globais
+        if (!userId || !userChurch) {
+          console.log('🔍 Dashboard stats globais (admin ou sem userId)');
       const users = await sql`SELECT COUNT(*) as count FROM users`;
       const events = await sql`SELECT COUNT(*) as count FROM events`;
       const interested = await sql`SELECT COUNT(*) as count FROM users WHERE role = 'interested'`;
@@ -491,6 +509,69 @@ exports.handler = async (event, context) => {
         headers,
         body: JSON.stringify(stats)
       };
+        }
+
+        // Para membros/missionários, filtrar por igreja
+        const users = await sql`SELECT COUNT(*) as count FROM users WHERE church = ${userChurch}`;
+        const events = await sql`SELECT COUNT(*) as count FROM events`;
+        const interested = await sql`SELECT COUNT(*) as count FROM users WHERE role = 'interested' AND church = ${userChurch}`;
+        const members = await sql`SELECT COUNT(*) as count FROM users WHERE role = 'member' AND church = ${userChurch}`;
+        const missionaries = await sql`SELECT COUNT(*) as count FROM users WHERE role = 'missionary' AND church = ${userChurch}`;
+        
+        // Buscar aniversariantes da igreja
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const weekFromNowStr = weekFromNow.toISOString().split('T')[0];
+        
+        const birthdaysToday = await sql`
+          SELECT COUNT(*) as count FROM users 
+          WHERE church = ${userChurch} 
+          AND birth_date IS NOT NULL 
+          AND EXTRACT(MONTH FROM birth_date) = EXTRACT(MONTH FROM NOW())
+          AND EXTRACT(DAY FROM birth_date) = EXTRACT(DAY FROM NOW())
+        `;
+        
+        const birthdaysThisWeek = await sql`
+          SELECT COUNT(*) as count FROM users 
+          WHERE church = ${userChurch} 
+          AND birth_date IS NOT NULL 
+          AND EXTRACT(MONTH FROM birth_date) = EXTRACT(MONTH FROM NOW())
+          AND EXTRACT(DAY FROM birth_date) BETWEEN EXTRACT(DAY FROM NOW()) AND EXTRACT(DAY FROM NOW() + INTERVAL '7 days')
+        `;
+        
+        const stats = {
+          totalUsers: parseInt(users[0].count),
+          totalEvents: parseInt(events[0].count),
+          totalInterested: parseInt(interested[0].count),
+          totalMembers: parseInt(members[0].count),
+          totalAdmins: 0, // Membros não veem admins
+          totalMissionaries: parseInt(missionaries[0].count),
+          pendingApprovals: parseInt(interested[0].count), // Interessados pendentes da igreja
+          thisWeekEvents: 0,
+          thisMonthEvents: 0,
+          birthdaysToday: parseInt(birthdaysToday[0].count),
+          birthdaysThisWeek: parseInt(birthdaysThisWeek[0].count),
+          approvedUsers: parseInt(members[0].count) + parseInt(missionaries[0].count),
+          totalChurches: 1, // Apenas sua igreja
+          userChurch: userChurch // Adicionar igreja do usuário
+        };
+
+        console.log(`📊 Stats da igreja ${userChurch}:`, stats);
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(stats)
+        };
+      } catch (error) {
+        console.error('❌ Dashboard stats error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar estatísticas' })
+        };
+      }
     }
 
     // Rota de teste para diagnosticar o problema
@@ -637,9 +718,20 @@ exports.handler = async (event, context) => {
       try {
         console.log('🔍 Users route hit - buscando usuários do banco');
         
-        // Buscar usuários
-        const users = await sql`SELECT *, extra_data as extraData FROM users ORDER BY name ASC`;
-        console.log(`📊 Usuários carregados: ${users.length}`);
+        // Verificar parâmetros de query
+        const url = new URL(event.rawUrl || `https://example.com${path}`);
+        const role = url.searchParams.get('role');
+        
+        console.log('🔍 Role filter:', role);
+        
+        // Buscar usuários com filtro opcional por role
+        let users;
+        if (role) {
+          users = await sql`SELECT *, extra_data as extraData FROM users WHERE role = ${role} ORDER BY name ASC`;
+        } else {
+          users = await sql`SELECT *, extra_data as extraData FROM users ORDER BY name ASC`;
+        }
+        console.log(`📊 Usuários carregados: ${users.length} (filtro role: ${role || 'nenhum'})`);
         
         // Buscar dados de visitas
         const visitsData = await sql`
@@ -1383,9 +1475,32 @@ exports.handler = async (event, context) => {
           };
         }
 
-        // Buscar usuário por email
-        const users = await sql`SELECT * FROM users WHERE email = ${email} LIMIT 1`;
-        console.log('🔍 Users found:', users.length);
+        // Função para gerar formato nome.ultimonome
+        const generateNameFormat = (email) => {
+          if (!email || email.includes('@')) return null;
+          
+          // Se já é um formato nome.ultimonome, retornar como está
+          if (email.includes('.')) {
+            return email;
+          }
+          
+          return null;
+        };
+
+        // Buscar usuário por email ou por formato nome.ultimonome
+        let users = await sql`SELECT * FROM users WHERE email = ${email} LIMIT 1`;
+        console.log('🔍 Users found by email:', users.length);
+        
+        // Se não encontrou por email, tentar por formato nome.ultimonome
+        if (users.length === 0) {
+          const nameFormat = generateNameFormat(email);
+          if (nameFormat) {
+            console.log('🔍 Trying name format:', nameFormat);
+            // Buscar por email que contenha o formato nome.ultimonome
+            users = await sql`SELECT * FROM users WHERE email LIKE ${`%${nameFormat}@%`} LIMIT 1`;
+            console.log('🔍 Users found by name format:', users.length);
+          }
+        }
         
         if (users.length === 0) {
           return {
@@ -1463,7 +1578,7 @@ exports.handler = async (event, context) => {
           password: password, // Em produção, hash da senha
           role,
           church: church || 'Sistema',
-          is_approved: role === 'admin',
+          is_approved: role.includes('admin'),
           created_at: new Date().toISOString()
         };
 
@@ -1656,15 +1771,40 @@ exports.handler = async (event, context) => {
         
         console.log(`🎂 Mês atual: ${currentMonth + 1}, Dia atual: ${currentDay}`);
         
-        // Buscar usuários com datas de nascimento válidas (TODOS os meses)
-        const users = await sql`
+        // Obter ID do usuário do header (se fornecido)
+        const userId = event.headers['x-user-id'];
+        let userChurch = null;
+        
+        // Se userId fornecido, buscar igreja do usuário
+        if (userId) {
+          const userData = await sql`SELECT church, role FROM users WHERE id = ${userId} LIMIT 1`;
+          if (userData.length > 0) {
+            userChurch = userData[0].church;
+            const userRole = userData[0].role;
+            console.log(`🎂 Aniversários para usuário ${userId} (${userRole}) da igreja: ${userChurch}`);
+          }
+        }
+
+        // Buscar usuários com datas de nascimento válidas (filtrar por igreja se necessário)
+        let users;
+        if (userChurch) {
+          users = await sql`
           SELECT id, name, birth_date, church
           FROM users 
           WHERE birth_date IS NOT NULL 
+            AND church = ${userChurch}
           ORDER BY EXTRACT(MONTH FROM birth_date), EXTRACT(DAY FROM birth_date)
         `;
+        } else {
+          users = await sql`
+            SELECT id, name, birth_date, church
+            FROM users 
+            WHERE birth_date IS NOT NULL 
+            ORDER BY EXTRACT(MONTH FROM birth_date), EXTRACT(DAY FROM birth_date)
+          `;
+        }
         
-        console.log(`🎂 Usuários encontrados: ${users.length}`);
+        console.log(`🎂 Usuários encontrados: ${users.length}${userChurch ? ` da igreja ${userChurch}` : ' (todas as igrejas)'}`);
         
         // Filtrar aniversariantes de hoje
         const birthdaysToday = users.filter(user => {
@@ -1713,12 +1853,14 @@ exports.handler = async (event, context) => {
           thisMonth: birthdaysThisMonth.map(formatBirthdayUser),
           all: users.map(formatBirthdayUser),
           timestamp: new Date().toISOString(),
+          userChurch: userChurch, // Adicionar igreja do usuário
           debug: {
             currentMonth: currentMonth + 1,
             currentDay: currentDay,
             totalUsers: users.length,
             thisMonthCount: birthdaysThisMonth.length,
-            todayCount: birthdaysToday.length
+            todayCount: birthdaysToday.length,
+            filteredByChurch: !!userChurch
           }
         };
         
@@ -1840,7 +1982,7 @@ exports.handler = async (event, context) => {
         let points = 0;
         let breakdown = {};
         
-        if (userData.role === 'admin') {
+        if (userData.role.includes('admin')) {
           points = 1000;
           breakdown = {
             engajamento: 200,
@@ -1852,7 +1994,7 @@ exports.handler = async (event, context) => {
             nomeUnidade: 50,
             temLicao: 50
           };
-        } else if (userData.role === 'missionary') {
+        } else if (userData.role.includes('missionary')) {
           points = 750;
           breakdown = {
             engajamento: 150,
@@ -1863,7 +2005,7 @@ exports.handler = async (event, context) => {
             cargos: 100,
             nomeUnidade: 50
           };
-        } else if (userData.role === 'member') {
+        } else if (userData.role.includes('member')) {
           points = 500;
           breakdown = {
             engajamento: 100,
@@ -2053,64 +2195,337 @@ exports.handler = async (event, context) => {
       }
     }
 
-
-    // Rota para relacionamentos
-    if (path === '/api/relationships' && method === 'GET') {
+    if (path === '/api/churches' && method === 'POST') {
       try {
-        console.log('🔍 Fetching relationships...');
+        const { name, address, phone, email, pastor } = JSON.parse(event.body);
         
-        // Verificar se há parâmetro interestedId na query string
-        const url = new URL(event.rawUrl || `https://example.com${path}`);
-        const interestedId = url.searchParams.get('interestedId');
-        
-        let relationships;
-        
-        if (interestedId) {
-          // Buscar relacionamentos de um interessado específico com dados do missionário
-          console.log('🔍 Fetching relationships for interestedId:', interestedId);
-          relationships = await sql`
-            SELECT 
-              r.id,
-              r.missionary_id,
-              r.interested_id,
-              r.status,
-              r.created_at,
-              r.updated_at,
-              u.name as missionary_name
-            FROM relationships r
-            JOIN users u ON r.missionary_id = u.id
-            WHERE r.interested_id = ${parseInt(interestedId)}
-            ORDER BY r.created_at DESC
-          `;
-        } else {
-          // Buscar todos os relacionamentos
-          relationships = await sql`SELECT * FROM relationships ORDER BY created_at DESC LIMIT 50`;
+        if (!name) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Nome da igreja é obrigatório' })
+          };
         }
+
+        // Verificar se a igreja já existe
+        const existingChurch = await sql`
+          SELECT id FROM churches WHERE name = ${name}
+        `;
+
+        if (existingChurch.length > 0) {
+          return {
+            statusCode: 409,
+            headers,
+            body: JSON.stringify({ error: 'Igreja já existe' })
+          };
+        }
+
+        // Gerar código único para a igreja
+        const baseCode = name.substring(0, 8).toUpperCase().replace(/\s+/g, '');
+        let code = baseCode;
+        let counter = 1;
         
-        console.log('🔍 Relationships found:', relationships.length);
-        
-        // Garantir que todos os relacionamentos tenham dados válidos
-        const safeRelationships = (relationships || []).map(rel => ({
-          id: rel.id || 0,
-          missionaryId: rel.missionary_id || 0,
-          interestedId: rel.interested_id || 0,
-          status: rel.status || 'pending',
-          created_at: rel.created_at || new Date().toISOString(),
-          updated_at: rel.updated_at || new Date().toISOString(),
-          missionaryName: rel.missionary_name || null
-        }));
-        
+        while (true) {
+          const existingCode = await sql`
+            SELECT id FROM churches WHERE code = ${code}
+          `;
+          
+          if (existingCode.length === 0) {
+            break;
+          }
+          
+          code = `${baseCode}${counter}`;
+          counter++;
+        }
+
+        // Criar nova igreja
+        const newChurch = await sql`
+          INSERT INTO churches (name, code, address, phone, email, pastor, created_at, updated_at)
+          VALUES (${name}, ${code}, ${address || ''}, ${phone || ''}, ${email || ''}, ${pastor || ''}, NOW(), NOW())
+          RETURNING *
+        `;
+
         return {
-          statusCode: 200,
+          statusCode: 201,
           headers,
-          body: JSON.stringify(safeRelationships)
+          body: JSON.stringify(newChurch[0])
         };
       } catch (error) {
-        console.error('❌ Relationships error:', error);
+        console.error('❌ Create church error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao criar igreja' })
+        };
+      }
+    }
+
+    // Rota para importar igrejas em massa (do sistema de gestão de dados)
+    if (path === '/api/churches/bulk-import' && method === 'POST') {
+      try {
+        const { churches } = JSON.parse(event.body);
+        
+        if (!Array.isArray(churches) || churches.length === 0) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Lista de igrejas é obrigatória' })
+          };
+        }
+
+        let imported = 0;
+        let skipped = 0;
+        const errors = [];
+
+        for (const churchData of churches) {
+          try {
+            if (!churchData.name || churchData.name.trim() === '') {
+              errors.push('Igreja sem nome ignorada');
+              continue;
+            }
+
+            const churchName = churchData.name.trim();
+
+            // Verificar se a igreja já existe
+            const existingChurch = await sql`
+              SELECT id FROM churches WHERE name = ${churchName}
+            `;
+
+            if (existingChurch.length > 0) {
+              skipped++;
+              continue;
+            }
+
+            // Gerar código único para a igreja
+            const baseCode = churchName.substring(0, 8).toUpperCase().replace(/\s+/g, '');
+            let code = baseCode;
+            let counter = 1;
+            
+            while (true) {
+              const existingCode = await sql`
+                SELECT id FROM churches WHERE code = ${code}
+              `;
+              
+              if (existingCode.length === 0) {
+                break;
+              }
+              
+              code = `${baseCode}${counter}`;
+              counter++;
+            }
+
+            // Criar nova igreja
+            await sql`
+              INSERT INTO churches (name, code, address, phone, email, pastor, created_at, updated_at)
+              VALUES (${churchName}, ${code}, ${churchData.address || ''}, ${churchData.phone || ''}, ${churchData.email || ''}, ${churchData.pastor || ''}, NOW(), NOW())
+            `;
+
+            imported++;
+            console.log(`✅ Igreja importada: ${churchName}`);
+
+          } catch (churchError) {
+            console.error(`❌ Erro ao importar igreja ${churchData.name}:`, churchError);
+            errors.push(`Erro ao importar ${churchData.name}: ${churchError.message}`);
+          }
+        }
+
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify([])
+          body: JSON.stringify({
+            success: true,
+            message: `Importação de igrejas concluída: ${imported} criadas, ${skipped} já existiam`,
+            imported,
+            skipped,
+            errors: errors.slice(0, 10) // Limitar erros
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Bulk import churches error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao importar igrejas' })
+        };
+      }
+    }
+
+
+    // ===== DISCIPLESHIP REQUESTS DELETE ENDPOINT =====
+    if (path.startsWith('/api/discipleship-requests/') && method === 'DELETE') {
+      try {
+        const requestId = path.split('/').pop();
+        console.log('🔍 Deletando solicitação de discipulado:', requestId);
+        
+        if (!requestId) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID da solicitação é obrigatório' })
+          };
+        }
+
+        // Verificar se a tabela existe
+        try {
+          await sql`SELECT 1 FROM discipleship_requests LIMIT 1`;
+        } catch (tableError) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Tabela discipleship_requests não existe' })
+          };
+        }
+
+        // Deletar a solicitação
+        const result = await sql`
+          DELETE FROM discipleship_requests WHERE id = ${parseInt(requestId)}
+        `;
+
+        console.log('✅ Solicitação deletada:', requestId);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, message: 'Solicitação removida com sucesso' })
+        };
+      } catch (error) {
+        console.error('❌ Erro ao deletar solicitação:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao deletar solicitação' })
+        };
+      }
+    }
+
+    // ===== RELATIONSHIPS API ENDPOINTS =====
+    if (path === '/api/relationships' && method === 'GET') {
+      try {
+        console.log('🔍 [NETLIFY] GET /api/relationships');
+        
+        // Verificar se a tabela relationships existe
+        const tableCheck = await sql`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'relationships'
+          );
+        `;
+        
+        if (!tableCheck[0]?.exists) {
+          console.log('⚠️ [NETLIFY] Tabela relationships não existe, retornando array vazio');
+          return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify([])
+          };
+        }
+        
+        // Buscar relacionamentos com nomes dos usuários
+        const relationships = await sql`
+            SELECT 
+              r.id,
+            r.interested_id as "interestedId",
+            r.missionary_id as "missionaryId",
+              r.status,
+            r.notes,
+            r.created_at as "createdAt",
+            r.updated_at as "updatedAt",
+            COALESCE(ui.name, 'Usuário não encontrado') as "interestedName",
+            COALESCE(um.name, 'Usuário não encontrado') as "missionaryName"
+            FROM relationships r
+          LEFT JOIN users ui ON r.interested_id = ui.id
+          LEFT JOIN users um ON r.missionary_id = um.id
+            ORDER BY r.created_at DESC
+          `;
+        
+        console.log('✅ [NETLIFY] Relacionamentos retornados:', relationships.length);
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(relationships)
+        };
+      } catch (error) {
+        console.error('❌ [NETLIFY] Erro ao buscar relacionamentos:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    if (path === '/api/relationships' && method === 'POST') {
+      try {
+        console.log('🔍 [NETLIFY] POST /api/relationships', JSON.parse(event.body));
+        const { interestedId, missionaryId, status = 'active', notes = '' } = JSON.parse(event.body);
+        
+        if (!interestedId || !missionaryId) {
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'interestedId e missionaryId são obrigatórios' })
+          };
+        }
+
+        // Verificar se já existe um relacionamento ativo
+        const existingRelationship = await sql`
+          SELECT id FROM relationships 
+          WHERE interested_id = ${parseInt(interestedId)} 
+          AND status = 'active'
+        `;
+        
+        if (existingRelationship.length > 0) {
+          throw new Error('Já existe um discipulador ativo para este interessado');
+        }
+        
+        // Verificar se o missionário precisa ser promovido
+        const missionaryUser = await sql`
+          SELECT id, role FROM users WHERE id = ${parseInt(missionaryId)}
+        `;
+        
+        if (missionaryUser.length > 0) {
+          const currentRole = missionaryUser[0].role;
+          console.log(`🔍 [NETLIFY] Missionário atual: role = ${currentRole}`);
+          
+          // Se o usuário é apenas 'member', promover para 'member,missionary'
+          if (currentRole === 'member') {
+            console.log(`🚀 [NETLIFY] Promovendo membro ${missionaryId} a missionário`);
+            await sql`
+              UPDATE users 
+              SET role = 'member,missionary', updated_at = NOW() 
+              WHERE id = ${parseInt(missionaryId)}
+            `;
+            console.log(`✅ [NETLIFY] Usuário ${missionaryId} promovido a member,missionary`);
+          }
+        }
+
+        // Criar novo relacionamento
+        const relationship = await sql`
+          INSERT INTO relationships (interested_id, missionary_id, status, notes, created_at, updated_at)
+          VALUES (${parseInt(interestedId)}, ${parseInt(missionaryId)}, ${status}, ${notes}, NOW(), NOW())
+          RETURNING *
+        `;
+
+        console.log('✅ [NETLIFY] Relacionamento criado:', relationship[0].id);
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(relationship[0])
+        };
+      } catch (error) {
+        console.error('❌ [NETLIFY] Erro ao criar relacionamento:', error);
+        if (error.message && error.message.includes('Já existe um discipulador ativo')) {
+        return {
+            statusCode: 409,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: error.message })
+          };
+        }
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
         };
       }
     }
@@ -2172,110 +2587,1431 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Rota para criar relacionamentos
-    if (path === '/api/relationships' && method === 'POST') {
+    // Rota para limpar todos os relacionamentos (temporária para teste)
+    if (path === '/api/relationships/clear-all' && method === 'POST') {
       try {
-        console.log('🤝 Creating relationship...');
-        const body = JSON.parse(event.body || '{}');
-        const { missionaryId, interestedId, status = 'pending' } = body;
+        console.log('🧹 Clearing all relationships...');
         
-        if (!missionaryId || !interestedId) {
+        // Deletar todos os relacionamentos
+        const result = await sql`DELETE FROM relationships`;
+        
+        console.log('✅ All relationships cleared');
+
           return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ 
-              error: 'missionaryId e interestedId são obrigatórios' 
-            })
-          };
-        }
-
-        // Verificar se os usuários existem
-        const missionary = await sql`SELECT id, name FROM users WHERE id = ${missionaryId}`;
-        const interested = await sql`SELECT id, name FROM users WHERE id = ${interestedId}`;
-        
-        if (missionary.length === 0) {
-          return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ 
-              error: 'Missionário não encontrado' 
-            })
-          };
-        }
-        
-        if (interested.length === 0) {
-          return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ 
-              error: 'Interessado não encontrado' 
-            })
-          };
-        }
-
-        // Verificar se já existe um relacionamento entre estes usuários
-        const existingRelationship = await sql`
-          SELECT id FROM relationships 
-          WHERE missionary_id = ${missionaryId} AND interested_id = ${interestedId}
-        `;
-        
-        if (existingRelationship.length > 0) {
-          return {
-            statusCode: 409,
-            headers,
-            body: JSON.stringify({ 
-              error: 'Relacionamento já existe entre estes usuários' 
-            })
-          };
-        }
-
-        // Criar o relacionamento - Admin sempre aprova automaticamente
-        const newRelationship = await sql`
-          INSERT INTO relationships (missionary_id, interested_id, status, created_at, updated_at)
-          VALUES (${missionaryId}, ${interestedId}, 'active', NOW(), NOW())
-          RETURNING id, missionary_id, interested_id, status, created_at, updated_at
-        `;
-
-        // Não alterar o role do usuário - manter como member e usar badge duplo
-        const missionaryUser = await sql`
-          SELECT id, name, role FROM users WHERE id = ${missionaryId}
-        `;
-        
-        if (missionaryUser.length > 0) {
-          console.log(`✅ Relacionamento criado para ${missionaryUser[0].name} (ID: ${missionaryId}) - Role mantido como: ${missionaryUser[0].role}`);
-        }
-
-        console.log('✅ Relationship created:', newRelationship[0]);
-
-        return {
-          statusCode: 201,
-          headers,
-          body: JSON.stringify({
-            success: true,
-            message: 'Relacionamento criado e aprovado automaticamente',
-            relationship: newRelationship[0]
+          statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            success: true, 
+            message: 'Todos os relacionamentos foram limpos com sucesso',
+            deletedCount: result.count || 0
           })
         };
+
       } catch (error) {
-        console.error('❌ Create relationship error:', error);
+        console.error('❌ Error clearing relationships:', error);
+          return {
+          statusCode: 500,
+            headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para limpar todas as solicitações de discipulado (temporária para teste)
+    if (path === '/api/discipleship-requests/clear-all' && method === 'POST') {
+      try {
+        console.log('🧹 Clearing all discipleship requests...');
+        
+        // Deletar todas as solicitações
+        const result = await sql`DELETE FROM discipleship_requests`;
+        
+        console.log('✅ All discipleship requests cleared');
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            success: true, 
+            message: 'Todas as solicitações de discipulado foram limpas com sucesso',
+            deletedCount: result.count || 0
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Error clearing discipleship requests:', error);
         return {
           statusCode: 500,
-          headers,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // ===== ROTAS DE ELEIÇÕES =====
+
+    // Rota para configurar eleição
+    if (path === '/api/elections/config' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        
+        // Criar tabela de configuração se não existir
+        await sql`
+          CREATE TABLE IF NOT EXISTS election_configs (
+            id SERIAL PRIMARY KEY,
+            church_id INTEGER NOT NULL,
+            church_name VARCHAR(255) NOT NULL,
+            voters INTEGER[] NOT NULL,
+            criteria JSONB NOT NULL,
+            positions TEXT[] NOT NULL,
+            status VARCHAR(50) DEFAULT 'draft',
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          )
+        `;
+
+        // Inserir configuração
+        const result = await sql`
+          INSERT INTO election_configs (church_id, church_name, voters, criteria, positions, status)
+          VALUES (${body.churchId}, ${body.churchName}, ${body.voters}, ${JSON.stringify(body.criteria)}, ${body.positions}, ${body.status})
+          RETURNING *
+        `;
+
+        console.log('✅ Configuração de eleição salva:', result[0].id);
+
+          return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(result[0])
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao salvar configuração:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // GET /api/elections/configs - Listar todas as configurações
+    if (path === '/api/elections/configs' && method === 'GET') {
+      try {
+        const configs = await sql`
+          SELECT ec.*, e.status as election_status, e.created_at as election_created_at
+          FROM election_configs ec
+          LEFT JOIN elections e ON ec.id = e.config_id
+          ORDER BY ec.created_at DESC
+        `;
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(configs)
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao buscar configurações:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
+        };
+      }
+    }
+
+    // Rota para buscar configuração de eleição
+    if (path === '/api/elections/config' && method === 'GET') {
+      try {
+        const result = await sql`
+          SELECT * FROM election_configs 
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `;
+
+        if (result.length > 0) {
+          return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(result[0])
+          };
+        } else {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Configuração não encontrada' })
+          };
+        }
+
+      } catch (error) {
+        console.error('❌ Erro ao buscar configuração:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para iniciar eleição
+    if (path === '/api/elections/start' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        
+        // Criar tabelas de eleição se não existirem
+        await sql`
+        CREATE TABLE IF NOT EXISTS elections (
+          id SERIAL PRIMARY KEY,
+          config_id INTEGER NOT NULL,
+          status VARCHAR(50) DEFAULT 'active',
+          current_position INTEGER DEFAULT 0,
+          current_phase VARCHAR(20) DEFAULT 'nomination',
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+        `;
+
+        await sql`
+        DROP TABLE IF EXISTS election_votes
+        `;
+        
+        await sql`
+        CREATE TABLE election_votes (
+          id SERIAL PRIMARY KEY,
+          election_id INTEGER NOT NULL,
+          voter_id INTEGER NOT NULL,
+          position_id VARCHAR(255) NOT NULL,
+          candidate_id INTEGER NOT NULL,
+          vote_type VARCHAR(20) DEFAULT 'nomination',
+          voted_at TIMESTAMP DEFAULT NOW(),
+          UNIQUE(election_id, voter_id, position_id, vote_type)
+        )
+        `;
+
+        await sql`
+        DROP TABLE IF EXISTS election_candidates
+        `;
+        
+        await sql`
+        CREATE TABLE election_candidates (
+          id SERIAL PRIMARY KEY,
+          election_id INTEGER NOT NULL,
+          position_id VARCHAR(255) NOT NULL,
+          candidate_id INTEGER NOT NULL,
+          candidate_name VARCHAR(255) NOT NULL,
+          faithfulness_punctual BOOLEAN DEFAULT false,
+          faithfulness_seasonal BOOLEAN DEFAULT false,
+          faithfulness_recurring BOOLEAN DEFAULT false,
+          attendance_percentage INTEGER DEFAULT 0,
+          months_in_church INTEGER DEFAULT 0,
+          nominations INTEGER DEFAULT 0,
+          votes INTEGER DEFAULT 0,
+          positions_won INTEGER DEFAULT 0,
+          phase VARCHAR(20) DEFAULT 'nomination',
+          is_eliminated BOOLEAN DEFAULT false
+        )
+        `;
+
+        // Buscar configuração - usar configId se fornecido, senão usar a mais recente
+        let config;
+        
+        if (body.configId) {
+          config = await sql`
+            SELECT * FROM election_configs 
+            WHERE id = ${body.configId}
+          `;
+        } else {
+          config = await sql`
+            SELECT * FROM election_configs 
+            ORDER BY created_at DESC 
+            LIMIT 1
+          `;
+        }
+
+        if (config.length === 0) {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Configuração não encontrada' })
+          };
+        }
+
+        // Criar eleição
+        const election = await sql`
+          INSERT INTO elections (config_id, status, current_position)
+          VALUES (${config[0].id}, 'active', 0)
+          RETURNING *
+        `;
+
+        // Buscar candidatos elegíveis para cada posição
+        console.log('🔍 Buscando membros da igreja:', config[0].church_name);
+        const churchMembers = await sql`
+          SELECT id, name, email, church, role, status, created_at, is_tither, is_donor, attendance, extra_data
+          FROM users 
+          WHERE church = ${config[0].church_name} 
+          AND role LIKE '%member%'
+          AND (status = 'approved' OR status = 'pending')
+        `;
+        console.log('👥 Membros encontrados:', churchMembers.length);
+
+        // Otimização: Inserir candidatos em lote para melhor performance
+        const candidatesToInsert = [];
+        
+        for (const position of config[0].positions) {
+          for (const member of churchMembers) {
+            // Verificar critérios de elegibilidade
+            const criteria = config[0].criteria;
+            let eligible = true;
+
+            // Verificar fidelidade nos dízimos e ofertas
+            if (criteria.faithfulness.enabled) {
+              let faithfulnessMet = true;
+              
+              // Pontual: deve ser dizimista
+              if (criteria.faithfulness.punctual && !member.is_tither) {
+                faithfulnessMet = false;
+              }
+              
+              // Sazonal: deve ser doador (ofertas especiais)
+              if (criteria.faithfulness.seasonal && !member.is_donor) {
+                faithfulnessMet = false;
+              }
+              
+              // Recorrente: deve ser tanto dizimista quanto doador
+              if (criteria.faithfulness.recurring && (!member.is_tither || !member.is_donor)) {
+                faithfulnessMet = false;
+              }
+              
+              if (!faithfulnessMet) {
+                eligible = false;
+              }
+            }
+
+            // Verificar presença regular (teveParticipacao)
+            if (criteria.attendance.enabled) {
+              let attendanceMet = true;
+              
+              try {
+                const extraData = typeof member.extra_data === 'string' ? JSON.parse(member.extra_data) : member.extra_data;
+                const teveParticipacao = extraData?.teveParticipacao || '';
+                
+                // Pontual: Deve ter participação recorrente
+                if (criteria.attendance.punctual && !teveParticipacao.includes('Recorrente')) {
+                  attendanceMet = false;
+                }
+                
+                // Sazonal: Deve ter participação sazonal ou recorrente
+                if (criteria.attendance.seasonal && !teveParticipacao.includes('Sazonal') && !teveParticipacao.includes('Recorrente')) {
+                  attendanceMet = false;
+                }
+                
+                // Recorrente: Deve ter participação recorrente
+                if (criteria.attendance.recurring && !teveParticipacao.includes('Recorrente')) {
+                  attendanceMet = false;
+                }
+                
+                // Excluir quem não tem participação
+                if (teveParticipacao.includes('Sem participação')) {
+                  attendanceMet = false;
+                }
+                
+              } catch (error) {
+                console.log('❌ Erro ao processar extra_data:', error);
+                attendanceMet = false;
+              }
+              
+              if (!attendanceMet) {
+                eligible = false;
+              }
+            }
+
+            // Verificar tempo mínimo de igreja
+            if (criteria.churchTime.enabled) {
+              const memberJoinDate = new Date(member.created_at);
+              const currentDate = new Date();
+              const monthsInChurch = (currentDate.getFullYear() - memberJoinDate.getFullYear()) * 12 + 
+                                   (currentDate.getMonth() - memberJoinDate.getMonth());
+              
+              if (monthsInChurch < criteria.churchTime.minimumMonths) {
+                eligible = false;
+              }
+            }
+
+            if (eligible) {
+              const monthsInChurch = criteria.churchTime.enabled ? 
+                (new Date().getFullYear() - new Date(member.created_at).getFullYear()) * 12 + 
+                (new Date().getMonth() - new Date(member.created_at).getMonth()) : 0;
+
+              // Extrair informação de participação
+              let teveParticipacao = '';
+              try {
+                const extraData = typeof member.extra_data === 'string' ? JSON.parse(member.extra_data) : member.extra_data;
+                teveParticipacao = extraData?.teveParticipacao || '';
+              } catch (error) {
+                console.log('❌ Erro ao processar extra_data para candidato:', error);
+              }
+
+              candidatesToInsert.push({
+                election_id: election[0].id,
+                position_id: position,
+                candidate_id: member.id,
+                candidate_name: member.name,
+                faithfulness_punctual: member.is_tither || false,
+                faithfulness_seasonal: member.is_donor || false,
+                faithfulness_recurring: (member.is_tither && member.is_donor) || false,
+                attendance_percentage: member.attendance || 0,
+                months_in_church: monthsInChurch
+              });
+            }
+          }
+        }
+
+        // Inserir candidatos em lote (máximo 100 por vez para evitar timeout)
+        if (candidatesToInsert.length > 0) {
+          const batchSize = 100;
+          for (let i = 0; i < candidatesToInsert.length; i += batchSize) {
+            const batch = candidatesToInsert.slice(i, i + batchSize);
+            const values = batch.map(c => 
+              `(${c.election_id}, '${c.position_id}', ${c.candidate_id}, '${c.candidate_name}', ${c.faithfulness_punctual}, ${c.faithfulness_seasonal}, ${c.faithfulness_recurring}, ${c.attendance_percentage}, ${c.months_in_church}, 0, 'nomination')`
+            ).join(',');
+            
+            await sql.unsafe(`
+              INSERT INTO election_candidates (election_id, position_id, candidate_id, candidate_name, faithfulness_punctual, faithfulness_seasonal, faithfulness_recurring, attendance_percentage, months_in_church, nominations, phase)
+              VALUES ${values}
+            `);
+          }
+          console.log(`✅ ${candidatesToInsert.length} candidatos inseridos em lote`);
+        }
+
+        // Atualizar status da configuração
+        await sql`
+          UPDATE election_configs 
+          SET status = 'active' 
+          WHERE id = ${config[0].id}
+        `;
+
+        console.log('✅ Eleição iniciada:', election[0].id);
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+            electionId: election[0].id,
+            message: 'Nomeação iniciada com sucesso'
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao iniciar eleição:', error);
+        console.error('❌ Stack trace:', error.stack);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             error: 'Erro interno do servidor',
-            details: error.message 
+            details: error.message,
+            stack: error.stack
           })
         };
       }
     }
 
+    // POST /api/elections/auto-nominate - Automação sem autenticação
+    if (path === '/api/elections/auto-nominate' && method === 'POST') {
+      try {
+        const { positionId, candidateId, voterId } = JSON.parse(event.body);
+        
+        if (!positionId || !candidateId || !voterId) {
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'positionId, candidateId e voterId são obrigatórios' })
+          };
+        }
+
+        // Verificar se a eleição está ativa
+        const activeElection = await sql`
+          SELECT e.id, e.config_id, ec.voters
+          FROM elections e
+          JOIN election_configs ec ON e.config_id = ec.id
+          WHERE e.status = 'active'
+          ORDER BY e.created_at DESC
+          LIMIT 1
+        `;
+
+        if (activeElection.length === 0) {
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'Nenhuma eleição ativa encontrada' })
+          };
+        }
+
+        const election = activeElection[0];
+        const voters = election.voters || [];
+
+        // Verificar se o votante está autorizado
+        if (!voters.includes(voterId)) {
+          return {
+            statusCode: 403,
+            body: JSON.stringify({ error: 'Votante não autorizado para esta eleição' })
+          };
+        }
+
+        // Verificar se já votou para esta posição
+        const existingVote = await sql`
+          SELECT id FROM election_votes 
+          WHERE election_id = ${election.id} 
+          AND voter_id = ${voterId} 
+          AND position_id = ${positionId}
+          AND vote_type = 'nomination'
+        `;
+
+        if (existingVote.length > 0) {
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'Votante já indicou para esta posição' })
+          };
+        }
+
+        // Inserir indicação
+        await sql`
+          INSERT INTO election_votes (election_id, voter_id, position_id, candidate_id, vote_type)
+          VALUES (${election.id}, ${voterId}, ${positionId}, ${candidateId}, 'nomination')
+        `;
+
+        // Atualizar contador de indicações
+        await sql`
+          UPDATE election_candidates 
+          SET nominations = nominations + 1
+          WHERE election_id = ${election.id} 
+          AND position_id = ${positionId} 
+          AND candidate_id = ${candidateId}
+        `;
+
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ 
+            success: true, 
+            message: 'Indicação registrada com sucesso' 
+          })
+        };
+
+      } catch (error) {
+        console.error('Erro na automação de indicação:', error);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // POST /api/elections/auto-vote - Automação de votação sem autenticação
+    if (path === '/api/elections/auto-vote' && method === 'POST') {
+      try {
+        const { positionId, candidateId, voterId } = JSON.parse(event.body);
+        
+        if (!positionId || !candidateId || !voterId) {
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'positionId, candidateId e voterId são obrigatórios' })
+          };
+        }
+
+        // Verificar se a eleição está ativa
+        const activeElection = await sql`
+          SELECT e.id, e.config_id, ec.voters
+          FROM elections e
+          JOIN election_configs ec ON e.config_id = ec.id
+          WHERE e.status = 'active'
+          ORDER BY e.created_at DESC
+          LIMIT 1
+        `;
+
+        if (activeElection.length === 0) {
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'Nenhuma eleição ativa encontrada' })
+          };
+        }
+
+        const election = activeElection[0];
+        const voters = election.voters || [];
+
+        // Verificar se o votante está autorizado
+        if (!voters.includes(voterId)) {
+          return {
+            statusCode: 403,
+            body: JSON.stringify({ error: 'Votante não autorizado para esta eleição' })
+          };
+        }
+
+        // Verificar se já votou para esta posição
+        const existingVote = await sql`
+          SELECT id FROM election_votes 
+          WHERE election_id = ${election.id} 
+          AND voter_id = ${voterId} 
+          AND position_id = ${positionId}
+          AND vote_type = 'final'
+        `;
+
+        if (existingVote.length > 0) {
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'Votante já votou para esta posição' })
+          };
+        }
+
+        // Inserir voto
+        await sql`
+          INSERT INTO election_votes (election_id, voter_id, position_id, candidate_id, vote_type)
+          VALUES (${election.id}, ${voterId}, ${positionId}, ${candidateId}, 'final')
+        `;
+
+        // Atualizar contador de votos
+        await sql`
+          UPDATE election_candidates 
+          SET votes = votes + 1
+          WHERE election_id = ${election.id} 
+          AND position_id = ${positionId} 
+          AND candidate_id = ${candidateId}
+        `;
+
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ 
+            success: true, 
+            message: 'Voto registrado com sucesso' 
+          })
+        };
+
+      } catch (error) {
+        console.error('Erro na automação de votação:', error);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // POST /api/elections/nominate - Indicação de candidatos (Fase 1)
+    if (path === '/api/elections/nominate' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { electionId, positionId, candidateId } = body;
+        const voterId = parseInt(event.headers['x-user-id']);
+
+        if (!voterId) {
+          return {
+            statusCode: 401,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Usuário não autenticado' })
+          };
+        }
+
+        // Verificar se o votante já indicou alguém para esta posição
+        const existingNomination = await sql`
+          SELECT id FROM election_votes 
+          WHERE election_id = ${electionId} 
+          AND voter_id = ${voterId} 
+          AND position_id = ${positionId}
+          AND vote_type = 'nomination'
+        `;
+
+        if (existingNomination.length > 0) {
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Você já indicou um candidato para esta posição' })
+          };
+        }
+
+        // Registrar indicação
+        await sql`
+          INSERT INTO election_votes (election_id, voter_id, position_id, candidate_id, vote_type)
+          VALUES (${electionId}, ${voterId}, ${positionId}, ${candidateId}, 'nomination')
+        `;
+
+        // Atualizar contador de indicações do candidato
+        await sql`
+          UPDATE election_candidates 
+          SET nominations = nominations + 1 
+          WHERE election_id = ${electionId} 
+          AND position_id = ${positionId} 
+          AND candidate_id = ${candidateId}
+        `;
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Indicação registrada com sucesso' })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao registrar indicação:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
+        };
+      }
+    }
+
+    // POST /api/elections/vote - Votação final (Fase 3)
+    if (path === '/api/elections/vote' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { electionId, positionId, candidateId } = body;
+        const voterId = parseInt(event.headers['x-user-id']);
+
+        if (!voterId) {
+          return {
+            statusCode: 401,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Usuário não autenticado' })
+          };
+        }
+
+        // Verificar se o votante já votou para esta posição
+        const existingVote = await sql`
+          SELECT id FROM election_votes 
+          WHERE election_id = ${electionId} 
+          AND voter_id = ${voterId} 
+          AND position_id = ${positionId}
+          AND vote_type = 'final'
+        `;
+
+        if (existingVote.length > 0) {
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Você já votou para esta posição' })
+          };
+        }
+
+        // Registrar voto final
+        await sql`
+          INSERT INTO election_votes (election_id, voter_id, position_id, candidate_id, vote_type)
+          VALUES (${electionId}, ${voterId}, ${positionId}, ${candidateId}, 'final')
+        `;
+
+        // Atualizar contador de votos do candidato
+        await sql`
+          UPDATE election_candidates 
+          SET votes = votes + 1 
+          WHERE election_id = ${electionId} 
+          AND position_id = ${positionId} 
+          AND candidate_id = ${candidateId}
+        `;
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Voto registrado com sucesso' })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao registrar voto:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
+        };
+      }
+    }
+
+    // POST /api/elections/advance-phase - Avançar fase (Admin)
+    if (path === '/api/elections/advance-phase' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { electionId, newPhase } = body;
+        const adminId = parseInt(event.headers['x-user-id']);
+
+        if (!adminId) {
+          return {
+            statusCode: 401,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Usuário não autenticado' })
+          };
+        }
+
+        // Verificar se é admin
+        const admin = await sql`
+          SELECT role FROM users WHERE id = ${adminId}
+        `;
+
+        if (!admin[0] || !admin[0].role.includes('admin')) {
+          return {
+            statusCode: 403,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Acesso negado. Apenas administradores podem avançar fases' })
+          };
+        }
+
+        // Atualizar fase da eleição
+        await sql`
+          UPDATE elections 
+          SET current_phase = ${newPhase}, updated_at = NOW()
+          WHERE id = ${electionId}
+        `;
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: `Fase avançada para: ${newPhase}` })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao avançar fase:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
+        };
+      }
+    }
+
+    // PUT /api/elections/config/:id - Editar configuração
+    if (path.startsWith('/api/elections/config/') && method === 'PUT') {
+      try {
+        const configId = parseInt(path.split('/').pop());
+        const body = JSON.parse(event.body || '{}');
+        
+        await sql`
+          UPDATE election_configs 
+          SET 
+            church_id = ${body.churchId},
+            church_name = ${body.churchName},
+            voters = ${JSON.stringify(body.voters)},
+            criteria = ${JSON.stringify(body.criteria)},
+            positions = ${JSON.stringify(body.positions)},
+            status = ${body.status},
+            updated_at = NOW()
+          WHERE id = ${configId}
+        `;
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Configuração atualizada com sucesso' })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao atualizar configuração:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
+        };
+      }
+    }
+
+    // DELETE /api/elections/config/:id - Excluir configuração
+    if (path.startsWith('/api/elections/config/') && method === 'DELETE') {
+      try {
+        const configId = parseInt(path.split('/').pop());
+        
+        // Excluir em ordem para respeitar foreign keys
+        await sql`DELETE FROM election_votes WHERE election_id IN (SELECT id FROM elections WHERE config_id = ${configId})`;
+        await sql`DELETE FROM election_candidates WHERE election_id IN (SELECT id FROM elections WHERE config_id = ${configId})`;
+        await sql`DELETE FROM elections WHERE config_id = ${configId}`;
+        await sql`DELETE FROM election_configs WHERE id = ${configId}`;
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Configuração excluída com sucesso' })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao excluir configuração:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
+        };
+      }
+    }
+
+    // DELETE /api/elections/clear-all - Limpar todas as eleições e configurações
+    if (path === '/api/elections/clear-all' && method === 'DELETE') {
+      try {
+        // Limpar todas as tabelas de eleição (sem autenticação para facilitar testes)
+        await sql`DELETE FROM election_votes`;
+        await sql`DELETE FROM election_candidates`;
+        await sql`DELETE FROM elections`;
+        await sql`DELETE FROM election_configs`;
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Todas as eleições e configurações foram excluídas' })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao limpar eleições:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
+        };
+      }
+    }
+
+    // Rota para buscar status da eleição para votantes
+    if (path === '/api/elections/status' && method === 'GET') {
+      try {
+        const userId = event.headers['x-user-id'];
+        
+        // Buscar eleição ativa
+        const election = await sql`
+          SELECT e.*, ec.voters, ec.positions
+          FROM elections e
+          JOIN election_configs ec ON e.config_id = ec.id
+          WHERE e.status = 'active'
+          ORDER BY e.created_at DESC
+          LIMIT 1
+        `;
+
+        if (election.length === 0) {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Nenhuma eleição ativa' })
+          };
+        }
+
+        // Verificar se o usuário é votante
+        if (!election[0].voters.includes(parseInt(userId))) {
+          return {
+            statusCode: 403,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Usuário não autorizado a votar' })
+          };
+        }
+
+        // Buscar candidatos para a posição atual
+        const currentPosition = election[0].positions[election[0].current_position];
+        const candidates = await sql`
+          SELECT ec.*, u.email, u.church
+          FROM election_candidates ec
+          JOIN users u ON ec.candidate_id = u.id
+          WHERE ec.election_id = ${election[0].id}
+          AND ec.position_id = ${currentPosition}
+        `;
+
+        // Buscar votos já realizados pelo usuário
+        const userVotes = await sql`
+          SELECT position_id, candidate_id
+          FROM election_votes
+          WHERE election_id = ${election[0].id}
+          AND voter_id = ${parseInt(userId)}
+        `;
+
+        const votedPositions = userVotes.length;
+
+        const response = {
+          active: true,
+          currentPosition: election[0].current_position,
+          positions: election[0].positions.map((pos, index) => ({
+            id: pos,
+            name: pos,
+            candidates: candidates.map(c => ({
+              id: c.candidate_id,
+              name: c.candidate_name,
+              email: c.email,
+              church: c.church,
+              faithfulnessPunctual: c.faithfulness_punctual,
+              faithfulnessSeasonal: c.faithfulness_seasonal,
+              faithfulnessRecurring: c.faithfulness_recurring,
+              attendancePercentage: c.attendance_percentage,
+              monthsInChurch: c.months_in_church,
+              eligible: true
+            })),
+            currentVote: userVotes.find(v => v.position_id === pos)?.candidate_id
+          })),
+          totalPositions: election[0].positions.length,
+          votedPositions
+        };
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(response)
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao buscar status:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para registrar voto
+    if (path === '/api/elections/vote' && method === 'POST') {
+      try {
+        const userId = event.headers['x-user-id'];
+        const body = JSON.parse(event.body || '{}');
+        const { positionId, candidateId } = body;
+
+        if (!positionId || !candidateId) {
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'positionId e candidateId são obrigatórios' })
+          };
+        }
+
+        // Buscar eleição ativa
+        const election = await sql`
+          SELECT e.*, ec.voters, ec.positions
+          FROM elections e
+          JOIN election_configs ec ON e.config_id = ec.id
+          WHERE e.status = 'active'
+          ORDER BY e.created_at DESC
+          LIMIT 1
+        `;
+
+        if (election.length === 0) {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Nenhuma eleição ativa' })
+          };
+        }
+
+        // Verificar se o usuário é votante
+        if (!election[0].voters.includes(parseInt(userId))) {
+          return {
+            statusCode: 403,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Usuário não autorizado a votar' })
+          };
+        }
+
+        // Verificar se é a posição atual
+        const currentPosition = election[0].positions[election[0].current_position];
+        if (positionId !== currentPosition) {
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Não é possível votar nesta posição no momento' })
+          };
+        }
+
+        // Registrar voto
+        const vote = await sql`
+          INSERT INTO election_votes (election_id, voter_id, position_id, candidate_id)
+          VALUES (${election[0].id}, ${parseInt(userId)}, ${positionId}, ${candidateId})
+          ON CONFLICT (election_id, voter_id, position_id) 
+          DO UPDATE SET candidate_id = EXCLUDED.candidate_id, voted_at = NOW()
+          RETURNING *
+        `;
+
+        // Atualizar contagem de votos do candidato
+        await sql`
+          UPDATE election_candidates 
+          SET votes = (
+            SELECT COUNT(*) 
+            FROM election_votes 
+            WHERE election_id = ${election[0].id} 
+            AND position_id = ${positionId} 
+            AND candidate_id = ${candidateId}
+          )
+          WHERE election_id = ${election[0].id} 
+          AND position_id = ${positionId} 
+          AND candidate_id = ${candidateId}
+        `;
+
+        console.log('✅ Voto registrado:', vote[0].id);
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ success: true })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao registrar voto:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // GET /api/elections/preview-candidates - Preview de candidatos elegíveis
+    if (path === '/api/elections/preview-candidates' && method === 'GET') {
+      try {
+        const url = new URL(event.rawUrl);
+        const churchId = url.searchParams.get('churchId');
+        const criteria = url.searchParams.get('criteria');
+
+        if (!churchId || !criteria) {
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'churchId e criteria são obrigatórios' })
+          };
+        }
+
+        const criteriaObj = JSON.parse(criteria);
+        
+        // Buscar membros da igreja
+        const churchMembers = await sql`
+          SELECT id, name, email, church, role, status, created_at, is_tither, is_donor, attendance, extra_data
+          FROM users
+          WHERE church = (
+            SELECT name FROM churches WHERE id = ${parseInt(churchId)}
+          )
+          AND (role = 'member' OR role = 'admin' OR role LIKE '%member%' OR role LIKE '%admin%')
+          AND (status = 'approved' OR status = 'pending')
+        `;
+
+        console.log(`🔍 Encontrados ${churchMembers.length} membros na igreja`);
+
+        // Filtrar candidatos baseado nos critérios
+        const eligibleCandidates = [];
+        const now = new Date();
+
+        for (const member of churchMembers) {
+          let isEligible = true;
+          const reasons = [];
+
+          // Critério de Fidelidade
+          if (criteriaObj.faithfulness?.enabled) {
+            const hasFaithfulness = 
+              (criteriaObj.faithfulness.punctual && member.is_tither) ||
+              (criteriaObj.faithfulness.seasonal && member.is_donor) ||
+              (criteriaObj.faithfulness.recurring && member.attendance >= 70);
+            
+            if (!hasFaithfulness) {
+              isEligible = false;
+              reasons.push('Não atende critérios de fidelidade');
+            }
+          }
+
+          // Critério de Presença
+          if (criteriaObj.attendance?.enabled) {
+            let hasAttendance = false;
+            const extraData = member.extra_data || {};
+            
+            if (criteriaObj.attendance.punctual && extraData.teveParticipacao) {
+              hasAttendance = true;
+            }
+            
+            if (!hasAttendance) {
+              isEligible = false;
+              reasons.push('Não atende critérios de presença');
+            }
+          }
+
+          // Critério de Tempo na Igreja
+          if (criteriaObj.churchTime?.enabled) {
+            const memberDate = new Date(member.created_at);
+            const monthsInChurch = (now - memberDate) / (1000 * 60 * 60 * 24 * 30);
+            
+            if (monthsInChurch < criteriaObj.churchTime.minimumMonths) {
+              isEligible = false;
+              reasons.push(`Menos de ${criteriaObj.churchTime.minimumMonths} meses na igreja`);
+            }
+          }
+
+          if (isEligible) {
+            eligibleCandidates.push({
+              id: member.id,
+              name: member.name,
+              email: member.email,
+              church: member.church,
+              role: member.role,
+              status: member.status,
+              isTither: member.is_tither,
+              isDonor: member.is_donor,
+              attendance: member.attendance,
+              monthsInChurch: Math.floor((now - new Date(member.created_at)) / (1000 * 60 * 60 * 24 * 30)),
+              extraData: member.extra_data
+            });
+          }
+        }
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            totalMembers: churchMembers.length,
+            eligibleCandidates: eligibleCandidates.length,
+            candidates: eligibleCandidates
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao buscar candidatos elegíveis:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para dashboard do admin
+    if (path === '/api/elections/dashboard' && method === 'GET') {
+      try {
+        // Buscar eleição ativa
+        const election = await sql`
+          SELECT e.*, ec.voters, ec.positions, ec.church_name
+          FROM elections e
+          JOIN election_configs ec ON e.config_id = ec.id
+          WHERE e.status = 'active'
+          ORDER BY e.created_at DESC
+          LIMIT 1
+        `;
+
+        if (election.length === 0) {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Nenhuma eleição ativa' })
+          };
+        }
+
+        // Buscar estatísticas
+        const totalVoters = election[0].voters.length;
+        const votedVoters = await sql`
+          SELECT COUNT(DISTINCT voter_id) as count
+          FROM election_votes
+          WHERE election_id = ${election[0].id}
+        `;
+
+        // Buscar resultados por posição
+        const positions = [];
+        for (const position of election[0].positions) {
+          const results = await sql`
+            SELECT 
+              ec.candidate_id,
+              ec.candidate_name,
+              ec.nominations,
+              ec.votes,
+              CASE 
+                WHEN SUM(ec.votes) OVER() > 0 
+                THEN (ec.votes::FLOAT / SUM(ec.votes) OVER() * 100)
+                ELSE 0 
+              END as percentage
+            FROM election_candidates ec
+            WHERE ec.election_id = ${election[0].id}
+            AND ec.position_id = ${position}
+            ORDER BY ec.votes DESC, ec.nominations DESC
+          `;
+
+          const winner = results.length > 0 && results[0].votes > 0 ? results[0] : null;
+          const totalNominations = results.reduce((sum, r) => sum + r.nominations, 0);
+
+          positions.push({
+            positionId: position,
+            positionName: position,
+            totalVotes: results.reduce((sum, r) => sum + r.votes, 0),
+            totalNominations: totalNominations,
+            results: results.map(r => ({
+              candidateId: r.candidate_id,
+              candidateName: r.candidate_name,
+              nominations: r.nominations,
+              votes: r.votes,
+              percentage: r.percentage
+            })),
+            winner
+          });
+        }
+
+        const response = {
+          totalVoters,
+          votedVoters: votedVoters[0].count,
+          currentPosition: election[0].current_position,
+          totalPositions: election[0].positions.length,
+          isActive: election[0].status === 'active',
+          positions
+        };
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(response)
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao buscar dashboard:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para avançar para próxima posição
+    if (path === '/api/elections/next-position' && method === 'POST') {
+      try {
+        const election = await sql`
+          SELECT * FROM elections 
+          WHERE status = 'active'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `;
+
+        if (election.length === 0) {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Nenhuma eleição ativa' })
+          };
+        }
+
+        const config = await sql`
+          SELECT * FROM election_configs 
+          WHERE id = ${election[0].config_id}
+        `;
+
+        const nextPosition = election[0].current_position + 1;
+        
+        if (nextPosition >= config[0].positions.length) {
+          // Finalizar eleição
+          await sql`
+            UPDATE elections 
+            SET status = 'completed', updated_at = NOW()
+            WHERE id = ${election[0].id}
+          `;
+
+          await sql`
+            UPDATE election_configs 
+            SET status = 'completed', updated_at = NOW()
+            WHERE id = ${election[0].config_id}
+          `;
+        } else {
+          // Determinar vencedor da posição atual
+          const currentPositionName = config[0].positions[election[0].current_position];
+          
+          // Buscar candidato com mais votos na posição atual
+          const winner = await sql`
+            SELECT candidate_id, candidate_name, votes
+            FROM election_candidates
+            WHERE election_id = ${election[0].id}
+            AND position_id = ${currentPositionName}
+            ORDER BY votes DESC
+            LIMIT 1
+          `;
+
+          if (winner.length > 0) {
+            // Incrementar contador de posições ganhas
+            await sql`
+              UPDATE election_candidates
+              SET positions_won = positions_won + 1
+              WHERE election_id = ${election[0].id}
+              AND candidate_id = ${winner[0].candidate_id}
+            `;
+
+            // Aplicar limite de cargos por pessoa se habilitado
+            if (config[0].criteria.positionLimit.enabled) {
+              const maxPositions = config[0].criteria.positionLimit.maxPositions;
+              
+              // Buscar candidatos que já atingiram o limite
+              const candidatesAtLimit = await sql`
+                SELECT candidate_id
+                FROM election_candidates
+                WHERE election_id = ${election[0].id}
+                AND positions_won >= ${maxPositions}
+              `;
+
+              // Remover candidatos que atingiram o limite das próximas posições
+              for (const candidateAtLimit of candidatesAtLimit) {
+                await sql`
+                  DELETE FROM election_candidates
+                  WHERE election_id = ${election[0].id}
+                  AND candidate_id = ${candidateAtLimit.candidate_id}
+                  AND position_id IN (
+                    SELECT unnest(positions[${election[0].current_position + 1}:])
+                    FROM election_configs
+                    WHERE id = ${election[0].config_id}
+                  )
+                `;
+              }
+            }
+          }
+
+          // Avançar posição
+          await sql`
+            UPDATE elections 
+            SET current_position = ${nextPosition}, updated_at = NOW()
+            WHERE id = ${election[0].id}
+          `;
+        }
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ success: true })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao avançar posição:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+
     // Rota para pedidos de discipulado
     if (path === '/api/discipleship-requests' && method === 'GET') {
       try {
-        const requests = await sql`SELECT * FROM discipleship_requests ORDER BY created_at DESC LIMIT 50`;
+        console.log('🔍 Buscando pedidos de discipulado...');
+        
+        // Verificar se a tabela existe e criar se necessário
+        try {
+          await sql`SELECT 1 FROM discipleship_requests LIMIT 1`;
+        } catch (tableError) {
+          console.log('📋 Criando tabela discipleship_requests...');
+          await sql`
+            CREATE TABLE IF NOT EXISTS discipleship_requests (
+              id SERIAL PRIMARY KEY,
+              interested_id INTEGER NOT NULL,
+              missionary_id INTEGER NOT NULL,
+              status VARCHAR(20) DEFAULT 'pending',
+              message TEXT,
+              admin_notes TEXT,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+          `;
+        }
+        
+        const requests = await sql`
+          SELECT 
+            dr.id,
+            dr.interested_id as "interestedId",
+            dr.missionary_id as "missionaryId",
+            dr.status,
+            dr.notes,
+            dr.created_at as "createdAt",
+            dr.updated_at as "updatedAt",
+            ui.name as "interestedName",
+            ui.email as "interestedEmail",
+            um.name as "missionaryName",
+            um.email as "missionaryEmail"
+          FROM discipleship_requests dr
+          LEFT JOIN users ui ON dr.interested_id = ui.id
+          LEFT JOIN users um ON dr.missionary_id = um.id
+          ORDER BY dr.created_at DESC 
+          LIMIT 50
+        `;
+        
+        console.log(`📊 Encontrados ${requests.length} pedidos de discipulado`);
+        
         return {
           statusCode: 200,
-          headers,
+            headers,
           body: JSON.stringify(requests)
         };
       } catch (error) {
@@ -2284,6 +4020,299 @@ exports.handler = async (event, context) => {
           statusCode: 500,
           headers,
           body: JSON.stringify({ error: 'Erro ao buscar pedidos de discipulado' })
+        };
+      }
+    }
+
+    // Rota para atualizar pedido de discipulado (aprovar/rejeitar)
+    if (path.startsWith('/api/discipleship-requests/') && method === 'PUT') {
+      try {
+        const requestId = path.split('/').pop();
+        const body = JSON.parse(event.body || '{}');
+        const { status, adminNotes, processedBy } = body;
+        
+        console.log('🔍 Atualizando pedido de discipulado:', { requestId, status, adminNotes, processedBy });
+        
+        if (!requestId || !status) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'requestId e status são obrigatórios' })
+          };
+        }
+
+        if (!['approved', 'rejected'].includes(status)) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'status deve ser "approved" ou "rejected"' })
+          };
+        }
+
+        // Verificar se a tabela existe
+        try {
+          await sql`SELECT 1 FROM discipleship_requests LIMIT 1`;
+          console.log('✅ Tabela discipleship_requests existe');
+        } catch (tableError) {
+          console.error('❌ Tabela discipleship_requests não existe:', tableError);
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ error: 'Tabela discipleship_requests não existe' })
+          };
+        }
+
+        // Verificar se o pedido existe
+        const existingRequest = await sql`
+          SELECT * FROM discipleship_requests WHERE id = ${parseInt(requestId)} LIMIT 1
+        `;
+        
+        if (existingRequest.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Pedido de discipulado não encontrado' })
+          };
+        }
+
+        console.log('🔍 Pedido encontrado:', existingRequest[0]);
+        console.log('🔍 Estrutura do pedido:', {
+          id: existingRequest[0].id,
+          interested_id: existingRequest[0].interested_id,
+          missionary_id: existingRequest[0].missionary_id,
+          status: existingRequest[0].status
+        });
+
+        // Atualizar o pedido
+        let updatedRequest;
+        try {
+          updatedRequest = await sql`
+            UPDATE discipleship_requests 
+            SET status = ${status}, 
+                updated_at = NOW()
+            WHERE id = ${parseInt(requestId)}
+            RETURNING *
+          `;
+          console.log('✅ Pedido atualizado:', updatedRequest[0]);
+          console.log('🔍 Status após atualização:', updatedRequest[0].status);
+        } catch (updateError) {
+          console.error('❌ Erro ao atualizar pedido:', updateError);
+          console.error('❌ Detalhes do erro:', {
+            message: updateError.message,
+            code: updateError.code,
+            detail: updateError.detail
+          });
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ 
+              error: 'Erro ao atualizar pedido de discipulado',
+              details: updateError.message,
+              code: updateError.code
+            })
+          };
+        }
+
+        // Se aprovado, criar relacionamento ativo automaticamente
+        if (status === 'approved') {
+          console.log('🔍 ✅ Aprovado - criando relacionamento automaticamente...');
+          
+          try {
+            // Criar relacionamento diretamente sem verificações
+        const newRelationship = await sql`
+              INSERT INTO relationships (interested_id, missionary_id, status, created_at, updated_at, notes)
+              VALUES (${existingRequest[0].interested_id}, ${existingRequest[0].missionary_id}, 'active', NOW(), NOW(), 'Aprovado via solicitação de discipulado')
+              RETURNING *
+            `;
+            console.log('✅ Relacionamento criado automaticamente:', newRelationship[0].id);
+            
+            // Promover membro a missionário automaticamente (mantendo badge de membro)
+            console.log('🔍 Promovendo membro a missionário...');
+            const updateResult = await sql`
+              UPDATE users 
+              SET role = 'member,missionary', updated_at = NOW()
+              WHERE id = ${existingRequest[0].missionary_id} AND role = 'member'
+              RETURNING id, name, role
+            `;
+            
+            if (updateResult.length > 0) {
+              console.log('✅ Membro promovido a missionário:', updateResult[0].name);
+            } else {
+              console.log('ℹ️ Usuário já é missionário ou admin');
+            }
+          } catch (relationshipError) {
+            console.error('❌ Erro ao criar relacionamento automaticamente:', relationshipError.message);
+            // Continuar mesmo se falhar
+          }
+        }
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(updatedRequest[0])
+        };
+      } catch (error) {
+        console.error('❌ Update discipleship request error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao atualizar pedido de discipulado' })
+        };
+      }
+    }
+
+    // Rota para criar pedido de discipulado
+    if (path === '/api/discipleship-requests' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { interestedId, missionaryId, message = '' } = body;
+        
+        console.log('🔍 Criando pedido de discipulado:', { interestedId, missionaryId, message });
+        
+        if (!interestedId || !missionaryId) {
+        return {
+            statusCode: 400,
+          headers,
+            body: JSON.stringify({ error: 'interestedId e missionaryId são obrigatórios' })
+          };
+        }
+
+        // Verificar se os usuários existem e têm os roles corretos
+        const interestedUser = await sql`SELECT id, name, role FROM users WHERE id = ${parseInt(interestedId)} LIMIT 1`;
+        const missionaryUser = await sql`SELECT id, name, role FROM users WHERE id = ${parseInt(missionaryId)} LIMIT 1`;
+        
+        console.log('🔍 Usuário interessado:', interestedUser[0]);
+        console.log('🔍 Usuário missionário:', missionaryUser[0]);
+        
+        if (interestedUser.length === 0) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Usuário interessado não encontrado' })
+          };
+        }
+        
+        if (missionaryUser.length === 0) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Usuário missionário não encontrado' })
+          };
+        }
+        
+        if (interestedUser[0].role !== 'interested') {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Usuário interessado deve ter role "interested"' })
+          };
+        }
+        
+        const missionaryRole = missionaryUser[0].role;
+        if (!missionaryRole.includes('member') && !missionaryRole.includes('missionary') && !missionaryRole.includes('admin')) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Usuário missionário deve ter role "member", "missionary" ou "admin"' })
+          };
+        }
+
+        // Verificar se já existe um pedido pendente
+        const existingRequest = await sql`
+          SELECT id FROM discipleship_requests 
+          WHERE interested_id = ${parseInt(interestedId)} 
+          AND missionary_id = ${parseInt(missionaryId)} 
+          AND status = 'pending'
+          LIMIT 1
+        `;
+        
+        if (existingRequest.length > 0) {
+          return {
+            statusCode: 409,
+            headers,
+            body: JSON.stringify({ error: 'Já existe um pedido de discipulado pendente entre estes usuários' })
+          };
+        }
+
+        // Verificar se a tabela existe e criar se necessário
+        try {
+          await sql`SELECT 1 FROM discipleship_requests LIMIT 1`;
+          console.log('✅ Tabela discipleship_requests existe e é acessível');
+        } catch (tableError) {
+          console.log('📋 Criando tabela discipleship_requests...');
+          try {
+            await sql`
+              CREATE TABLE IF NOT EXISTS discipleship_requests (
+                id SERIAL PRIMARY KEY,
+                interested_id INTEGER NOT NULL,
+                missionary_id INTEGER NOT NULL,
+                status VARCHAR(20) DEFAULT 'pending',
+                admin_notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+              )
+            `;
+            console.log('✅ Tabela discipleship_requests criada com sucesso');
+          } catch (createError) {
+            console.error('❌ Erro ao criar tabela discipleship_requests:', createError);
+            return {
+              statusCode: 500,
+              headers,
+              body: JSON.stringify({ error: `Erro ao criar tabela: ${createError.message}` })
+            };
+          }
+        }
+
+        // Criar novo pedido
+        console.log('🔍 Tentando criar pedido de discipulado...');
+        console.log('🔍 Dados para inserção:', {
+          interestedId: parseInt(interestedId),
+          missionaryId: parseInt(missionaryId),
+          message: message
+        });
+        
+        let newRequest;
+        try {
+          // Inserção sem coluna message
+          console.log('🔍 Criando pedido de discipulado...');
+          newRequest = await sql`
+            INSERT INTO discipleship_requests (interested_id, missionary_id)
+            VALUES (${parseInt(interestedId)}, ${parseInt(missionaryId)})
+            RETURNING id, interested_id, missionary_id, status, created_at
+          `;
+          console.log('✅ Pedido criado com sucesso:', newRequest[0]);
+        } catch (insertError) {
+          console.error('❌ Erro ao inserir pedido:', insertError);
+          console.error('❌ Detalhes do erro:', {
+            message: insertError.message,
+            code: insertError.code,
+            detail: insertError.detail,
+            stack: insertError.stack
+          });
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ 
+              error: 'Erro ao criar pedido de discipulado',
+              details: insertError.message,
+              code: insertError.code
+            })
+          };
+        }
+        
+        console.log('✅ Pedido de discipulado criado:', newRequest[0].id);
+        
+        return {
+          statusCode: 201,
+          headers,
+          body: JSON.stringify(newRequest[0])
+        };
+      } catch (error) {
+        console.error('❌ Create discipleship request error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao criar pedido de discipulado' })
         };
       }
     }
@@ -2327,6 +4356,73 @@ exports.handler = async (event, context) => {
     }
 
     // Rota para orações
+    if (path === '/api/prayers' && method === 'GET') {
+      try {
+        // Obter parâmetros da query string
+        const queryString = event.queryStringParameters || {};
+        const userId = queryString.userId;
+        const userRole = queryString.userRole;
+        const userChurch = queryString.userChurch;
+        
+        console.log(`🔍 Buscando orações para usuário ${userId} (${userRole}) da igreja ${userChurch}`);
+        
+        // Verificar se a tabela existe e criar se necessário
+        try {
+          await sql`SELECT 1 FROM prayers LIMIT 1`;
+        } catch (tableError) {
+          console.log('📋 Criando tabela prayers...');
+          await sql`
+            CREATE TABLE IF NOT EXISTS prayers (
+              id SERIAL PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              title VARCHAR(255) NOT NULL,
+              description TEXT,
+              status VARCHAR(20) DEFAULT 'active',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+          `;
+        }
+        
+        // Buscar orações da igreja do usuário
+        let prayers;
+        if (userChurch) {
+          prayers = await sql`
+            SELECT p.*, u.name as requester_name, u.church
+            FROM prayers p
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE u.church = ${userChurch}
+            ORDER BY p.created_at DESC
+            LIMIT 50
+          `;
+        } else {
+          prayers = await sql`
+            SELECT p.*, u.name as requester_name, u.church
+            FROM prayers p
+            LEFT JOIN users u ON p.user_id = u.id
+            ORDER BY p.created_at DESC
+            LIMIT 50
+          `;
+        }
+        
+        console.log(`📊 Encontradas ${prayers.length} orações`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(prayers)
+        };
+      } catch (error) {
+        console.error('❌ Prayers error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar orações' })
+        };
+      }
+    }
+
+    // Rota para oração específica
     if (path.startsWith('/api/prayers/') && method === 'GET') {
       try {
         const prayerId = path.split('/')[3];
@@ -2597,7 +4693,42 @@ exports.handler = async (event, context) => {
     // Rota para meu interessados
     if (path === '/api/my-interested' && method === 'GET') {
       try {
-        const interested = await sql`SELECT * FROM users WHERE role = 'interested' ORDER BY created_at DESC LIMIT 50`;
+        // Obter ID do usuário do header
+        const userId = event.headers['x-user-id'];
+        
+        if (!userId) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID do usuário é obrigatório' })
+          };
+        }
+
+        // Buscar dados do usuário para obter a igreja
+        const userData = await sql`SELECT church FROM users WHERE id = ${userId} LIMIT 1`;
+        
+        if (userData.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Usuário não encontrado' })
+          };
+        }
+
+        const userChurch = userData[0].church;
+        console.log(`🔍 Buscando interessados da igreja: ${userChurch}`);
+
+        // Buscar interessados da mesma igreja
+        const interested = await sql`
+          SELECT * FROM users 
+          WHERE role = 'interested' 
+          AND church = ${userChurch}
+          ORDER BY created_at DESC 
+          LIMIT 50
+        `;
+        
+        console.log(`📊 Encontrados ${interested.length} interessados da igreja ${userChurch}`);
+        
         return {
           statusCode: 200,
           headers,
@@ -2738,10 +4869,24 @@ exports.handler = async (event, context) => {
         updateFields.push('updated_at = NOW()');
         
         // Executar atualização
-        const query = `UPDATE users SET ${updateFields.join(', ')} WHERE id = $${updateValues.length + 1}`;
+        console.log('🔍 Campos para atualizar:', updateFields);
+        console.log('🔍 Valores:', updateValues);
+        
+        let result;
+        if (updateFields.length > 0) {
+          // Adicionar userId aos valores
         updateValues.push(userId);
         
-        await sql.unsafe(query, updateValues);
+          // Construir query com placeholders corretos
+          const query = `UPDATE users SET ${updateFields.join(', ')} WHERE id = $${updateValues.length}`;
+          console.log('🔍 Query SQL:', query);
+          console.log('🔍 Valores finais:', updateValues);
+          
+          result = await sql.unsafe(query, updateValues);
+          console.log('🔍 Resultado da atualização:', result);
+        } else {
+          console.log('ℹ️ Nenhum campo para atualizar');
+        }
         
         console.log(`✅ Usuário ${userId} atualizado com sucesso`);
         
@@ -3330,9 +5475,25 @@ exports.handler = async (event, context) => {
         let errors = 0;
         const errorDetails = [];
         
-        // Processar cada usuário
-        for (const userData of users) {
+        // Processar usuários em lotes para evitar timeout
+        const batchSize = 5; // Reduzir ainda mais o tamanho do lote
+        let processedCount = 0;
+        const startTime = Date.now();
+        const maxExecutionTime = 25000; // 25 segundos máximo
+        
+        for (let i = 0; i < users.length; i += batchSize) {
+          // Verificar timeout
+          if (Date.now() - startTime > maxExecutionTime) {
+            console.log(`⏰ Timeout atingido após ${Date.now() - startTime}ms. Processando ${processedCount}/${users.length} usuários.`);
+            break;
+          }
+          const batch = users.slice(i, i + batchSize);
+          console.log(`📦 Processando lote ${Math.floor(i/batchSize) + 1}/${Math.ceil(users.length/batchSize)} (${batch.length} usuários)`);
+          
+          for (const userData of batch) {
           try {
+            const userStartTime = Date.now();
+            
             // Validar dados obrigatórios
             if (!userData.name || !userData.email) {
               errors++;
@@ -3342,15 +5503,57 @@ exports.handler = async (event, context) => {
             
             // Verificar se usuário já existe
             const existingUser = await sql`SELECT id FROM users WHERE email = ${userData.email} LIMIT 1`;
+            const checkTime = Date.now() - userStartTime;
+            console.log(`⏱️ Verificação de usuário ${userData.email}: ${checkTime}ms`);
             
             if (existingUser.length > 0) {
               if (allowUpdates) {
+                // Processar igreja para atualização - criar automaticamente se não existir
+                let processedChurch = userData.church || null;
+                if (processedChurch && processedChurch.trim() !== '') {
+                  try {
+                    const existingChurch = await sql`
+                      SELECT id, name FROM churches WHERE name = ${processedChurch.trim()}
+                    `;
+                    
+                    if (existingChurch.length === 0) {
+                      // Igreja não existe - criar automaticamente
+                      console.log(`🏗️ Criando nova igreja para atualização: "${processedChurch}"`);
+                      
+                      const churchCode = `IGR${Date.now().toString().slice(-6)}`;
+                      
+                      const newChurch = await sql`
+                        INSERT INTO churches (name, code, address, phone, email, pastor, created_at, updated_at)
+                        VALUES (
+                          ${processedChurch.trim()},
+                          ${churchCode},
+                          ${userData.churchAddress || null},
+                          ${userData.churchPhone || null},
+                          ${userData.churchEmail || null},
+                          ${userData.churchPastor || null},
+                          NOW(),
+                          NOW()
+                        )
+                        RETURNING id, name, code
+                      `;
+                      
+                      processedChurch = newChurch[0].name;
+                      console.log(`✅ Nova igreja criada para atualização: ${newChurch[0].name} (ID: ${newChurch[0].id})`);
+                    } else {
+                      processedChurch = existingChurch[0].name;
+                    }
+                  } catch (churchError) {
+                    console.error(`❌ Erro ao processar igreja para atualização "${processedChurch}":`, churchError);
+                    processedChurch = null;
+                  }
+                }
+                
                 // Atualizar usuário existente
                 await sql`
                   UPDATE users SET 
                     name = ${userData.name},
                     role = ${userData.role || 'member'},
-                    church = ${userData.church || null},
+                    church = ${processedChurch},
                     church_code = ${userData.churchCode || null},
                     address = ${userData.address || null},
                     birth_date = ${userData.birthDate || null},
@@ -3373,9 +5576,59 @@ exports.handler = async (event, context) => {
                 continue;
               }
             } else {
-              // Criar novo usuário
-              const hashedPassword = await bcrypt.hash(userData.password || '123456', 10);
+              // Processar igreja - criar automaticamente se não existir
+              let processedChurch = userData.church || null;
+              if (processedChurch && processedChurch.trim() !== '') {
+                try {
+                  const churchStartTime = Date.now();
+                  // Verificar se a igreja já existe
+                  const existingChurch = await sql`
+                    SELECT id, name FROM churches WHERE name = ${processedChurch.trim()}
+                  `;
+                  const churchTime = Date.now() - churchStartTime;
+                  console.log(`⏱️ Verificação de igreja "${processedChurch}": ${churchTime}ms`);
+                  
+                  if (existingChurch.length === 0) {
+                    // Igreja não existe - criar automaticamente
+                    console.log(`🏗️ Criando nova igreja: "${processedChurch}"`);
+                    
+                    // Gerar código único para a igreja
+                    const churchCode = `IGR${Date.now().toString().slice(-6)}`;
+                    
+                    const newChurch = await sql`
+                      INSERT INTO churches (name, code, address, phone, email, pastor, created_at, updated_at)
+                      VALUES (
+                        ${processedChurch.trim()},
+                        ${churchCode},
+                        ${userData.churchAddress || null},
+                        ${userData.churchPhone || null},
+                        ${userData.churchEmail || null},
+                        ${userData.churchPastor || null},
+                        NOW(),
+                        NOW()
+                      )
+                      RETURNING id, name, code
+                    `;
+                    
+                    processedChurch = newChurch[0].name;
+                    console.log(`✅ Nova igreja criada: ${newChurch[0].name} (ID: ${newChurch[0].id}, Código: ${newChurch[0].code})`);
+                  } else {
+                    processedChurch = existingChurch[0].name;
+                    console.log(`✅ Igreja encontrada: ${existingChurch[0].name} (ID: ${existingChurch[0].id})`);
+                  }
+                } catch (churchError) {
+                  console.error(`❌ Erro ao processar igreja "${processedChurch}":`, churchError);
+                  processedChurch = null; // Fallback para null se houver erro
+                }
+              }
               
+              // Criar novo usuário
+              const passwordStartTime = Date.now();
+              const hashedPassword = await bcrypt.hash(userData.password || '123456', 8); // Reduzir rounds para ser mais rápido
+              const passwordTime = Date.now() - passwordStartTime;
+              console.log(`⏱️ Hash da senha para ${userData.email}: ${passwordTime}ms`);
+              
+              const insertStartTime = Date.now();
               await sql`
                 INSERT INTO users (
                   name, email, password, role, church, church_code, 
@@ -3387,7 +5640,7 @@ exports.handler = async (event, context) => {
                   ${userData.email},
                   ${hashedPassword},
                   ${userData.role || 'member'},
-                  ${userData.church || null},
+                  ${processedChurch},
                   ${userData.churchCode || null},
                   ${userData.address || null},
                   ${userData.birthDate || null},
@@ -3405,6 +5658,9 @@ exports.handler = async (event, context) => {
                   NOW()
                 )
               `;
+              const insertTime = Date.now() - insertStartTime;
+              console.log(`⏱️ Inserção de usuário ${userData.email}: ${insertTime}ms`);
+              
               imported++;
               console.log(`✅ Usuário criado: ${userData.email}`);
             }
@@ -3413,6 +5669,11 @@ exports.handler = async (event, context) => {
             errorDetails.push(`Erro ao processar ${userData.email}: ${userError.message}`);
             console.error(`❌ Erro ao processar usuário ${userData.email}:`, userError);
           }
+          }
+          
+          processedCount += batch.length;
+          const batchTime = Date.now() - startTime;
+          console.log(`📊 Progresso: ${processedCount}/${users.length} usuários processados (${batchTime}ms total)`);
         }
         
         console.log(`🎉 Importação concluída: ${imported} criados, ${updated} atualizados, ${errors} erros`);
@@ -3438,6 +5699,199 @@ exports.handler = async (event, context) => {
           body: JSON.stringify({ 
             success: false,
             error: 'Erro interno na importação em massa',
+            details: error.message
+          })
+        };
+      }
+    }
+
+    // Rota para spiritual check-in
+    if (path.startsWith('/api/spiritual-check-in/') && method === 'GET') {
+      try {
+        const userId = path.split('/')[3];
+        console.log('🔍 Spiritual check-in for user:', userId);
+        
+        // Buscar check-ins espirituais do usuário
+        const checkIns = await sql`
+          SELECT * FROM emotional_checkins 
+          WHERE user_id = ${userId} 
+          ORDER BY created_at DESC 
+          LIMIT 10
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            checkIns: checkIns || [],
+            userId: parseInt(userId)
+          })
+        };
+      } catch (error) {
+        console.error('❌ Spiritual check-in error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            success: false,
+            error: 'Erro ao buscar check-ins espirituais',
+            details: error.message
+          })
+        };
+      }
+    }
+
+    if (path.startsWith('/api/spiritual-check-in/') && method === 'POST') {
+      try {
+        const userId = path.split('/')[3];
+        const body = JSON.parse(event.body || '{}');
+        const { score, notes } = body;
+        
+        console.log('🔍 Creating spiritual check-in for user:', userId, { score, notes });
+        
+        // Criar novo check-in espiritual
+        const newCheckIn = await sql`
+          INSERT INTO emotional_checkins (user_id, score, notes, type, created_at, updated_at)
+          VALUES (${userId}, ${score}, ${notes || ''}, 'spiritual', NOW(), NOW())
+          RETURNING *
+        `;
+        
+        return {
+          statusCode: 201,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            checkIn: newCheckIn[0],
+            message: 'Check-in espiritual criado com sucesso'
+          })
+        };
+      } catch (error) {
+        console.error('❌ Create spiritual check-in error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            success: false,
+            error: 'Erro ao criar check-in espiritual',
+            details: error.message
+          })
+        };
+      }
+    }
+
+    // Rota para importação assíncrona (fallback para lotes muito grandes)
+    if (path === '/api/users/bulk-import-async' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { users, allowUpdates = false } = body;
+        
+        console.log('🔄 Iniciando importação assíncrona:', {
+          totalUsers: users?.length || 0,
+          allowUpdates
+        });
+        
+        if (!users || !Array.isArray(users) || users.length === 0) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ 
+              success: false, 
+              error: 'Nenhum usuário fornecido para importação' 
+            })
+          };
+        }
+        
+        // Processar apenas os primeiros 20 usuários para evitar timeout
+        const usersToProcess = users.slice(0, 20);
+        const remainingUsers = users.length - 20;
+        
+        let imported = 0;
+        let updated = 0;
+        let errors = 0;
+        const errorDetails = [];
+        
+        // Processar em lotes menores
+        const batchSize = 3;
+        for (let i = 0; i < usersToProcess.length; i += batchSize) {
+          const batch = usersToProcess.slice(i, i + batchSize);
+          
+          for (const userData of batch) {
+            try {
+              if (!userData.name || !userData.email) {
+                errors++;
+                errorDetails.push(`Usuário sem nome ou email: ${JSON.stringify(userData)}`);
+                continue;
+              }
+              
+              const existingUser = await sql`SELECT id FROM users WHERE email = ${userData.email} LIMIT 1`;
+              
+              if (existingUser.length > 0) {
+                if (allowUpdates) {
+                  await sql`
+                    UPDATE users SET 
+                      name = ${userData.name},
+                      role = ${userData.role || 'member'},
+                      church = ${userData.church || null},
+                      updated_at = NOW()
+                    WHERE email = ${userData.email}
+                  `;
+                  updated++;
+                } else {
+                  errors++;
+                  errorDetails.push(`Usuário já existe: ${userData.email}`);
+                }
+              } else {
+                const hashedPassword = await bcrypt.hash(userData.password || '123456', 8);
+                
+                await sql`
+                  INSERT INTO users (
+                    name, email, password, role, church, 
+                    is_approved, status, created_at, updated_at
+                  ) VALUES (
+                    ${userData.name},
+                    ${userData.email},
+                    ${hashedPassword},
+                    ${userData.role || 'member'},
+                    ${userData.church || null},
+                    ${userData.isApproved || false},
+                    ${userData.status || 'pending'},
+                    NOW(),
+                    NOW()
+                  )
+                `;
+                imported++;
+              }
+            } catch (userError) {
+              errors++;
+              errorDetails.push(`Erro ao processar ${userData.email}: ${userError.message}`);
+            }
+          }
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: `Importação parcial concluída: ${imported} criados, ${updated} atualizados`,
+            imported,
+            updated,
+            errors,
+            errorDetails: errorDetails.slice(0, 5),
+            processed: usersToProcess.length,
+            remaining: remainingUsers,
+            note: remainingUsers > 0 ? `Ainda restam ${remainingUsers} usuários. Use a importação normal para processar o restante.` : 'Todos os usuários foram processados.'
+          })
+        };
+      } catch (error) {
+        console.error('❌ Async bulk import error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            success: false,
+            error: 'Erro na importação assíncrona',
             details: error.message
           })
         };
@@ -4727,6 +7181,59 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // Rota para verificar perfis missionários
+    if (path === '/api/system/check-missionary-profiles' && method === 'GET') {
+      try {
+        console.log('🔍 Verificando perfis missionários...');
+        
+        // Buscar usuários com role missionary
+        const missionaries = await sql`
+          SELECT id, name, email, role, church, points, level, status, created_at
+          FROM users 
+          WHERE role = 'missionary'
+          ORDER BY name ASC
+        `;
+        
+        // Buscar relacionamentos ativos dos missionários
+        const relationships = await sql`
+          SELECT 
+            r.id,
+            r.missionary_id,
+            r.interested_id,
+            r.status,
+            u.name as missionary_name,
+            ui.name as interested_name
+          FROM relationships r
+          JOIN users u ON r.missionary_id = u.id
+          JOIN users ui ON r.interested_id = ui.id
+          WHERE r.status = 'active'
+          ORDER BY r.created_at DESC
+        `;
+        
+        const stats = {
+          totalMissionaries: missionaries.length,
+          activeRelationships: relationships.length,
+          missionaries: missionaries,
+          relationships: relationships
+        };
+        
+        console.log(`📊 Encontrados ${missionaries.length} missionários e ${relationships.length} relacionamentos ativos`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(stats)
+        };
+      } catch (error) {
+        console.error('❌ Check missionary profiles error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao verificar perfis missionários' })
+        };
+      }
+    }
+
     // Rota para testar limpeza (dry run)
     if (path === '/api/system/test-cleanup' && method === 'GET') {
       try {
@@ -5812,7 +8319,7 @@ exports.handler = async (event, context) => {
         console.log('👥 Primeiros 3 usuários:', users.map(u => ({ id: u.id, name: u.name, points: u.points, role: u.role })));
         
         for (const user of users.slice(0, 2)) {
-          if (user.email === 'admin@7care.com' || user.role === 'admin') {
+          if (user.email === 'admin@7care.com' || user.role.includes('admin')) {
             console.log(`⏭️ Pulando admin: ${user.name}`);
             continue;
           }
@@ -5913,7 +8420,7 @@ exports.handler = async (event, context) => {
         
         for (const user of users) {
           // Pular Super Admin
-          if (user.email === 'admin@7care.com' || user.role === 'admin') {
+          if (user.email === 'admin@7care.com' || user.role.includes('admin')) {
             continue;
           }
           
@@ -7040,6 +9547,7 @@ exports.handler = async (event, context) => {
         };
       }
     }
+
 
     // Rota padrão - retornar erro 404
     return {

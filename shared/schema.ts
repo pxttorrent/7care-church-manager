@@ -40,6 +40,16 @@ export interface User {
   hasLesson?: boolean;
 }
 
+export interface Relationship {
+  id: number;
+  interestedId: number;
+  missionaryId: number;
+  status: 'active' | 'pending' | 'inactive';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Event {
   id: number;
   title: string;

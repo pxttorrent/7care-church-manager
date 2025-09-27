@@ -143,7 +143,7 @@ export const MobileHeader = () => {
               <div className="flex items-center gap-1">
                 <Sparkles className="w-5 h-5 text-blue-500 animate-pulse" />
                 <span className="text-base font-medium text-gray-700">
-                  {greeting}, {user.name.split(' ')[0]}!
+                  {greeting}, {(user.name || 'Usuário').split(' ')[0]}!
                 </span>
               </div>
 
