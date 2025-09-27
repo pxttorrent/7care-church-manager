@@ -446,11 +446,12 @@ export default function ElectionConfig() {
   };
 
   const loadEligibleCandidates = async () => {
-    if (!config.churchId) return;
+    if (!config.churchId || !config.churchName) return;
     
     setLoadingCandidates(true);
     try {
-      const response = await fetch(`/api/elections/preview-candidates?churchId=${config.churchId}&criteria=${encodeURIComponent(JSON.stringify(config.criteria))}`, {
+      // Buscar todos os usuários e filtrar localmente
+      const response = await fetch('/api/users', {
         headers: {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
@@ -458,10 +459,80 @@ export default function ElectionConfig() {
       });
       
       if (response.ok) {
-        const data = await response.json();
-        setEligibleCandidates(data.candidates || []);
+        const users = await response.json();
+        
+        // Filtrar membros da igreja selecionada
+        const churchMembers = users.filter((user: any) => 
+          user.church === config.churchName &&
+          (user.role?.includes('member') || user.role?.includes('admin')) &&
+          (user.status === 'approved' || user.status === 'pending')
+        );
+
+        console.log(`🔍 Encontrados ${churchMembers.length} membros na igreja ${config.churchName}`);
+
+        // Filtrar candidatos baseado nos critérios
+        const eligibleCandidates = [];
+        const now = new Date();
+
+        for (const member of churchMembers) {
+          let isEligible = true;
+
+          // Critério de Fidelidade
+          if (config.criteria?.faithfulness?.enabled) {
+            const hasFaithfulness = 
+              (config.criteria.faithfulness.punctual && member.is_tither) ||
+              (config.criteria.faithfulness.seasonal && member.is_donor) ||
+              (config.criteria.faithfulness.recurring && (member.attendance || 0) >= 70);
+            
+            if (!hasFaithfulness) {
+              isEligible = false;
+            }
+          }
+
+          // Critério de Presença
+          if (config.criteria?.attendance?.enabled) {
+            let hasAttendance = false;
+            const extraData = member.extra_data || {};
+            
+            if (config.criteria.attendance.punctual && extraData.teveParticipacao) {
+              hasAttendance = true;
+            }
+            
+            if (!hasAttendance) {
+              isEligible = false;
+            }
+          }
+
+          // Critério de Tempo na Igreja
+          if (config.criteria?.churchTime?.enabled) {
+            const memberDate = new Date(member.created_at);
+            const monthsInChurch = (now.getTime() - memberDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
+            
+            if (monthsInChurch < (config.criteria.churchTime.minimumMonths || 12)) {
+              isEligible = false;
+            }
+          }
+
+          if (isEligible) {
+            eligibleCandidates.push({
+              id: member.id,
+              name: member.name,
+              email: member.email,
+              church: member.church,
+              role: member.role,
+              status: member.status,
+              isTither: member.is_tither,
+              isDonor: member.is_donor,
+              attendance: member.attendance || 0,
+              monthsInChurch: Math.floor((now.getTime() - new Date(member.created_at).getTime()) / (1000 * 60 * 60 * 24 * 30)),
+              extraData: member.extra_data
+            });
+          }
+        }
+
+        setEligibleCandidates(eligibleCandidates);
       } else {
-        throw new Error('Erro ao carregar candidatos elegíveis');
+        throw new Error('Erro ao carregar usuários');
       }
     } catch (error) {
       console.error('Erro ao carregar candidatos:', error);
