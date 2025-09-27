@@ -3644,6 +3644,21 @@ exports.handler = async (event, context) => {
 
     // GET /api/elections/preview-candidates - Preview de candidatos elegíveis
     if (path === '/api/elections/preview-candidates' && method === 'GET') {
+      console.log('🔍 API preview-candidates chamada - TESTE SIMPLES');
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: 'API funcionando!',
+          path: path,
+          method: method,
+          timestamp: new Date().toISOString()
+        })
+      };
+    }
+
+    // GET /api/elections/preview-candidates-full - Preview de candidatos elegíveis (versão completa)
+    if (path === '/api/elections/preview-candidates-full' && method === 'GET') {
       console.log('🔍 API preview-candidates chamada');
       
       try {
