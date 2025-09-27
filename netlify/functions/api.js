@@ -3659,18 +3659,32 @@ exports.handler = async (event, context) => {
 
         const criteriaObj = JSON.parse(criteria);
         
+        // Buscar nome da igreja primeiro
+        const church = await sql`
+          SELECT name FROM churches WHERE id = ${parseInt(churchId)}
+        `;
+
+        if (church.length === 0) {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Igreja não encontrada' })
+          };
+        }
+
+        const churchName = church[0].name;
+        console.log(`🔍 Buscando membros da igreja: ${churchName}`);
+
         // Buscar membros da igreja
         const churchMembers = await sql`
           SELECT id, name, email, church, role, status, created_at, is_tither, is_donor, attendance, extra_data
           FROM users
-          WHERE church = (
-            SELECT name FROM churches WHERE id = ${parseInt(churchId)}
-          )
+          WHERE church = ${churchName}
           AND (role = 'member' OR role = 'admin' OR role LIKE '%member%' OR role LIKE '%admin%')
           AND (status = 'approved' OR status = 'pending')
         `;
 
-        console.log(`🔍 Encontrados ${churchMembers.length} membros na igreja`);
+        console.log(`🔍 Encontrados ${churchMembers.length} membros na igreja ${churchName}`);
 
         // Filtrar candidatos baseado nos critérios
         const eligibleCandidates = [];
