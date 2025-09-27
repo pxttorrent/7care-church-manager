@@ -3645,21 +3645,32 @@ exports.handler = async (event, context) => {
     // GET /api/elections/preview-candidates - Preview de candidatos elegíveis
     if (path === '/api/elections/preview-candidates' && method === 'GET') {
       console.log('🔍 API preview-candidates chamada');
+      
       try {
         const url = new URL(event.rawUrl);
         const churchId = url.searchParams.get('churchId');
         const criteria = url.searchParams.get('criteria');
 
-        if (!churchId || !criteria) {
+        console.log('🔍 Parâmetros:', { churchId, criteria });
+
+        if (!churchId) {
           return {
             statusCode: 400,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'churchId e criteria são obrigatórios' })
+            body: JSON.stringify({ error: 'churchId é obrigatório' })
           };
         }
 
-        const criteriaObj = JSON.parse(criteria);
-        
+        let criteriaObj = {};
+        if (criteria) {
+          try {
+            criteriaObj = JSON.parse(criteria);
+          } catch (e) {
+            console.log('🔍 Usando critérios vazios');
+            criteriaObj = {};
+          }
+        }
+
         // Buscar nome da igreja primeiro
         const church = await sql`
           SELECT name FROM churches WHERE id = ${parseInt(churchId)}
@@ -3686,6 +3697,33 @@ exports.handler = async (event, context) => {
         `;
 
         console.log(`🔍 Encontrados ${churchMembers.length} membros na igreja ${churchName}`);
+
+        // Se não há critérios, retornar todos os membros
+        if (!criteriaObj.faithfulness?.enabled && !criteriaObj.attendance?.enabled && !criteriaObj.churchTime?.enabled) {
+          const candidates = churchMembers.map(member => ({
+            id: member.id,
+            name: member.name,
+            email: member.email,
+            church: member.church,
+            role: member.role,
+            status: member.status,
+            isTither: member.is_tither,
+            isDonor: member.is_donor,
+            attendance: member.attendance,
+            monthsInChurch: Math.floor((new Date() - new Date(member.created_at)) / (1000 * 60 * 60 * 24 * 30)),
+            extraData: member.extra_data
+          }));
+
+          return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              totalMembers: churchMembers.length,
+              eligibleCandidates: candidates.length,
+              candidates: candidates
+            })
+          };
+        }
 
         // Filtrar candidatos baseado nos critérios
         const eligibleCandidates = [];
@@ -3762,7 +3800,7 @@ exports.handler = async (event, context) => {
         return {
           statusCode: 500,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ error: 'Erro interno do servidor' })
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
         };
       }
     }
