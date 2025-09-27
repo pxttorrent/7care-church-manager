@@ -3644,6 +3644,7 @@ exports.handler = async (event, context) => {
 
     // GET /api/elections/preview-candidates - Preview de candidatos elegíveis
     if (path === '/api/elections/preview-candidates' && method === 'GET') {
+      console.log('🔍 API preview-candidates chamada');
       try {
         const url = new URL(event.rawUrl);
         const churchId = url.searchParams.get('churchId');
