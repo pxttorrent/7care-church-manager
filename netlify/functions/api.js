@@ -3693,7 +3693,6 @@ exports.handler = async (event, context) => {
 
         for (const member of churchMembers) {
           let isEligible = true;
-          const reasons = [];
 
           // Critério de Fidelidade
           if (criteriaObj.faithfulness?.enabled) {
@@ -3704,7 +3703,6 @@ exports.handler = async (event, context) => {
             
             if (!hasFaithfulness) {
               isEligible = false;
-              reasons.push('Não atende critérios de fidelidade');
             }
           }
 
@@ -3719,7 +3717,6 @@ exports.handler = async (event, context) => {
             
             if (!hasAttendance) {
               isEligible = false;
-              reasons.push('Não atende critérios de presença');
             }
           }
 
@@ -3730,7 +3727,6 @@ exports.handler = async (event, context) => {
             
             if (monthsInChurch < criteriaObj.churchTime.minimumMonths) {
               isEligible = false;
-              reasons.push(`Menos de ${criteriaObj.churchTime.minimumMonths} meses na igreja`);
             }
           }
 
