@@ -74,6 +74,119 @@ interface ElectionConfig {
   status: 'draft' | 'active' | 'completed';
 }
 
+const ALL_POSITIONS = [
+  // ANCIÃOS / ANCIÃS / DIRETORES
+  'Primeiro Ancião(ã)',
+  'Ancião/Anciã Teen',
+  'Ancião/Anciã Jovem',
+  'Secretário(a)',
+  'Secretário(a) Associado(a)',
+  'Secretário(a) Teen',
+  'Tesoureiro(a)',
+  'Tesoureiro(a) Associado(a)',
+  'Tesoureiro(a) Teen',
+  'Patrimônio',
+  
+  // DIACONATO
+  'Diáconos',
+  'Diácono(s) Teen',
+  'Primeiro Diácono',
+  'Diaconisas',
+  'Diaconisa(s) Teen',
+  'Primeira Diaconisa',
+  
+  // MORDOMIA CRISTÃ
+  'Diretor(a)',
+  'Diretor(a) Associado(a)',
+  'Discípulo Teen',
+  
+  // NOVAS GERAÇÕES
+  'Ministério da Criança – Coordenador(a)',
+  'Ministério da Criança – Coordenador(a) Associado(a)',
+  'Ministério dos Adolescentes – Coordenador(a)',
+  'Ministério dos Adolescentes – Coordenador(a) Associado(a)',
+  'Ministério Jovem – Diretor(a)',
+  'Ministério Jovem – Diretor(a) Associado(a)',
+  'Clube de Aventureiros – Diretor(a)',
+  'Clube de Aventureiros – Diretor(a) Associado(a)',
+  'Clube de Aventureiros – Discípulo Teen',
+  'Clube de Desbravadores – Diretor(a)',
+  'Clube de Desbravadores – Diretor(a) Associado(a)',
+  'Clube de Desbravadores – Discípulo Teen',
+  
+  // ESCOLA SABATINA
+  'Professores(as) das Unidades: Bebês',
+  'Professores(as) das Unidades: Iniciantes',
+  'Professores(as) das Unidades: Infantis',
+  'Professores(as) das Unidades: Primários',
+  'Professores(as) das Unidades: Pré-adolescentes',
+  'Professores(as) das Unidades: Adolescentes',
+  'Secretário(a) Escola Sabatina',
+  'Diretor(a) Associado(a) Escola Sabatina',
+  'Discípulo Teen Escola Sabatina',
+  
+  // MINISTÉRIO PESSOAL E EVANGELISMO
+  'Diretor(a) Ministério Pessoal',
+  'Diretor(a) Associado(a) Ministério Pessoal',
+  'Discípulo Teen Ministério Pessoal',
+  'Evangelismo – Diretor(a)',
+  'Evangelismo – Diretor(a) Associado(a)',
+  'Evangelismo – Secretário(a)',
+  'Evangelismo – Discípulo Teen',
+  'Coordenador(a) de Classes Bíblicas',
+  'Coordenador(a) de Interessados',
+  
+  // AÇÃO SOLIDÁRIA ADVENTISTA (ASA)
+  'Diretor(a) ASA',
+  'Diretor(a) Associado(a) ASA',
+  'Discípulo Teen ASA',
+  
+  // MINISTÉRIO DA FAMÍLIA
+  'Casal Diretor',
+  'Casal Associado',
+  'Discípulo Teen Ministério da Família',
+  
+  // MINISTÉRIO DA MULHER
+  'Diretora Ministério da Mulher',
+  'Diretora Associada Ministério da Mulher',
+  'Discípulo Teen Ministério da Mulher',
+  
+  // MINISTÉRIO DA RECEPÇÃO
+  'Líder Ministério da Recepção',
+  'Equipe Ministério da Recepção',
+  
+  // MINISTÉRIO DO HOMEM
+  'Diretor Ministério do Homem',
+  'Diretor Associado Ministério do Homem',
+  'Discípulo Teen Ministério do Homem',
+  
+  // MINISTÉRIO DA SAÚDE
+  'Diretor(a) Ministério da Saúde',
+  'Diretor(a) Associado(a) Ministério da Saúde',
+  'Discípulo Teen Ministério da Saúde',
+  
+  // MINISTÉRIO DAS POSSIBILIDADES
+  'Diretor(a) Ministério das Possibilidades',
+  'Diretor(a) Associado(a) Ministério das Possibilidades',
+  'Discípulo Teen Ministério das Possibilidades',
+  
+  // MINISTÉRIO DA MÚSICA
+  'Diretor(a) Ministério da Música',
+  'Diretor(a) Associado(a) Ministério da Música',
+  'Discípulo Teen Ministério da Música',
+  
+  // COMUNICAÇÃO
+  'Diretor(a) Comunicação',
+  'Diretor(a) Associado(a) Comunicação',
+  'Social Media (redes sociais)',
+  'Discípulo Teen Comunicação',
+  
+  // SONOPLASTIA
+  'Diretor(a) Sonoplastia',
+  'Diretor(a) Associado(a) Sonoplastia',
+  'Equipe Sonoplastia'
+];
+
 export default function ElectionConfig() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -110,120 +223,7 @@ export default function ElectionConfig() {
         maxPositions: 2
       }
     },
-    positions: [
-      // ADMINISTRAÇÃO
-      
-      // ANCIÃOS / ANCIÃS / DIRETORES
-      'Primeiro Ancião(ã)',
-      'Ancião/Anciã Teen',
-      'Ancião/Anciã Jovem',
-      'Secretário(a)',
-      'Secretário(a) Associado(a)',
-      'Secretário(a) Teen',
-      'Tesoureiro(a)',
-      'Tesoureiro(a) Associado(a)',
-      'Tesoureiro(a) Teen',
-      'Patrimônio',
-      
-      // DIACONATO
-      'Diáconos',
-      'Diácono(s) Teen',
-      'Primeiro Diácono',
-      'Diaconisas',
-      'Diaconisa(s) Teen',
-      'Primeira Diaconisa',
-      
-      // MORDOMIA CRISTÃ
-      'Diretor(a)',
-      'Diretor(a) Associado(a)',
-      'Discípulo Teen',
-      
-      // NOVAS GERAÇÕES
-      'Ministério da Criança – Coordenador(a)',
-      'Ministério da Criança – Coordenador(a) Associado(a)',
-      'Ministério dos Adolescentes – Coordenador(a)',
-      'Ministério dos Adolescentes – Coordenador(a) Associado(a)',
-      'Ministério Jovem – Diretor(a)',
-      'Ministério Jovem – Diretor(a) Associado(a)',
-      'Clube de Aventureiros – Diretor(a)',
-      'Clube de Aventureiros – Diretor(a) Associado(a)',
-      'Clube de Aventureiros – Discípulo Teen',
-      'Clube de Desbravadores – Diretor(a)',
-      'Clube de Desbravadores – Diretor(a) Associado(a)',
-      'Clube de Desbravadores – Discípulo Teen',
-      
-      // ESCOLA SABATINA
-      'Professores(as) das Unidades: Bebês',
-      'Professores(as) das Unidades: Iniciantes',
-      'Professores(as) das Unidades: Infantis',
-      'Professores(as) das Unidades: Primários',
-      'Professores(as) das Unidades: Pré-adolescentes',
-      'Professores(as) das Unidades: Adolescentes',
-      'Secretário(a) Escola Sabatina',
-      'Diretor(a) Associado(a) Escola Sabatina',
-      'Discípulo Teen Escola Sabatina',
-      
-      // MINISTÉRIO PESSOAL E EVANGELISMO
-      'Diretor(a) Ministério Pessoal',
-      'Diretor(a) Associado(a) Ministério Pessoal',
-      'Discípulo Teen Ministério Pessoal',
-      'Evangelismo – Diretor(a)',
-      'Evangelismo – Diretor(a) Associado(a)',
-      'Evangelismo – Secretário(a)',
-      'Evangelismo – Discípulo Teen',
-      'Coordenador(a) de Classes Bíblicas',
-      'Coordenador(a) de Interessados',
-      
-      // AÇÃO SOLIDÁRIA ADVENTISTA (ASA)
-      'Diretor(a) ASA',
-      'Diretor(a) Associado(a) ASA',
-      'Discípulo Teen ASA',
-      
-      // MINISTÉRIO DA FAMÍLIA
-      'Casal Diretor',
-      'Casal Associado',
-      'Discípulo Teen Ministério da Família',
-      
-      // MINISTÉRIO DA MULHER
-      'Diretora Ministério da Mulher',
-      'Diretora Associada Ministério da Mulher',
-      'Discípulo Teen Ministério da Mulher',
-      
-      // MINISTÉRIO DA RECEPÇÃO
-      'Líder Ministério da Recepção',
-      'Equipe Ministério da Recepção',
-      
-      // MINISTÉRIO DO HOMEM
-      'Diretor Ministério do Homem',
-      'Diretor Associado Ministério do Homem',
-      'Discípulo Teen Ministério do Homem',
-      
-      // MINISTÉRIO DA SAÚDE
-      'Diretor(a) Ministério da Saúde',
-      'Diretor(a) Associado(a) Ministério da Saúde',
-      'Discípulo Teen Ministério da Saúde',
-      
-      // MINISTÉRIO DAS POSSIBILIDADES
-      'Diretor(a) Ministério das Possibilidades',
-      'Diretor(a) Associado(a) Ministério das Possibilidades',
-      'Discípulo Teen Ministério das Possibilidades',
-      
-      // MINISTÉRIO DA MÚSICA
-      'Diretor(a) Ministério da Música',
-      'Diretor(a) Associado(a) Ministério da Música',
-      'Discípulo Teen Ministério da Música',
-      
-      // COMUNICAÇÃO
-      'Diretor(a) Comunicação',
-      'Diretor(a) Associado(a) Comunicação',
-      'Social Media (redes sociais)',
-      'Discípulo Teen Comunicação',
-      
-      // SONOPLASTIA
-      'Diretor(a) Sonoplastia',
-      'Diretor(a) Associado(a) Sonoplastia',
-      'Equipe Sonoplastia'
-    ],
+    positions: [],
     status: 'draft'
   });
 
@@ -1226,13 +1226,13 @@ export default function ElectionConfig() {
                     <h3 className="font-semibold text-green-700">ANCIÃOS / ANCIÃS / DIRETORES</h3>
                   </div>
                   <div className="grid grid-cols-1 gap-2 ml-4">
-                    {config.positions?.filter(pos => 
+                    {ALL_POSITIONS.filter(pos => 
                       pos.includes('Ancião') || pos.includes('Secretário') || pos.includes('Tesoureiro') || pos.includes('Patrimônio')
                     ).map((position) => (
                       <div key={position} className="flex items-center space-x-2">
                         <Checkbox
                           id={`position-${position}`}
-                          checked={true}
+                          checked={(config.positions || []).includes(position)}
                           onCheckedChange={() => handlePositionToggle(position)}
                         />
                         <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
@@ -1250,13 +1250,13 @@ export default function ElectionConfig() {
                     <h3 className="font-semibold text-purple-700">DIACONATO</h3>
                   </div>
                   <div className="grid grid-cols-1 gap-2 ml-4">
-                    {config.positions?.filter(pos => 
+                    {ALL_POSITIONS.filter(pos => 
                       pos.includes('Diácono') || pos.includes('Diaconisa')
                     ).map((position) => (
                       <div key={position} className="flex items-center space-x-2">
                         <Checkbox
                           id={`position-${position}`}
-                          checked={true}
+                          checked={(config.positions || []).includes(position)}
                           onCheckedChange={() => handlePositionToggle(position)}
                         />
                         <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
@@ -1274,13 +1274,13 @@ export default function ElectionConfig() {
                     <h3 className="font-semibold text-orange-700">MORDOMIA CRISTÃ</h3>
                   </div>
                   <div className="grid grid-cols-1 gap-2 ml-4">
-                    {config.positions?.filter(pos => 
+                    {ALL_POSITIONS.filter(pos => 
                       pos.includes('Mordomia') || (pos === 'Diretor(a)' && !pos.includes('Ministério')) || pos === 'Diretor(a) Associado(a)' || pos === 'Discípulo Teen'
                     ).map((position) => (
                       <div key={position} className="flex items-center space-x-2">
                         <Checkbox
                           id={`position-${position}`}
-                          checked={true}
+                          checked={(config.positions || []).includes(position)}
                           onCheckedChange={() => handlePositionToggle(position)}
                         />
                         <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
@@ -1298,13 +1298,13 @@ export default function ElectionConfig() {
                     <h3 className="font-semibold text-pink-700">NOVAS GERAÇÕES</h3>
                   </div>
                   <div className="grid grid-cols-1 gap-2 ml-4">
-                    {config.positions?.filter(pos => 
+                    {ALL_POSITIONS.filter(pos => 
                       pos.includes('Criança') || pos.includes('Adolescentes') || pos.includes('Jovem') || pos.includes('Aventureiros') || pos.includes('Desbravadores')
                     ).map((position) => (
                       <div key={position} className="flex items-center space-x-2">
                         <Checkbox
                           id={`position-${position}`}
-                          checked={true}
+                          checked={(config.positions || []).includes(position)}
                           onCheckedChange={() => handlePositionToggle(position)}
                         />
                         <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
@@ -1322,13 +1322,13 @@ export default function ElectionConfig() {
                     <h3 className="font-semibold text-indigo-700">ESCOLA SABATINA</h3>
                   </div>
                   <div className="grid grid-cols-1 gap-2 ml-4">
-                    {config.positions?.filter(pos => 
+                    {ALL_POSITIONS.filter(pos => 
                       pos.includes('Professores') || pos.includes('Escola Sabatina')
                     ).map((position) => (
                       <div key={position} className="flex items-center space-x-2">
                         <Checkbox
                           id={`position-${position}`}
-                          checked={true}
+                          checked={(config.positions || []).includes(position)}
                           onCheckedChange={() => handlePositionToggle(position)}
                         />
                         <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
@@ -1346,13 +1346,13 @@ export default function ElectionConfig() {
                     <h3 className="font-semibold text-teal-700">MINISTÉRIOS ESPECIALIZADOS</h3>
                   </div>
                   <div className="grid grid-cols-1 gap-2 ml-4">
-                    {config.positions?.filter(pos => 
+                    {ALL_POSITIONS.filter(pos => 
                       pos.includes('Ministério') || pos.includes('ASA') || pos.includes('Evangelismo') || pos.includes('Classes Bíblicas') || pos.includes('Interessados') || pos.includes('Casal') || pos.includes('Recepção') || pos.includes('Possibilidades') || pos.includes('Música') || pos.includes('Comunicação') || pos.includes('Sonoplastia')
                     ).map((position) => (
                       <div key={position} className="flex items-center space-x-2">
                         <Checkbox
                           id={`position-${position}`}
-                          checked={true}
+                          checked={(config.positions || []).includes(position)}
                           onCheckedChange={() => handlePositionToggle(position)}
                         />
                         <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
