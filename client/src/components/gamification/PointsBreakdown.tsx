@@ -79,6 +79,22 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
   const generatePersonalizedTips = (categoryName: string): string[] => {
     if (!pointsConfig) return [];
     
+    // PROTEÇÃO: Criar safeConfig para evitar erros de undefined
+    const safeConfig = {
+      engajamento: pointsConfig.engajamento || { baixo: 0, medio: 0, alto: 0 },
+      classificacao: pointsConfig.classificacao || { frequente: 0, naoFrequente: 0 },
+      dizimista: pointsConfig.dizimista || { naoDizimista: 0, pontual: 0, sazonal: 0, recorrente: 0 },
+      ofertante: pointsConfig.ofertante || { naoOfertante: 0, pontual: 0, sazonal: 0, recorrente: 0 },
+      tempoBatismo: pointsConfig.tempoBatismo || { doisAnos: 0, cincoAnos: 0, dezAnos: 0, vinteAnos: 0, maisVinte: 0 },
+      cargos: pointsConfig.cargos || { umCargo: 0, doisCargos: 0, tresOuMais: 0 },
+      nomeUnidade: pointsConfig.nomeUnidade || { comUnidade: 0 },
+      temLicao: pointsConfig.temLicao || { comLicao: 0 },
+      totalPresenca: pointsConfig.totalPresenca || { zeroATres: 0, quatroASete: 0, oitoATreze: 0 },
+      escolaSabatina: pointsConfig.escolaSabatina || { comunhao: 0, missao: 0, estudoBiblico: 0, batizouAlguem: 0, discipuladoPosBatismo: 0 },
+      cpfValido: pointsConfig.cpfValido || { valido: 0 },
+      camposVaziosACMS: pointsConfig.camposVaziosACMS || { completos: 0 }
+    };
+    
     const tips: string[] = [];
     
     switch (categoryName) {
@@ -89,11 +105,11 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
             tips.push(`🔸 Participe mais ativamente dos cultos e eventos`);
             tips.push(`🔸 Envolva-se em grupos de estudo bíblico`);
             tips.push(`🔸 Ofereça-se para ajudar em atividades da igreja`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.engajamento.medio - pointsConfig.engajamento.baixo} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.engajamento.medio - safeConfig.engajamento.baixo} pontos`);
           } else if (engajamento.includes('médio') || engajamento.includes('medio')) {
             tips.push(`🔸 Assuma mais responsabilidades na igreja`);
             tips.push(`🔸 Liderança em ministérios específicos`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.engajamento.alto - pointsConfig.engajamento.medio} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.engajamento.alto - safeConfig.engajamento.medio} pontos`);
           }
         } else {
           tips.push(`🔸 Informe seu nível de engajamento para receber pontos`);
@@ -106,7 +122,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
           if (!classificacao.includes('frequente')) {
             tips.push(`🔸 Aumente sua frequência nos cultos`);
             tips.push(`🔸 Participe regularmente das atividades`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.classificacao.frequente - pointsConfig.classificacao.naoFrequente} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.classificacao.frequente - safeConfig.classificacao.naoFrequente} pontos`);
           }
         } else {
           tips.push(`🔸 Informe sua classificação para receber pontos`);
@@ -118,13 +134,13 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
           const dizimista = userData.dizimista.toLowerCase();
           if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) {
             tips.push(`🔸 Comece a contribuir com dízimo`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.dizimista.pontual - pointsConfig.dizimista.naoDizimista} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.dizimista.pontual - safeConfig.dizimista.naoDizimista} pontos`);
           } else if (dizimista.includes('pontual')) {
             tips.push(`🔸 Torne-se dizimista sazonal`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.dizimista.sazonal - pointsConfig.dizimista.pontual} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.dizimista.sazonal - safeConfig.dizimista.pontual} pontos`);
           } else if (dizimista.includes('sazonal')) {
             tips.push(`🔸 Torne-se dizimista recorrente`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.dizimista.recorrente - pointsConfig.dizimista.sazonal} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.dizimista.recorrente - safeConfig.dizimista.sazonal} pontos`);
           }
         } else {
           tips.push(`🔸 Informe seu status de dizimista para receber pontos`);
@@ -136,13 +152,13 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
           const ofertante = userData.ofertante.toLowerCase();
           if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) {
             tips.push(`🔸 Comece a contribuir com ofertas`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.ofertante.pontual - pointsConfig.ofertante.naoOfertante} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.ofertante.pontual - safeConfig.ofertante.naoOfertante} pontos`);
           } else if (ofertante.includes('pontual')) {
             tips.push(`🔸 Torne-se ofertante sazonal`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.ofertante.sazonal - pointsConfig.ofertante.pontual} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.ofertante.sazonal - safeConfig.ofertante.pontual} pontos`);
           } else if (ofertante.includes('sazonal')) {
             tips.push(`🔸 Torne-se ofertante recorrente`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.ofertante.recorrente - pointsConfig.ofertante.sazonal} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.ofertante.recorrente - safeConfig.ofertante.sazonal} pontos`);
           }
         } else {
           tips.push(`🔸 Informe seu status de ofertante para receber pontos`);
@@ -155,13 +171,13 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
           if (typeof tempo === 'number') {
             if (tempo < 2) {
               tips.push(`🔸 Continue crescendo espiritualmente`);
-              tips.push(`🔸 Potencial de ganhar +${pointsConfig.tempoBatismo.doisAnos} pontos em 2 anos`);
+              tips.push(`🔸 Potencial de ganhar +${pointsConfig.tempoBatismo?.doisAnos || 0} pontos em 2 anos`);
             } else if (tempo < 5) {
-              tips.push(`🔸 Potencial de ganhar +${pointsConfig.tempoBatismo.cincoAnos - pointsConfig.tempoBatismo.doisAnos} pontos em 3 anos`);
+              tips.push(`🔸 Potencial de ganhar +${(pointsConfig.tempoBatismo?.cincoAnos || 0) - (pointsConfig.tempoBatismo?.doisAnos || 0)} pontos em 3 anos`);
             } else if (tempo < 10) {
-              tips.push(`🔸 Potencial de ganhar +${pointsConfig.tempoBatismo.dezAnos - pointsConfig.tempoBatismo.cincoAnos} pontos em 5 anos`);
+              tips.push(`🔸 Potencial de ganhar +${(pointsConfig.tempoBatismo?.dezAnos || 0) - (pointsConfig.tempoBatismo?.cincoAnos || 0)} pontos em 5 anos`);
             } else if (tempo < 20) {
-              tips.push(`🔸 Potencial de ganhar +${pointsConfig.tempoBatismo.vinteAnos - pointsConfig.tempoBatismo.dezAnos} pontos em 10 anos`);
+              tips.push(`🔸 Potencial de ganhar +${(pointsConfig.tempoBatismo?.vinteAnos || 0) - (pointsConfig.tempoBatismo?.dezAnos || 0)} pontos em 10 anos`);
             }
           }
         } else {
@@ -174,13 +190,13 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
           const numCargos = userData.cargos.length;
           if (numCargos === 0) {
             tips.push(`🔸 Candidate-se a um cargo na igreja`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.cargos.umCargo} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.cargos.umCargo} pontos`);
           } else if (numCargos === 1) {
             tips.push(`🔸 Assuma um segundo cargo`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.cargos.doisCargos - pointsConfig.cargos.umCargo} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.cargos.doisCargos - safeConfig.cargos.umCargo} pontos`);
           } else if (numCargos === 2) {
             tips.push(`🔸 Assuma um terceiro cargo`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.cargos.tresOuMais - pointsConfig.cargos.doisCargos} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.cargos.tresOuMais - safeConfig.cargos.doisCargos} pontos`);
           }
         } else {
           tips.push(`🔸 Candidate-se a cargos na igreja para receber pontos`);
@@ -190,14 +206,14 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
       case 'Nome da Unidade':
         if (!userData.nomeUnidade || !userData.nomeUnidade.trim()) {
           tips.push(`🔸 Cadastre-se em uma unidade`);
-          tips.push(`🔸 Potencial de ganhar +${pointsConfig.nomeUnidade.comUnidade} pontos`);
+          tips.push(`🔸 Potencial de ganhar +${safeConfig.nomeUnidade.comUnidade} pontos`);
         }
         break;
         
       case 'Tem Lição':
         if (!userData.temLicao) {
           tips.push(`🔸 Participe de estudos bíblicos`);
-          tips.push(`🔸 Potencial de ganhar +${pointsConfig.temLicao.comLicao} pontos`);
+          tips.push(`🔸 Potencial de ganhar +${safeConfig.temLicao.comLicao} pontos`);
         }
         break;
         
@@ -206,10 +222,10 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
           const presenca = userData.totalPresenca;
           if (presenca <= 3) {
             tips.push(`🔸 Aumente sua frequência nos cultos`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.totalPresenca.quatroASete - pointsConfig.totalPresenca.zeroATres} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.totalPresenca.quatroASete - safeConfig.totalPresenca.zeroATres} pontos`);
           } else if (presenca <= 7) {
             tips.push(`🔸 Continue aumentando sua presença`);
-            tips.push(`🔸 Potencial de ganhar +${pointsConfig.totalPresenca.oitoATreze - pointsConfig.totalPresenca.quatroASete} pontos`);
+            tips.push(`🔸 Potencial de ganhar +${safeConfig.totalPresenca.oitoATreze - safeConfig.totalPresenca.quatroASete} pontos`);
           }
         } else {
           tips.push(`🔸 Informe sua frequência para receber pontos`);
@@ -219,71 +235,71 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
       case 'Batizou Alguém':
         if (!userData.batizouAlguem || userData.batizouAlguem === 0) {
           tips.push(`🔸 Envolva-se em evangelismo`);
-          tips.push(`🔸 Potencial de ganhar +${pointsConfig.escolaSabatina.batizouAlguem} pontos por batismo`);
+          tips.push(`🔸 Potencial de ganhar +${safeConfig.escolaSabatina.batizouAlguem} pontos por batismo`);
         }
         break;
         
       case 'CPF Válido':
         if (!userData.cpfValido || userData.cpfValido !== 'Sim') {
           tips.push(`🔸 Atualize seu CPF no sistema`);
-          tips.push(`🔸 Potencial de ganhar +${pointsConfig.cpfValido.valido} pontos`);
+          tips.push(`🔸 Potencial de ganhar +${safeConfig.cpfValido.valido} pontos`);
         }
         break;
         
       case 'Campos Vazios ACMS':
         if (userData.camposVaziosACMS === true) {
           tips.push(`🔸 Complete todos os campos do seu perfil`);
-          tips.push(`🔸 Potencial de ganhar +${pointsConfig.camposVaziosACMS.completos} pontos`);
+          tips.push(`🔸 Potencial de ganhar +${safeConfig.camposVaziosACMS.completos} pontos`);
         }
         break;
         
       case 'Comunhão (ES)':
         if (!userData.escolaSabatina?.comunhao || userData.escolaSabatina.comunhao === 0) {
           tips.push(`🔸 Participe de atividades de comunhão`);
-          tips.push(`🔸 Potencial de ganhar +${pointsConfig.escolaSabatina.comunhao} pontos por atividade`);
+          tips.push(`🔸 Potencial de ganhar +${safeConfig.escolaSabatina.comunhao} pontos por atividade`);
         } else {
           tips.push(`🔸 Continue participando de comunhões`);
-          tips.push(`🔸 Cada atividade vale +${pointsConfig.escolaSabatina.comunhao} pontos`);
+          tips.push(`🔸 Cada atividade vale +${safeConfig.escolaSabatina.comunhao} pontos`);
         }
         break;
         
       case 'Missão (ES)':
         if (!userData.escolaSabatina?.missao || userData.escolaSabatina.missao === 0) {
           tips.push(`🔸 Envolva-se em atividades missionárias`);
-          tips.push(`🔸 Potencial de ganhar +${pointsConfig.escolaSabatina.missao} pontos por atividade`);
+          tips.push(`🔸 Potencial de ganhar +${safeConfig.escolaSabatina.missao} pontos por atividade`);
         } else {
           tips.push(`🔸 Continue com o trabalho missionário`);
-          tips.push(`🔸 Cada atividade vale +${pointsConfig.escolaSabatina.missao} pontos`);
+          tips.push(`🔸 Cada atividade vale +${safeConfig.escolaSabatina.missao} pontos`);
         }
         break;
         
       case 'Estudo Bíblico (ES)':
         if (!userData.escolaSabatina?.estudoBiblico || userData.escolaSabatina.estudoBiblico === 0) {
           tips.push(`🔸 Participe de estudos bíblicos`);
-          tips.push(`🔸 Potencial de ganhar +${pointsConfig.escolaSabatina.estudoBiblico} pontos por estudo`);
+          tips.push(`🔸 Potencial de ganhar +${safeConfig.escolaSabatina.estudoBiblico} pontos por estudo`);
         } else {
           tips.push(`🔸 Continue estudando a Bíblia`);
-          tips.push(`🔸 Cada estudo vale +${pointsConfig.escolaSabatina.estudoBiblico} pontos`);
+          tips.push(`🔸 Cada estudo vale +${safeConfig.escolaSabatina.estudoBiblico} pontos`);
         }
         break;
         
       case 'Batizou Alguém (ES)':
         if (!userData.escolaSabatina?.batizouAlguem || userData.escolaSabatina.batizouAlguem === 0) {
           tips.push(`🔸 Envolva-se em evangelismo`);
-          tips.push(`🔸 Potencial de ganhar +${pointsConfig.escolaSabatina.batizouAlguem} pontos por batismo`);
+          tips.push(`🔸 Potencial de ganhar +${safeConfig.escolaSabatina.batizouAlguem} pontos por batismo`);
         } else {
           tips.push(`🔸 Continue liderando batismos`);
-          tips.push(`🔸 Cada batismo vale +${pointsConfig.escolaSabatina.batizouAlguem} pontos`);
+          tips.push(`🔸 Cada batismo vale +${safeConfig.escolaSabatina.batizouAlguem} pontos`);
         }
         break;
         
       case 'Discipulado Pós-Batismo (ES)':
         if (!userData.escolaSabatina?.discipuladoPosBatismo || userData.escolaSabatina.discipuladoPosBatismo === 0) {
           tips.push(`🔸 Acompanhe novos batizados`);
-          tips.push(`🔸 Potencial de ganhar +${pointsConfig.escolaSabatina.discipuladoPosBatismo} pontos por acompanhamento`);
+          tips.push(`🔸 Potencial de ganhar +${safeConfig.escolaSabatina.discipuladoPosBatismo} pontos por acompanhamento`);
         } else {
           tips.push(`🔸 Continue o discipulado`);
-          tips.push(`🔸 Cada acompanhamento vale +${pointsConfig.escolaSabatina.discipuladoPosBatismo} pontos`);
+          tips.push(`🔸 Cada acompanhamento vale +${safeConfig.escolaSabatina.discipuladoPosBatismo} pontos`);
         }
         break;
     }
@@ -306,54 +322,54 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
         case 'Engajamento':
           if (userData.engajamento && typeof userData.engajamento === 'string') {
             const engajamento = userData.engajamento.toLowerCase();
-            if (engajamento.includes('baixo')) return pointsConfig.engajamento.baixo;
-            if (engajamento.includes('médio') || engajamento.includes('medio')) return pointsConfig.engajamento.medio;
-            if (engajamento.includes('alto')) return pointsConfig.engajamento.alto;
+            if (engajamento.includes('baixo')) return safeConfig.engajamento.baixo;
+            if (engajamento.includes('médio') || engajamento.includes('medio')) return safeConfig.engajamento.medio;
+            if (engajamento.includes('alto')) return safeConfig.engajamento.alto;
           }
           return 0;
           
         case 'Classificação':
           if (userData.classificacao && typeof userData.classificacao === 'string') {
             const classificacao = userData.classificacao.toLowerCase();
-            if (classificacao.includes('frequente')) return pointsConfig.classificacao.frequente;
-            else return pointsConfig.classificacao.naoFrequente;
+            if (classificacao.includes('frequente')) return safeConfig.classificacao.frequente;
+            else return safeConfig.classificacao.naoFrequente;
           }
           return 0;
           
         case 'Dizimista':
           if (userData.dizimista && typeof userData.dizimista === 'string') {
             const dizimista = userData.dizimista.toLowerCase();
-            if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) return pointsConfig.dizimista.naoDizimista;
-            if (dizimista.includes('pontual')) return pointsConfig.dizimista.pontual;
-            if (dizimista.includes('sazonal')) return pointsConfig.dizimista.sazonal;
-            if (dizimista.includes('recorrente')) return pointsConfig.dizimista.recorrente;
+            if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) return safeConfig.dizimista.naoDizimista;
+            if (dizimista.includes('pontual')) return safeConfig.dizimista.pontual;
+            if (dizimista.includes('sazonal')) return safeConfig.dizimista.sazonal;
+            if (dizimista.includes('recorrente')) return safeConfig.dizimista.recorrente;
           }
           return 0;
           
         case 'Ofertante':
           if (userData.ofertante && typeof userData.ofertante === 'string') {
             const ofertante = userData.ofertante.toLowerCase();
-            if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) return pointsConfig.ofertante.naoOfertante;
-            if (ofertante.includes('pontual')) return pointsConfig.ofertante.pontual;
-            if (ofertante.includes('sazonal')) return pointsConfig.ofertante.sazonal;
-            if (ofertante.includes('recorrente')) return pointsConfig.ofertante.recorrente;
+            if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) return safeConfig.ofertante.naoOfertante;
+            if (ofertante.includes('pontual')) return safeConfig.ofertante.pontual;
+            if (ofertante.includes('sazonal')) return safeConfig.ofertante.sazonal;
+            if (ofertante.includes('recorrente')) return safeConfig.ofertante.recorrente;
           }
           return 0;
           
         case 'Tempo de Batismo':
           if (userData.tempoBatismo) {
             if (typeof userData.tempoBatismo === 'string' && userData.tempoBatismo.length > 0) {
-              if (userData.tempoBatismo.includes('2 a 4')) return pointsConfig.tempoBatismo.doisAnos;
-              if (userData.tempoBatismo.includes('5 a 9')) return pointsConfig.tempoBatismo.cincoAnos;
-              if (userData.tempoBatismo.includes('10 a 14')) return pointsConfig.tempoBatismo.dezAnos;
-              if (userData.tempoBatismo.includes('15 a 19')) return pointsConfig.tempoBatismo.vinteAnos;
-              if (userData.tempoBatismo.includes('20 a 29') || userData.tempoBatismo.includes('30+')) return pointsConfig.tempoBatismo.maisVinte;
+              if (userData.tempoBatismo.includes('2 a 4')) return pointsConfig.tempoBatismo?.doisAnos || 0;
+              if (userData.tempoBatismo.includes('5 a 9')) return pointsConfig.tempoBatismo?.cincoAnos || 0;
+              if (userData.tempoBatismo.includes('10 a 14')) return pointsConfig.tempoBatismo?.dezAnos || 0;
+              if (userData.tempoBatismo.includes('15 a 19')) return pointsConfig.tempoBatismo?.vinteAnos || 0;
+              if (userData.tempoBatismo.includes('20 a 29') || userData.tempoBatismo.includes('30+')) return pointsConfig.tempoBatismo?.maisVinte || 0;
             } else if (typeof userData.tempoBatismo === 'number') {
-              if (userData.tempoBatismo >= 2 && userData.tempoBatismo < 5) return pointsConfig.tempoBatismo.doisAnos;
-              if (userData.tempoBatismo >= 5 && userData.tempoBatismo < 10) return pointsConfig.tempoBatismo.dezAnos;
-              if (userData.tempoBatismo >= 10 && userData.tempoBatismo < 20) return pointsConfig.tempoBatismo.vinteAnos;
-              if (userData.tempoBatismo >= 20 && userData.tempoBatismo < 30) return pointsConfig.tempoBatismo.vinteAnos;
-              if (userData.tempoBatismo >= 30) return pointsConfig.tempoBatismo.maisVinte;
+              if (userData.tempoBatismo >= 2 && userData.tempoBatismo < 5) return pointsConfig.tempoBatismo?.doisAnos || 0;
+              if (userData.tempoBatismo >= 5 && userData.tempoBatismo < 10) return pointsConfig.tempoBatismo?.dezAnos || 0;
+              if (userData.tempoBatismo >= 10 && userData.tempoBatismo < 20) return pointsConfig.tempoBatismo?.vinteAnos || 0;
+              if (userData.tempoBatismo >= 20 && userData.tempoBatismo < 30) return pointsConfig.tempoBatismo?.vinteAnos || 0;
+              if (userData.tempoBatismo >= 30) return pointsConfig.tempoBatismo?.maisVinte || 0;
             }
           }
           return 0;
@@ -361,54 +377,54 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
         case 'Cargos':
           if (userData.cargos && Array.isArray(userData.cargos)) {
             const numCargos = userData.cargos.length;
-            if (numCargos === 1) return pointsConfig.cargos.umCargo;
-            if (numCargos === 2) return pointsConfig.cargos.doisCargos;
-            if (numCargos >= 3) return pointsConfig.cargos.tresOuMais;
+            if (numCargos === 1) return pointsConfig.cargos?.umCargo || 0;
+            if (numCargos === 2) return pointsConfig.cargos?.doisCargos || 0;
+            if (numCargos >= 3) return pointsConfig.cargos?.tresOuMais || 0;
           }
           return 0;
           
         case 'Nome da Unidade':
           if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
-            return pointsConfig.nomeUnidade.comUnidade;
+            return safeConfig.nomeUnidade.comUnidade;
           }
           return 0;
           
         case 'Tem Lição':
           if (userData.temLicao) {
-            return pointsConfig.temLicao.comLicao;
+            return safeConfig.temLicao.comLicao;
           }
           return 0;
           
         case 'Total de Presença':
           if (userData.totalPresenca !== undefined) {
             const presenca = userData.totalPresenca;
-            if (presenca >= 0 && presenca <= 3) return pointsConfig.totalPresenca.zeroATres;
-            if (presenca >= 4 && presenca <= 7) return pointsConfig.totalPresenca.quatroASete;
-            if (presenca >= 8 && presenca <= 13) return pointsConfig.totalPresenca.oitoATreze;
+            if (presenca >= 0 && presenca <= 3) return safeConfig.totalPresenca.zeroATres;
+            if (presenca >= 4 && presenca <= 7) return safeConfig.totalPresenca.quatroASete;
+            if (presenca >= 8 && presenca <= 13) return safeConfig.totalPresenca.oitoATreze;
           }
           return 0;
           
         case 'Batizou Alguém':
           if (userData.batizouAlguem) {
             if (typeof userData.batizouAlguem === 'number') {
-              return userData.batizouAlguem > 0 ? pointsConfig.escolaSabatina.batizouAlguem : 0;
+              return userData.batizouAlguem > 0 ? safeConfig.escolaSabatina.batizouAlguem : 0;
             }
-            return userData.batizouAlguem ? pointsConfig.escolaSabatina.batizouAlguem : 0;
+            return userData.batizouAlguem ? safeConfig.escolaSabatina.batizouAlguem : 0;
           }
           return 0;
           
         case 'CPF Válido':
           if (userData.cpfValido) {
             if (typeof userData.cpfValido === 'string') {
-              return userData.cpfValido === 'Sim' ? pointsConfig.cpfValido.valido : 0;
+              return userData.cpfValido === 'Sim' ? safeConfig.cpfValido.valido : 0;
             }
-            return userData.cpfValido ? pointsConfig.cpfValido.valido : 0;
+            return userData.cpfValido ? safeConfig.cpfValido.valido : 0;
           }
           return 0;
           
         case 'Campos Vazios ACMS':
           if (userData.camposVaziosACMS === false) {
-            return pointsConfig.camposVaziosACMS.completos;
+            return safeConfig.camposVaziosACMS.completos;
           }
           return 0;
           
@@ -429,15 +445,15 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
     try {
       switch (categoryName) {
         case 'comunhao':
-          return (userData.escolaSabatina.comunhao || 0) * pointsConfig.escolaSabatina.comunhao;
+          return (userData.escolaSabatina.comunhao || 0) * safeConfig.escolaSabatina.comunhao;
         case 'missao':
-          return (userData.escolaSabatina.missao || 0) * pointsConfig.escolaSabatina.missao;
+          return (userData.escolaSabatina.missao || 0) * safeConfig.escolaSabatina.missao;
         case 'estudoBiblico':
-          return (userData.escolaSabatina.estudoBiblico || 0) * pointsConfig.escolaSabatina.estudoBiblico;
+          return (userData.escolaSabatina.estudoBiblico || 0) * safeConfig.escolaSabatina.estudoBiblico;
         case 'batizouAlguem':
-          return (userData.escolaSabatina.batizouAlguem || 0) * pointsConfig.escolaSabatina.batizouAlguem;
+          return (userData.escolaSabatina.batizouAlguem || 0) * safeConfig.escolaSabatina.batizouAlguem;
         case 'discipuladoPosBatismo':
-          return (userData.escolaSabatina.discipuladoPosBatismo || 0) * pointsConfig.escolaSabatina.discipuladoPosBatismo;
+          return (userData.escolaSabatina.discipuladoPosBatismo || 0) * safeConfig.escolaSabatina.discipuladoPosBatismo;
         default:
           return 0;
       }
@@ -552,14 +568,14 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
     if (!pointsConfig) return 0;
     switch (categoryName) {
       case 'Engajamento':
-        return pointsConfig.engajamento.alto;
+        return safeConfig.engajamento.alto;
       case 'Classificação':
-        return pointsConfig.classificacao.frequente;
+        return safeConfig.classificacao.frequente;
       case 'Fidelidade Regular com Dízimo':
       case 'Fidelidade regular com dízimo':
-        return pointsConfig.dizimista.recorrente;
+        return safeConfig.dizimista.recorrente;
       case 'Fidelidade Regular com Ofertas':
-        return pointsConfig.ofertante.recorrente;
+        return safeConfig.ofertante.recorrente;
       case 'Tempo de Batismo': {
         const t = pointsConfig.tempoBatismo;
         return Math.max(
@@ -571,17 +587,17 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
         );
       }
       case 'Cargos':
-        return pointsConfig.cargos.tresOuMais;
+        return safeConfig.cargos.tresOuMais;
       case 'Nome da Unidade':
-        return pointsConfig.nomeUnidade.comUnidade;
+        return safeConfig.nomeUnidade.comUnidade;
       case 'Tem Lição':
-        return pointsConfig.temLicao.comLicao;
+        return safeConfig.temLicao.comLicao;
       case 'Total de Presença':
-        return pointsConfig.totalPresenca.oitoATreze;
+        return safeConfig.totalPresenca.oitoATreze;
       case 'CPF Válido':
-        return pointsConfig.cpfValido.valido;
+        return safeConfig.cpfValido.valido;
       case 'Campos Vazios ACMS':
-        return pointsConfig.camposVaziosACMS.completos;
+        return safeConfig.camposVaziosACMS.completos;
       default:
         return 0;
     }
