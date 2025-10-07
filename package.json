@@ -10,7 +10,8 @@
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "migrate-to-neon": "NODE_ENV=development tsx -e \"import('./server/migrateToNeon.js').then(m => m.migrateToNeon())\"",
-    "migrate-extradata": "NODE_ENV=development tsx server/migrateExtraDataToColumns.ts"
+    "migrate-extradata": "NODE_ENV=development tsx server/migrateExtraDataToColumns.ts",
+    "recalcular-campos-vazios": "NODE_ENV=development tsx server/recalcularCamposVazios.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
