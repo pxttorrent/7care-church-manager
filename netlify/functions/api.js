@@ -191,7 +191,6 @@ exports.handler = async (event, context) => {
             console.log(`📊 [GOOGLE-DRIVE] Adicionando evento: ${event.title} (${formattedDate})`);
             
         // Método direto: Tentar adicionar via Google Apps Script
-        try {
           // URL do Google Apps Script (substitua pela sua URL)
           const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL || 'https://script.google.com/macros/s/SEU_SCRIPT_ID/exec';
           
@@ -239,11 +238,7 @@ exports.handler = async (event, context) => {
           }
           
         } catch (error) {
-          console.log(`❌ [GOOGLE-DRIVE] Erro geral ao processar "${event.title}":`, error.message);
-        }
-            
-          } catch (eventError) {
-            console.error(`❌ [GOOGLE-DRIVE] Erro ao processar evento "${event.title}":`, eventError.message);
+            console.error(`❌ [GOOGLE-DRIVE] Erro ao processar evento "${event.title}":`, error.message);
           }
         }
         
@@ -9325,19 +9320,6 @@ exports.handler = async (event, context) => {
           })
         };
         
-        } catch (error) {
-          console.error('❌ Erro ao marcar recálculo:', error);
-          // Mesmo com erro, a config foi salva
-          return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({ 
-              success: true, 
-              message: 'Configuração salva com sucesso!'
-            })
-          };
-        }
-        
       } catch (error) {
         console.error('❌ Save points config error:', error);
         return {
@@ -9353,8 +9335,8 @@ exports.handler = async (event, context) => {
       try {
         console.log('🔄 Iniciando recálculo manual de pontos...');
         
-        // Buscar todos os usuários
-        const users = await sql`SELECT * FROM users WHERE role != 'admin' ORDER BY id`;
+            // Buscar todos os usuários
+            const users = await sql`SELECT * FROM users WHERE role != 'admin' ORDER BY id`;
         console.log(`👥 ${users.length} usuários encontrados para recálculo`);
         
         // Marcar início do recálculo
@@ -9368,15 +9350,15 @@ exports.handler = async (event, context) => {
               updated_at = NOW()
           WHERE id = 1
         `;
-        
-        let updatedCount = 0;
-        let errorCount = 0;
-        
+            
+            let updatedCount = 0;
+            let errorCount = 0;
+            
         // Processar em lotes
         const batchSize = 10; // Maior para ser mais rápido
-        for (let i = 0; i < users.length; i += batchSize) {
-          const batch = users.slice(i, i + batchSize);
-          
+            for (let i = 0; i < users.length; i += batchSize) {
+              const batch = users.slice(i, i + batchSize);
+              
           // Atualizar progresso
           const processedSoFar = i;
           const progressPercent = (processedSoFar / users.length) * 100;
@@ -9392,11 +9374,11 @@ exports.handler = async (event, context) => {
           `;
           
           // Processar lote
-          const batchPromises = batch.map(async (user) => {
-            try {
-              const calculatedPoints = await calculateUserPoints(user);
-              if (user.points !== calculatedPoints) {
-                await sql`UPDATE users SET points = ${calculatedPoints} WHERE id = ${user.id}`;
+              const batchPromises = batch.map(async (user) => {
+                try {
+                  const calculatedPoints = await calculateUserPoints(user);
+                  if (user.points !== calculatedPoints) {
+                    await sql`UPDATE users SET points = ${calculatedPoints} WHERE id = ${user.id}`;
                 return { updated: true };
               }
               return { updated: false };
