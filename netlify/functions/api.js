@@ -1059,7 +1059,7 @@ exports.handler = async (event, context) => {
             extraData.visitCount = 0;
             extraData.lastVisitDate = null;
             extraData.firstVisitDate = null;
-          }
+        }
           
           return {
             ...user,
@@ -9324,8 +9324,8 @@ exports.handler = async (event, context) => {
       try {
         console.log('🔄 Iniciando recálculo manual de pontos...');
         
-            // Buscar todos os usuários
-            const users = await sql`SELECT * FROM users WHERE role != 'admin' ORDER BY id`;
+        // Buscar todos os usuários (incluindo admins)
+        const users = await sql`SELECT * FROM users ORDER BY id`;
         console.log(`👥 ${users.length} usuários encontrados para recálculo`);
         
         // Marcar início do recálculo
@@ -9659,8 +9659,8 @@ exports.handler = async (event, context) => {
       try {
         console.log('🔄 Iniciando recálculo manual de pontos...');
         
-        // Buscar apenas alguns usuários para teste
-        const users = await sql`SELECT * FROM users WHERE role != 'admin' ORDER BY id LIMIT 10`;
+        // Buscar apenas alguns usuários para teste (incluindo admins)
+        const users = await sql`SELECT * FROM users ORDER BY id LIMIT 10`;
         console.log(`👥 ${users.length} usuários encontrados para recálculo`);
         
         let updatedCount = 0;
