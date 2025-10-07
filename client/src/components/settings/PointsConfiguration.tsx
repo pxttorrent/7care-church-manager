@@ -339,15 +339,40 @@ export const PointsConfiguration = () => {
       setConfig(configCompleta);
       console.log('✅ Estado local atualizado com configuração salva');
       
-      if (result.updatedUsers > 0) {
-        toast({
-          title: "✅ Configurações salvas!",
-          description: `${result.updatedUsers} usuários tiveram seus pontos recalculados automaticamente.`,
+      toast({
+        title: "✅ Configurações salvas!",
+        description: "Iniciando recálculo dos pontos...",
+      });
+      
+      // DISPARAR RECÁLCULO EM ROTA SEPARADA (evita timeout)
+      console.log('🔄 Disparando recálculo de pontos...');
+      try {
+        const recalcResponse = await fetch('/api/system/recalculate-points', {
+          method: 'POST'
         });
-      } else {
+        
+        if (recalcResponse.ok) {
+          const recalcResult = await recalcResponse.json();
+          console.log('✅ Recálculo concluído:', recalcResult);
+          
+          toast({
+            title: "✅ Recálculo concluído!",
+            description: `${recalcResult.updatedUsers || 0} usuários atualizados.`,
+          });
+        } else {
+          console.warn('⚠️ Recálculo falhou, mas config foi salva');
+          toast({
+            title: "⚠️ Atenção",
+            description: "Configuração salva, mas houve erro ao recalcular pontos.",
+            variant: "destructive",
+          });
+        }
+      } catch (recalcError) {
+        console.error('❌ Erro ao disparar recálculo:', recalcError);
         toast({
-          title: "✅ Configurações salvas!",
-          description: "As configurações foram salvas com sucesso.",
+          title: "⚠️ Atenção",
+          description: "Configuração salva. Recalcule manualmente se necessário.",
+          variant: "destructive",
         });
       }
       

@@ -9307,125 +9307,33 @@ exports.handler = async (event, context) => {
         // Invalidar cache da configuração para forçar recarregamento
         global.pointsConfigCache = null;
         
-        // Recalcular pontos de todos os usuários automaticamente (VERSÃO SÍNCRONA CORRIGIDA)
-        console.log('🔄 Iniciando recálculo automático de pontos...');
+        // OTIMIZAÇÃO: Retornar resposta imediatamente e recalcular em background
+        // Isso evita timeout 504 em Netlify Functions (limite de 10s)
+        console.log('🔄 Marcando recálculo para iniciar...');
         
-        try {
-          // Buscar todos os usuários
-          const users = await sql`SELECT * FROM users WHERE role != 'admin' ORDER BY id`;
-          console.log(`👥 ${users.length} usuários encontrados para recálculo`);
-          
-          // Iniciar rastreamento de progresso (SALVAR NO BANCO para persistir entre serverless instances)
-          await sql`
-            UPDATE recalculation_status
-            SET is_recalculating = true,
-                progress = 0,
-                message = 'Iniciando recálculo de pontos...',
-                total_users = ${users.length},
-                processed_users = 0,
-                updated_at = NOW()
-            WHERE id = 1
-          `;
-          
-          console.log('✅ Status inicial salvo no banco - barra deve aparecer agora!');
-          
-          let updatedCount = 0;
-          let errorCount = 0;
-          
-          // OTIMIZAÇÃO: Lotes menores (5 usuários) para progresso mais rápido
-          const batchSize = 5;
-          for (let i = 0; i < users.length; i += batchSize) {
-            const batch = users.slice(i, i + batchSize);
-            
-            // OTIMIZAÇÃO: Atualizar progresso ANTES de processar (mostra imediatamente)
-            const processedSoFar = i;
-            const progressPercent = (processedSoFar / users.length) * 100;
-            const nextBatch = Math.min(i + batchSize, users.length);
-            const progressMessage = `Recalculando pontos... (${i + 1}-${nextBatch} de ${users.length})`;
-            
-            await sql`
-              UPDATE recalculation_status
-              SET progress = ${progressPercent},
-                  processed_users = ${processedSoFar},
-                  message = ${progressMessage},
-                  updated_at = NOW()
-              WHERE id = 1
-            `;
-            
-            console.log(`📊 Progresso: ${Math.round(progressPercent)}% - ${progressMessage}`);
-            
-            // Processar lote em paralelo
-            const batchPromises = batch.map(async (user) => {
-              try {
-                // Calcular pontos usando a nova configuração
-                const calculatedPoints = await calculateUserPoints(user);
-                
-                // Atualizar pontos no banco se mudaram
-                if (user.points !== calculatedPoints) {
-                  await sql`UPDATE users SET points = ${calculatedPoints} WHERE id = ${user.id}`;
-                  return { updated: true, userId: user.id, userName: user.name, oldPoints: user.points, newPoints: calculatedPoints };
-                }
-                
-                return { updated: false, userId: user.id, points: calculatedPoints };
-                
-              } catch (userError) {
-                console.error(`❌ Erro ao processar usuário ${user.name}:`, userError);
-                return { error: true, userId: user.id, errorMsg: userError.message };
-              }
-            });
-            
-            // Aguardar lote atual
-            const batchResults = await Promise.all(batchPromises);
-            
-            // Contar resultados
-            batchResults.forEach(result => {
-              if (result.error) {
-                errorCount++;
-              } else if (result.updated) {
-                updatedCount++;
-                console.log(`✅ Usuário ${result.userName} (ID ${result.userId}): ${result.oldPoints} → ${result.newPoints} pontos`);
-              }
-            });
-          }
-          
-          console.log(`🎉 Recálculo concluído: ${updatedCount} usuários atualizados, ${errorCount} erros`);
-          
-          // Finalizar rastreamento de progresso no banco
-          await sql`
-            UPDATE recalculation_status
-            SET is_recalculating = false,
-                progress = 100,
-                message = 'Recálculo concluído!',
-                total_users = ${users.length},
-                processed_users = ${users.length},
-                updated_at = NOW()
-            WHERE id = 1
-          `;
-          
-          // Retornar resposta com informações do recálculo
+        // RETORNAR IMEDIATAMENTE - Evitar timeout 504
+        // O recálculo será feito por uma rota separada chamada pelo frontend
+        console.log('✅ Configuração salva! Retornando imediatamente...');
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: 'Configuração salva com sucesso! Os pontos serão recalculados.',
+            recalculationTriggered: true
+          })
+        };
+        
+        } catch (error) {
+          console.error('❌ Erro ao marcar recálculo:', error);
+          // Mesmo com erro, a config foi salva
           return {
             statusCode: 200,
             headers,
             body: JSON.stringify({ 
               success: true, 
-              message: 'Configuração salva e pontos recalculados com sucesso!',
-              updatedUsers: updatedCount,
-              errors: errorCount,
-              totalUsers: users.length
-            })
-          };
-          
-        } catch (calcError) {
-          console.error('❌ Erro no recálculo:', calcError);
-          // Se falhar o recálculo, ainda assim retornar que a config foi salva
-          return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({ 
-              success: true, 
-              message: 'Configuração salva, mas houve erro no recálculo de pontos.',
-              error: calcError.message,
-              updatedUsers: 0
+              message: 'Configuração salva com sucesso!'
             })
           };
         }
@@ -9436,6 +9344,115 @@ exports.handler = async (event, context) => {
           statusCode: 500,
           headers,
           body: JSON.stringify({ error: 'Erro ao salvar configuração de pontos' })
+        };
+      }
+    }
+
+    // Rota para RECALCULAR pontos de todos os usuários (separada para evitar timeout)
+    if (path === '/api/system/recalculate-points' && method === 'POST') {
+      try {
+        console.log('🔄 Iniciando recálculo manual de pontos...');
+        
+        // Buscar todos os usuários
+        const users = await sql`SELECT * FROM users WHERE role != 'admin' ORDER BY id`;
+        console.log(`👥 ${users.length} usuários encontrados para recálculo`);
+        
+        // Marcar início do recálculo
+        await sql`
+          UPDATE recalculation_status
+          SET is_recalculating = true,
+              progress = 0,
+              message = 'Iniciando recálculo de pontos...',
+              total_users = ${users.length},
+              processed_users = 0,
+              updated_at = NOW()
+          WHERE id = 1
+        `;
+        
+        let updatedCount = 0;
+        let errorCount = 0;
+        
+        // Processar em lotes
+        const batchSize = 10; // Maior para ser mais rápido
+        for (let i = 0; i < users.length; i += batchSize) {
+          const batch = users.slice(i, i + batchSize);
+          
+          // Atualizar progresso
+          const processedSoFar = i;
+          const progressPercent = (processedSoFar / users.length) * 100;
+          const nextBatch = Math.min(i + batchSize, users.length);
+          
+          await sql`
+            UPDATE recalculation_status
+            SET progress = ${progressPercent},
+                processed_users = ${processedSoFar},
+                message = ${'Recalculando pontos... (' + (i + 1) + '-' + nextBatch + ' de ' + users.length + ')'},
+                updated_at = NOW()
+            WHERE id = 1
+          `;
+          
+          // Processar lote
+          const batchPromises = batch.map(async (user) => {
+            try {
+              const calculatedPoints = await calculateUserPoints(user);
+              if (user.points !== calculatedPoints) {
+                await sql`UPDATE users SET points = ${calculatedPoints} WHERE id = ${user.id}`;
+                return { updated: true };
+              }
+              return { updated: false };
+            } catch (error) {
+              console.error(`Erro ao processar usuário ${user.name}:`, error);
+              return { error: true };
+            }
+          });
+          
+          const results = await Promise.all(batchPromises);
+          results.forEach(r => {
+            if (r.error) errorCount++;
+            if (r.updated) updatedCount++;
+          });
+        }
+        
+        // Finalizar
+        await sql`
+          UPDATE recalculation_status
+          SET is_recalculating = false,
+              progress = 100,
+              message = 'Recálculo concluído!',
+              total_users = ${users.length},
+              processed_users = ${users.length},
+              updated_at = NOW()
+          WHERE id = 1
+        `;
+        
+        console.log(`✅ Recálculo concluído: ${updatedCount} atualizados, ${errorCount} erros`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            updatedUsers: updatedCount,
+            errors: errorCount,
+            totalUsers: users.length
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro no recálculo:', error);
+        
+        // Marcar erro
+        await sql`
+          UPDATE recalculation_status
+          SET is_recalculating = false,
+              message = 'Erro no recálculo'
+          WHERE id = 1
+        `.catch(() => {});
+        
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao recalcular pontos' })
         };
       }
     }
