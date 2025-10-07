@@ -58,23 +58,25 @@ export default function Users() {
     queryKey: ['/api/users'],
     queryFn: async () => {
       try {
-        // Usar a rota /api/users que já retorna calculatedPoints corretamente
+        console.log('🔄 Buscando usuários da API...');
         const response = await fetch('/api/users');
         if (!response.ok) {
           throw new Error('Falha ao carregar usuários');
         }
         const data = await response.json();
+        console.log(`✅ ${data.length} usuários carregados`);
         // Garantir que sempre retorne um array
         return Array.isArray(data) ? data : [];
       } catch (error) {
-        console.error('Erro ao carregar usuários:', error);
+        console.error('❌ Erro ao carregar usuários:', error);
         return [];
       }
     },
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false, // Desabilitar refetch ao focar janela
     refetchOnMount: true,
-    staleTime: 5 * 60 * 1000, // 5 minutos
-    gcTime: 10 * 60 * 1000, // 10 minutos
+    staleTime: 10 * 60 * 1000, // 10 minutos - aumentado para evitar refetches
+    gcTime: 15 * 60 * 1000, // 15 minutos
+    retry: 1 // Tentar apenas 1 vez se falhar
   });
 
   // Garantir que users seja sempre um array
