@@ -2,14 +2,8 @@ const { neon } = require('@neondatabase/serverless');
 const bcrypt = require('bcryptjs');
 const webpush = require('web-push');
 
-// Variável global para rastrear status de recálculo
-let recalculationStatus = {
-  isRecalculating: false,
-  progress: 0,
-  message: '',
-  totalUsers: 0,
-  processedUsers: 0
-};
+// Nota: O status de recálculo agora é armazenado no banco (tabela recalculation_status)
+// para funcionar corretamente em ambientes serverless onde cada request pode ser uma nova instância
 
 exports.handler = async (event, context) => {
   // Configurar CORS
@@ -83,6 +77,26 @@ exports.handler = async (event, context) => {
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       )
+    `;
+    
+    // Criar tabela para status de recálculo (para persistir entre serverless instances)
+    await sql`
+      CREATE TABLE IF NOT EXISTS recalculation_status (
+        id SERIAL PRIMARY KEY,
+        is_recalculating BOOLEAN DEFAULT FALSE,
+        progress REAL DEFAULT 0,
+        message TEXT DEFAULT '',
+        total_users INTEGER DEFAULT 0,
+        processed_users INTEGER DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+    
+    // Garantir que existe pelo menos um registro
+    await sql`
+      INSERT INTO recalculation_status (is_recalculating, progress, message, total_users, processed_users)
+      SELECT false, 0, '', 0, 0
+      WHERE NOT EXISTS (SELECT 1 FROM recalculation_status LIMIT 1)
     `;
     
     const path = event.path;
@@ -9191,13 +9205,45 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Rota para verificar status de recálculo
+    // Rota para verificar status de recálculo (lê do banco para funcionar em serverless)
     if (path === '/api/system/recalculation-status' && method === 'GET') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify(recalculationStatus)
-      };
+      try {
+        const statusResult = await sql`SELECT * FROM recalculation_status ORDER BY id DESC LIMIT 1`;
+        
+        if (statusResult.length === 0) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              isRecalculating: false,
+              progress: 0,
+              message: '',
+              totalUsers: 0,
+              processedUsers: 0
+            })
+          };
+        }
+        
+        const status = statusResult[0];
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            isRecalculating: status.is_recalculating,
+            progress: status.progress,
+            message: status.message,
+            totalUsers: status.total_users,
+            processedUsers: status.processed_users
+          })
+        };
+      } catch (error) {
+        console.error('Erro ao buscar status de recálculo:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao buscar status' })
+        };
+      }
     }
 
     // Rota para salvar configuração de pontos
@@ -9269,14 +9315,17 @@ exports.handler = async (event, context) => {
           const users = await sql`SELECT * FROM users WHERE role != 'admin' ORDER BY id`;
           console.log(`👥 ${users.length} usuários encontrados para recálculo`);
           
-          // Iniciar rastreamento de progresso
-          recalculationStatus = {
-            isRecalculating: true,
-            progress: 0,
-            message: 'Iniciando recálculo de pontos...',
-            totalUsers: users.length,
-            processedUsers: 0
-          };
+          // Iniciar rastreamento de progresso (SALVAR NO BANCO para persistir entre serverless instances)
+          await sql`
+            UPDATE recalculation_status
+            SET is_recalculating = true,
+                progress = 0,
+                message = 'Iniciando recálculo de pontos...',
+                total_users = ${users.length},
+                processed_users = 0,
+                updated_at = NOW()
+            WHERE id = 1
+          `;
           
           let updatedCount = 0;
           let errorCount = 0;
@@ -9322,22 +9371,34 @@ exports.handler = async (event, context) => {
               }
             });
             
-            // Atualizar progresso
+            // Atualizar progresso no banco
             const processedSoFar = Math.min(i + batchSize, users.length);
-            recalculationStatus.processedUsers = processedSoFar;
-            recalculationStatus.progress = (processedSoFar / users.length) * 100;
+            const progressPercent = (processedSoFar / users.length) * 100;
+            const progressMessage = `Recalculando pontos... (${i + 1}-${processedSoFar} de ${users.length})`;
+            
+            await sql`
+              UPDATE recalculation_status
+              SET progress = ${progressPercent},
+                  processed_users = ${processedSoFar},
+                  message = ${progressMessage},
+                  updated_at = NOW()
+              WHERE id = 1
+            `;
           }
           
           console.log(`🎉 Recálculo concluído: ${updatedCount} usuários atualizados, ${errorCount} erros`);
           
-          // Finalizar rastreamento de progresso
-          recalculationStatus = {
-            isRecalculating: false,
-            progress: 100,
-            message: 'Recálculo concluído!',
-            totalUsers: users.length,
-            processedUsers: users.length
-          };
+          // Finalizar rastreamento de progresso no banco
+          await sql`
+            UPDATE recalculation_status
+            SET is_recalculating = false,
+                progress = 100,
+                message = 'Recálculo concluído!',
+                total_users = ${users.length},
+                processed_users = ${users.length},
+                updated_at = NOW()
+            WHERE id = 1
+          `;
           
           // Retornar resposta com informações do recálculo
           return {
