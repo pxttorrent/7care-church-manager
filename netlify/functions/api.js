@@ -9327,16 +9327,32 @@ exports.handler = async (event, context) => {
             WHERE id = 1
           `;
           
+          console.log('✅ Status inicial salvo no banco - barra deve aparecer agora!');
+          
           let updatedCount = 0;
           let errorCount = 0;
           
-          // Processar em lotes para otimizar performance
-          const batchSize = 20;
+          // OTIMIZAÇÃO: Lotes menores (5 usuários) para progresso mais rápido
+          const batchSize = 5;
           for (let i = 0; i < users.length; i += batchSize) {
             const batch = users.slice(i, i + batchSize);
             
-            // Atualizar mensagem de progresso
-            recalculationStatus.message = `Recalculando pontos... (${i + 1}-${Math.min(i + batchSize, users.length)} de ${users.length})`;
+            // OTIMIZAÇÃO: Atualizar progresso ANTES de processar (mostra imediatamente)
+            const processedSoFar = i;
+            const progressPercent = (processedSoFar / users.length) * 100;
+            const nextBatch = Math.min(i + batchSize, users.length);
+            const progressMessage = `Recalculando pontos... (${i + 1}-${nextBatch} de ${users.length})`;
+            
+            await sql`
+              UPDATE recalculation_status
+              SET progress = ${progressPercent},
+                  processed_users = ${processedSoFar},
+                  message = ${progressMessage},
+                  updated_at = NOW()
+              WHERE id = 1
+            `;
+            
+            console.log(`📊 Progresso: ${Math.round(progressPercent)}% - ${progressMessage}`);
             
             // Processar lote em paralelo
             const batchPromises = batch.map(async (user) => {
@@ -9371,19 +9387,11 @@ exports.handler = async (event, context) => {
               }
             });
             
-            // Atualizar progresso no banco
-            const processedSoFar = Math.min(i + batchSize, users.length);
-            const progressPercent = (processedSoFar / users.length) * 100;
-            const progressMessage = `Recalculando pontos... (${i + 1}-${processedSoFar} de ${users.length})`;
-            
-            await sql`
-              UPDATE recalculation_status
-              SET progress = ${progressPercent},
-                  processed_users = ${processedSoFar},
-                  message = ${progressMessage},
-                  updated_at = NOW()
-              WHERE id = 1
-            `;
+            // Pequeno delay para permitir que a barra seja visível (200ms entre lotes)
+            // Isso torna o progresso visível sem prejudicar muito a performance
+            if (i + batchSize < users.length) {
+              await new Promise(resolve => setTimeout(resolve, 200));
+            }
           }
           
           console.log(`🎉 Recálculo concluído: ${updatedCount} usuários atualizados, ${errorCount} erros`);
