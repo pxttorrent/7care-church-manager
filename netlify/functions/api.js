@@ -2,6 +2,15 @@ const { neon } = require('@neondatabase/serverless');
 const bcrypt = require('bcryptjs');
 const webpush = require('web-push');
 
+// Variável global para rastrear status de recálculo
+let recalculationStatus = {
+  isRecalculating: false,
+  progress: 0,
+  message: '',
+  totalUsers: 0,
+  processedUsers: 0
+};
+
 exports.handler = async (event, context) => {
   // Configurar CORS
   const headers = {
@@ -1043,13 +1052,22 @@ exports.handler = async (event, context) => {
             extraData.firstVisitDate = null;
           }
 
-        // OTIMIZAÇÃO: Não calcular pontos em tempo real - usar pontos já salvos no banco
-        // Os pontos são recalculados automaticamente quando a configuração muda
-        return {
-          ...user,
-          extraData: extraData
-        };
-      }));
+        // Calcular pontos para o usuário
+        let calculatedPoints;
+        try {
+          calculatedPoints = await calculateUserPoints(user);
+          console.log(`🎯 Pontos calculados para ${user.name} (ID: ${user.id}): ${calculatedPoints}`);
+        } catch (error) {
+          console.error(`❌ Erro ao calcular pontos para ${user.name}:`, error);
+          calculatedPoints = 0; // Fallback em caso de erro
+        }
+          
+          return {
+            ...user,
+            extraData: extraData,
+            calculatedPoints: calculatedPoints
+          };
+        }));
         
         console.log(`📊 Usuários processados: ${processedUsers.length}`);
         
@@ -9173,6 +9191,15 @@ exports.handler = async (event, context) => {
       };
     }
 
+    // Rota para verificar status de recálculo
+    if (path === '/api/system/recalculation-status' && method === 'GET') {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify(recalculationStatus)
+      };
+    }
+
     // Rota para salvar configuração de pontos
     if (path === '/api/system/points-config' && method === 'POST') {
       try {
@@ -9242,6 +9269,15 @@ exports.handler = async (event, context) => {
           const users = await sql`SELECT * FROM users WHERE role != 'admin' ORDER BY id`;
           console.log(`👥 ${users.length} usuários encontrados para recálculo`);
           
+          // Iniciar rastreamento de progresso
+          recalculationStatus = {
+            isRecalculating: true,
+            progress: 0,
+            message: 'Iniciando recálculo de pontos...',
+            totalUsers: users.length,
+            processedUsers: 0
+          };
+          
           let updatedCount = 0;
           let errorCount = 0;
           
@@ -9249,6 +9285,9 @@ exports.handler = async (event, context) => {
           const batchSize = 20;
           for (let i = 0; i < users.length; i += batchSize) {
             const batch = users.slice(i, i + batchSize);
+            
+            // Atualizar mensagem de progresso
+            recalculationStatus.message = `Recalculando pontos... (${i + 1}-${Math.min(i + batchSize, users.length)} de ${users.length})`;
             
             // Processar lote em paralelo
             const batchPromises = batch.map(async (user) => {
@@ -9282,9 +9321,23 @@ exports.handler = async (event, context) => {
                 console.log(`✅ Usuário ${result.userName} (ID ${result.userId}): ${result.oldPoints} → ${result.newPoints} pontos`);
               }
             });
+            
+            // Atualizar progresso
+            const processedSoFar = Math.min(i + batchSize, users.length);
+            recalculationStatus.processedUsers = processedSoFar;
+            recalculationStatus.progress = (processedSoFar / users.length) * 100;
           }
           
           console.log(`🎉 Recálculo concluído: ${updatedCount} usuários atualizados, ${errorCount} erros`);
+          
+          // Finalizar rastreamento de progresso
+          recalculationStatus = {
+            isRecalculating: false,
+            progress: 100,
+            message: 'Recálculo concluído!',
+            totalUsers: users.length,
+            processedUsers: users.length
+          };
           
           // Retornar resposta com informações do recálculo
           return {

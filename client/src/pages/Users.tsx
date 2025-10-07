@@ -52,6 +52,11 @@ export default function Users() {
   const [showAuthorizationModal, setShowAuthorizationModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [adminNotes, setAdminNotes] = useState('');
+  
+  // Estados para progresso de recálculo
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [recalculationProgress, setRecalculationProgress] = useState(0);
+  const [recalculationMessage, setRecalculationMessage] = useState('');
 
   // Fetch users from API with points calculated
   const { data: usersData, isLoading, error } = useQuery({
@@ -764,6 +769,51 @@ export default function Users() {
 
 
 
+  // Monitorar progresso de recálculo de pontos
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout;
+    
+    const checkRecalculationProgress = async () => {
+      try {
+        const response = await fetch('/api/system/recalculation-status');
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.isRecalculating) {
+            setIsRecalculating(true);
+            setRecalculationProgress(data.progress || 0);
+            setRecalculationMessage(data.message || 'Recalculando pontos...');
+          } else {
+            setIsRecalculating(false);
+            
+            // Se terminou um recálculo, recarregar usuários
+            if (isRecalculating) {
+              queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+              toast({
+                title: "✅ Recálculo concluído!",
+                description: "Os pontos foram atualizados com sucesso.",
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao verificar progresso:', error);
+      }
+    };
+    
+    // Verificar a cada 2 segundos se há recálculo em andamento
+    pollInterval = setInterval(checkRecalculationProgress, 2000);
+    
+    // Verificar imediatamente ao montar
+    checkRecalculationProgress();
+    
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [isRecalculating, queryClient, toast]);
+
   const confirmDeleteUser = () => {
     if (userToDelete) {
       deleteUserMutation.mutate(userToDelete.id);
@@ -863,6 +913,41 @@ export default function Users() {
             )}
           </div>
         </div>
+
+        {/* Barra de progresso de recálculo de pontos */}
+        {isRecalculating && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-md animate-pulse">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
+                <p className="text-sm font-medium text-blue-900">
+                  {recalculationMessage}
+                </p>
+              </div>
+              <p className="text-sm font-bold text-blue-900">
+                {Math.round(recalculationProgress)}%
+              </p>
+            </div>
+            
+            {/* Barra de progresso */}
+            <div className="w-full bg-blue-200 rounded-full h-3 overflow-hidden shadow-inner">
+              <div 
+                className="bg-gradient-to-r from-blue-500 to-blue-600 h-full rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-2"
+                style={{ width: `${recalculationProgress}%` }}
+              >
+                {recalculationProgress > 10 && (
+                  <span className="text-[10px] font-bold text-white drop-shadow">
+                    {Math.round(recalculationProgress)}%
+                  </span>
+                )}
+              </div>
+            </div>
+            
+            <p className="text-xs text-blue-700 mt-2">
+              Aguarde enquanto os pontos são recalculados. A página será atualizada automaticamente.
+            </p>
+          </div>
+        )}
 
         {/* Stats como Badges Filtros Elegantes - Ultra Minimalista Mobile */}
         <div className="flex flex-wrap gap-1 sm:gap-4 mt-3 sm:mt-6 p-1.5 sm:p-4 bg-gradient-to-r from-slate-50 to-gray-50 rounded-lg sm:rounded-xl border border-slate-200/50 shadow-sm">
