@@ -1,5 +1,6 @@
 const { neon } = require('@neondatabase/serverless');
 const bcrypt = require('bcryptjs');
+const webpush = require('web-push');
 
 exports.handler = async (event, context) => {
   // Configurar CORS
@@ -37,8 +38,47 @@ exports.handler = async (event, context) => {
     console.log('🔍 Database URL cleaned:', dbUrl.substring(0, 50) + '...');
     const sql = neon(dbUrl);
     
+    // Configurar web-push
+    webpush.setVapidDetails(
+      'mailto:admin@7care.com',
+      'BD6cS7ooCOhh1lfv-D__PNYDv3S_S9EyR4bpowVJHcBxYIl5gtTFs8AThEO-MZnpzsKIZuRY3iR2oOMBDAOH2wY', // VAPID public key
+      process.env.VAPID_PRIVATE_KEY || 'bV2a5O96izjRRFrvjDNC8-7-IOJUWzDje2sSizbaPMg' // VAPID private key
+    );
+    
+    // Criar tabela de tarefas se não existir
+    await sql`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        status VARCHAR(50) DEFAULT 'pending',
+        priority VARCHAR(20) DEFAULT 'medium',
+        due_date TIMESTAMP,
+        created_by INTEGER NOT NULL,
+        assigned_to INTEGER,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        completed_at TIMESTAMP,
+        tags TEXT[],
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        FOREIGN KEY (assigned_to) REFERENCES users(id)
+      )
+    `;
+
+    // Criar tabela system_config se não existir
+    await sql`
+      CREATE TABLE IF NOT EXISTS system_config (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(255) UNIQUE NOT NULL,
+        value JSONB,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+    
     const path = event.path;
     const method = event.httpMethod;
+    const body = event.body;
     
     console.log(`🔍 API Request: ${method} ${path}`);
 
@@ -464,13 +504,19 @@ exports.handler = async (event, context) => {
     // Rota para estatísticas do dashboard
     if (path === '/api/dashboard/stats' && method === 'GET') {
       try {
+        console.log('🔍 [DASHBOARD STATS] Iniciando...');
+        
         // Obter ID do usuário do header (se fornecido)
         const userId = event.headers['x-user-id'];
         let userChurch = null;
+        let userData = null;
+        
+        console.log(`🔍 [DASHBOARD STATS] userId: ${userId}`);
         
         // Se userId fornecido, buscar igreja do usuário
         if (userId) {
-          const userData = await sql`SELECT church, role FROM users WHERE id = ${userId} LIMIT 1`;
+          userData = await sql`SELECT church, role FROM users WHERE id = ${userId} LIMIT 1`;
+          console.log(`🔍 [DASHBOARD STATS] userData:`, userData);
           if (userData.length > 0) {
             userChurch = userData[0].church;
             const userRole = userData[0].role;
@@ -478,15 +524,53 @@ exports.handler = async (event, context) => {
           }
         }
 
-        // Se for admin ou não tiver userId, mostrar estatísticas globais
-        if (!userId || !userChurch) {
+        // Se for admin, igreja "Sistema" ou não tiver userId, mostrar estatísticas globais
+        if (!userId || !userChurch || userChurch === 'Sistema' || (userData && userData.length > 0 && userData[0].role === 'admin')) {
           console.log('🔍 Dashboard stats globais (admin ou sem userId)');
       const users = await sql`SELECT COUNT(*) as count FROM users`;
       const events = await sql`SELECT COUNT(*) as count FROM events`;
       const interested = await sql`SELECT COUNT(*) as count FROM users WHERE role = 'interested'`;
       const members = await sql`SELECT COUNT(*) as count FROM users WHERE role = 'member'`;
       const admins = await sql`SELECT COUNT(*) as count FROM users WHERE role = 'admin'`;
-      const missionaries = await sql`SELECT COUNT(*) as count FROM users WHERE role = 'missionary'`;
+      const missionaries = await sql`SELECT COUNT(*) as count FROM users WHERE role LIKE '%missionary%'`;
+      
+      // Calcular eventos desta semana e mês
+      const today = new Date();
+      const weekStart = new Date(today.getTime() - (today.getDay() * 24 * 60 * 60 * 1000));
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      
+      const thisWeekEvents = await sql`
+        SELECT COUNT(*) as count FROM events 
+        WHERE date >= ${weekStart.toISOString().split('T')[0]}
+        AND date <= ${today.toISOString().split('T')[0]}
+      `;
+      
+      const thisMonthEvents = await sql`
+        SELECT COUNT(*) as count FROM events 
+        WHERE date >= ${monthStart.toISOString().split('T')[0]}
+        AND date <= ${today.toISOString().split('T')[0]}
+      `;
+      
+      // Calcular aniversariantes hoje e esta semana
+      const birthdaysToday = await sql`
+        SELECT COUNT(*) as count FROM users 
+        WHERE birth_date IS NOT NULL 
+        AND EXTRACT(MONTH FROM birth_date) = EXTRACT(MONTH FROM NOW())
+        AND EXTRACT(DAY FROM birth_date) = EXTRACT(DAY FROM NOW())
+      `;
+      
+      const birthdaysThisWeek = await sql`
+        SELECT COUNT(*) as count FROM users 
+        WHERE birth_date IS NOT NULL 
+        AND EXTRACT(MONTH FROM birth_date) = EXTRACT(MONTH FROM NOW())
+        AND EXTRACT(DAY FROM birth_date) BETWEEN EXTRACT(DAY FROM NOW()) AND EXTRACT(DAY FROM NOW() + INTERVAL '7 days')
+      `;
+      
+      // Contar tarefas pendentes
+      const pendingTasks = await sql`
+        SELECT COUNT(*) as count FROM tasks 
+        WHERE status = 'pending'
+      `;
       
       const stats = {
         totalUsers: parseInt(users[0].count),
@@ -495,12 +579,12 @@ exports.handler = async (event, context) => {
         totalMembers: parseInt(members[0].count),
         totalAdmins: parseInt(admins[0].count),
         totalMissionaries: parseInt(missionaries[0].count),
-        pendingApprovals: parseInt(users[0].count),
-        thisWeekEvents: 0,
-        thisMonthEvents: 0,
-        birthdaysToday: 0,
-        birthdaysThisWeek: 0,
-        approvedUsers: 0,
+        pendingApprovals: parseInt(pendingTasks[0].count), // Tarefas pendentes
+        thisWeekEvents: parseInt(thisWeekEvents[0].count),
+        thisMonthEvents: parseInt(thisMonthEvents[0].count),
+        birthdaysToday: parseInt(birthdaysToday[0].count),
+        birthdaysThisWeek: parseInt(birthdaysThisWeek[0].count),
+        approvedUsers: parseInt(members[0].count) + parseInt(missionaries[0].count) + parseInt(admins[0].count),
         totalChurches: 6
       };
 
@@ -516,14 +600,26 @@ exports.handler = async (event, context) => {
         const events = await sql`SELECT COUNT(*) as count FROM events`;
         const interested = await sql`SELECT COUNT(*) as count FROM users WHERE role = 'interested' AND church = ${userChurch}`;
         const members = await sql`SELECT COUNT(*) as count FROM users WHERE role = 'member' AND church = ${userChurch}`;
-        const missionaries = await sql`SELECT COUNT(*) as count FROM users WHERE role = 'missionary' AND church = ${userChurch}`;
+        const missionaries = await sql`SELECT COUNT(*) as count FROM users WHERE role LIKE '%missionary%' AND church = ${userChurch}`;
+        
+        // Calcular eventos desta semana e mês para a igreja
+        const today = new Date();
+        const weekStart = new Date(today.getTime() - (today.getDay() * 24 * 60 * 60 * 1000));
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        
+        const thisWeekEvents = await sql`
+          SELECT COUNT(*) as count FROM events 
+          WHERE date >= ${weekStart.toISOString().split('T')[0]}
+          AND date <= ${today.toISOString().split('T')[0]}
+        `;
+        
+        const thisMonthEvents = await sql`
+          SELECT COUNT(*) as count FROM events 
+          WHERE date >= ${monthStart.toISOString().split('T')[0]}
+          AND date <= ${today.toISOString().split('T')[0]}
+        `;
         
         // Buscar aniversariantes da igreja
-        const today = new Date();
-        const todayStr = today.toISOString().split('T')[0];
-        const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-        const weekFromNowStr = weekFromNow.toISOString().split('T')[0];
-        
         const birthdaysToday = await sql`
           SELECT COUNT(*) as count FROM users 
           WHERE church = ${userChurch} 
@@ -540,6 +636,12 @@ exports.handler = async (event, context) => {
           AND EXTRACT(DAY FROM birth_date) BETWEEN EXTRACT(DAY FROM NOW()) AND EXTRACT(DAY FROM NOW() + INTERVAL '7 days')
         `;
         
+        // Contar tarefas pendentes
+        const pendingTasks = await sql`
+          SELECT COUNT(*) as count FROM tasks 
+          WHERE status = 'pending'
+        `;
+        
         const stats = {
           totalUsers: parseInt(users[0].count),
           totalEvents: parseInt(events[0].count),
@@ -547,9 +649,9 @@ exports.handler = async (event, context) => {
           totalMembers: parseInt(members[0].count),
           totalAdmins: 0, // Membros não veem admins
           totalMissionaries: parseInt(missionaries[0].count),
-          pendingApprovals: parseInt(interested[0].count), // Interessados pendentes da igreja
-          thisWeekEvents: 0,
-          thisMonthEvents: 0,
+          pendingApprovals: parseInt(pendingTasks[0].count), // Tarefas pendentes
+          thisWeekEvents: parseInt(thisWeekEvents[0].count),
+          thisMonthEvents: parseInt(thisMonthEvents[0].count),
           birthdaysToday: parseInt(birthdaysToday[0].count),
           birthdaysThisWeek: parseInt(birthdaysThisWeek[0].count),
           approvedUsers: parseInt(members[0].count) + parseInt(missionaries[0].count),
@@ -566,10 +668,16 @@ exports.handler = async (event, context) => {
         };
       } catch (error) {
         console.error('❌ Dashboard stats error:', error);
+        console.error('❌ Dashboard stats error stack:', error.stack);
+        console.error('❌ Dashboard stats error details:', {
+          name: error.name,
+          message: error.message,
+          userId: event.headers['x-user-id']
+        });
         return {
           statusCode: 500,
           headers,
-          body: JSON.stringify({ error: 'Erro ao buscar estatísticas' })
+          body: JSON.stringify({ error: 'Erro ao buscar estatísticas', details: error.message })
         };
       }
     }
@@ -713,7 +821,205 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Rota para usuários - VERSÃO COM TABELA DE VISITAS
+    // Função para calcular pontos do usuário (versão funcional otimizada)
+    const calculateUserPoints = async (user) => {
+      try {
+        // Pular Super Admin
+        if (user.email === 'admin@7care.com' || user.role === 'admin') {
+          return 0;
+        }
+
+        // Parsear extraData se for string
+        let extraData = user.extraData || user.extra_data;
+        
+        if (typeof extraData === 'string') {
+          try {
+            extraData = JSON.parse(extraData);
+          } catch (error) {
+            extraData = {};
+          }
+        }
+
+        // Buscar configuração atual do banco de dados
+        const configRow = await sql`
+          SELECT engajamento, classificacao, dizimista, ofertante, tempobatismo,
+                 cargos, nomeunidade, temlicao, totalpresenca, escolasabatina,
+                 cpfvalido, camposvaziosacms
+          FROM points_configuration 
+          LIMIT 1
+        `;
+        
+        if (configRow.length === 0) {
+          return 500; // Fallback se não houver configuração
+        }
+        
+        const pointsConfig = configRow[0];
+        let totalPoints = 0;
+
+        // 1. ENGAJAMENTO
+        if (extraData?.engajamento) {
+          const engajamento = extraData.engajamento.toLowerCase();
+          if (engajamento.includes('alto')) {
+            totalPoints += pointsConfig.engajamento.alto || 0;
+          } else if (engajamento.includes('médio') || engajamento.includes('medio')) {
+            totalPoints += pointsConfig.engajamento.medio || 0;
+          } else if (engajamento.includes('baixo')) {
+            totalPoints += pointsConfig.engajamento.baixo || 0;
+          }
+        }
+
+        // 2. CLASSIFICAÇÃO
+        if (extraData?.classificacao) {
+          const classificacao = extraData.classificacao.toLowerCase();
+          if (classificacao.includes('frequente')) {
+            totalPoints += pointsConfig.classificacao.frequente || 0;
+          } else if (classificacao.includes('não frequente') || classificacao.includes('nao frequente')) {
+            totalPoints += pointsConfig.classificacao.naoFrequente || 0;
+          }
+        }
+
+        // 3. DIZIMISTA
+        if (extraData?.dizimistaType) {
+          const dizimista = extraData.dizimistaType.toLowerCase();
+          if (dizimista.includes('recorrente')) {
+            totalPoints += pointsConfig.dizimista.recorrente || 0;
+          } else if (dizimista.includes('sazonal')) {
+            totalPoints += pointsConfig.dizimista.sazonal || 0;
+          } else if (dizimista.includes('pontual')) {
+            totalPoints += pointsConfig.dizimista.pontual || 0;
+          } else if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) {
+            totalPoints += pointsConfig.dizimista.naoDizimista || 0;
+          }
+        }
+
+        // 4. OFERTANTE
+        if (extraData?.ofertanteType) {
+          const ofertante = extraData.ofertanteType.toLowerCase();
+          if (ofertante.includes('recorrente')) {
+            totalPoints += pointsConfig.ofertante.recorrente || 0;
+          } else if (ofertante.includes('sazonal')) {
+            totalPoints += pointsConfig.ofertante.sazonal || 0;
+          } else if (ofertante.includes('pontual')) {
+            totalPoints += pointsConfig.ofertante.pontual || 0;
+          } else if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) {
+            totalPoints += pointsConfig.ofertante.naoOfertante || 0;
+          }
+        }
+
+        // 5. TEMPO DE BATISMO
+        if (extraData?.tempoBatismoAnos && typeof extraData.tempoBatismoAnos === 'number') {
+          const tempo = extraData.tempoBatismoAnos;
+          if (tempo >= 30) {
+            totalPoints += pointsConfig.tempobatismo.maisVinte || 0;
+          } else if (tempo >= 20) {
+            totalPoints += pointsConfig.tempobatismo.vinteAnos || 0;
+          } else if (tempo >= 10) {
+            totalPoints += pointsConfig.tempobatismo.dezAnos || 0;
+          } else if (tempo >= 5) {
+            totalPoints += pointsConfig.tempobatismo.cincoAnos || 0;
+          } else if (tempo >= 2) {
+            totalPoints += pointsConfig.tempobatismo.doisAnos || 0;
+          }
+        }
+
+        // 6. CARGOS
+        if (extraData?.departamentosCargos) {
+          const numCargos = extraData.departamentosCargos.split(';').length;
+          if (numCargos >= 3) {
+            totalPoints += pointsConfig.cargos.tresOuMais || 0;
+          } else if (numCargos === 2) {
+            totalPoints += pointsConfig.cargos.doisCargos || 0;
+          } else if (numCargos === 1) {
+            totalPoints += pointsConfig.cargos.umCargo || 0;
+          }
+        }
+
+        // 7. NOME DA UNIDADE
+        if (extraData?.nomeUnidade && extraData.nomeUnidade.trim()) {
+          totalPoints += pointsConfig.nomeunidade.comUnidade || 0;
+        }
+
+        // 8. TEM LIÇÃO
+        if (extraData?.temLicao) {
+          totalPoints += pointsConfig.temlicao.comLicao || 0;
+        }
+
+        // 9. TOTAL DE PRESENÇA
+        if (extraData?.totalPresenca !== undefined && extraData.totalPresenca !== null) {
+          const presenca = extraData.totalPresenca;
+          if (presenca >= 8) {
+            totalPoints += pointsConfig.totalpresenca.oitoATreze || 0;
+          } else if (presenca >= 4) {
+            totalPoints += pointsConfig.totalpresenca.quatroASete || 0;
+          } else {
+            totalPoints += pointsConfig.totalpresenca.zeroATres || 0;
+          }
+        }
+
+        // 10. ESCOLA SABATINA - PONTUAÇÃO DINÂMICA
+        if (extraData?.comunhao && extraData.comunhao > 0) {
+          totalPoints += extraData.comunhao * (pointsConfig.escolasabatina.comunhao || 0);
+        }
+
+        if (extraData?.missao && extraData.missao > 0) {
+          totalPoints += extraData.missao * (pointsConfig.escolasabatina.missao || 0);
+        }
+
+        if (extraData?.estudoBiblico && extraData.estudoBiblico > 0) {
+          totalPoints += extraData.estudoBiblico * (pointsConfig.escolasabatina.estudoBiblico || 0);
+        }
+
+        if (extraData?.batizouAlguem === 'Sim' || extraData?.batizouAlguem === true || extraData?.batizouAlguem === 'true') {
+          totalPoints += pointsConfig.escolasabatina.batizouAlguem || 0;
+        }
+
+        if (extraData?.discPosBatismal && extraData.discPosBatismal > 0) {
+          totalPoints += extraData.discPosBatismal * (pointsConfig.escolasabatina.discipuladoPosBatismo || 0);
+        }
+
+        // 11. CPF VÁLIDO
+        if (extraData?.cpfValido === 'Sim' || extraData?.cpfValido === true) {
+          totalPoints += pointsConfig.cpfvalido.valido || 0;
+        }
+
+        // 12. CAMPOS VAZIOS ACMS
+        if (extraData?.camposVazios === 0 || extraData?.camposVazios === '0' || extraData?.camposVazios === false || !extraData?.camposVazios) {
+          totalPoints += pointsConfig.camposvaziosacms.completos || 0;
+        }
+
+        const finalPoints = Math.round(totalPoints);
+        
+        // Se não conseguiu calcular pontos baseado nos dados, usar fallback baseado no role
+        if (finalPoints === 0) {
+          if (user.role && user.role.includes('missionary')) {
+            return 800;
+          } else if (user.role === 'member') {
+            return 500;
+          } else if (user.role === 'interested') {
+            return 200;
+          } else {
+            return 100;
+          }
+        }
+        
+        return finalPoints;
+
+      } catch (error) {
+        console.error('❌ Erro na função calculateUserPoints:', error);
+        // Fallback em caso de erro
+        if (user.role && user.role.includes('missionary')) {
+          return 800;
+        } else if (user.role === 'member') {
+          return 500;
+        } else if (user.role === 'interested') {
+          return 200;
+        } else {
+          return 100;
+        }
+      }
+    };
+
+    // Rota para usuários - VERSÃO COM TABELA DE VISITAS E PONTUAÇÃO CALCULADA
     if (path === '/api/users' && method === 'GET') {
       try {
         console.log('🔍 Users route hit - buscando usuários do banco');
@@ -757,8 +1063,8 @@ exports.handler = async (event, context) => {
         
         console.log(`📊 Visitas encontradas: ${visitsData.length}`);
         
-        // Processar usuários com dados de visitas
-        const processedUsers = users.map(user => {
+        // Processar usuários com dados de visitas e calcular pontos
+        const processedUsers = await Promise.all(users.map(async (user) => {
           let extraData = {};
           if (user.extraData) {
             try {
@@ -785,12 +1091,23 @@ exports.handler = async (event, context) => {
             extraData.lastVisitDate = null;
             extraData.firstVisitDate = null;
           }
+
+        // Calcular pontos para o usuário
+        let calculatedPoints;
+        try {
+          calculatedPoints = await calculateUserPoints(user);
+          console.log(`🎯 Pontos calculados para ${user.name} (ID: ${user.id}): ${calculatedPoints}`);
+        } catch (error) {
+          console.error(`❌ Erro ao calcular pontos para ${user.name}:`, error);
+          calculatedPoints = 0; // Fallback em caso de erro
+        }
           
           return {
             ...user,
-            extraData: extraData
+            extraData: extraData,
+            calculatedPoints: calculatedPoints
           };
-        });
+        }));
         
         console.log(`📊 Usuários processados: ${processedUsers.length}`);
         
@@ -1487,18 +1804,23 @@ exports.handler = async (event, context) => {
           return null;
         };
 
-        // Buscar usuário por email ou por formato nome.ultimonome
+        // 1) Buscar por email exato (email importado legítimo)
         let users = await sql`SELECT * FROM users WHERE email = ${email} LIMIT 1`;
-        console.log('🔍 Users found by email:', users.length);
+        console.log('🔍 Users found by exact email:', users.length);
         
-        // Se não encontrou por email, tentar por formato nome.ultimonome
-        if (users.length === 0) {
-          const nameFormat = generateNameFormat(email);
-          if (nameFormat) {
-            console.log('🔍 Trying name format:', nameFormat);
-            // Buscar por email que contenha o formato nome.ultimonome
-            users = await sql`SELECT * FROM users WHERE email LIKE ${`%${nameFormat}@%`} LIMIT 1`;
-            console.log('🔍 Users found by name format:', users.length);
+        // 2) Se não encontrou, tentar como primeironome.ultimonome (gerar formato do nome)
+        if (users.length === 0 && email.includes('.')) {
+          console.log('🔍 Trying primeironome.ultimonome format...');
+          
+          // Buscar usuário que tenha o padrão primeironome.ultimonome no nome
+          const nameParts = email.split('.');
+          if (nameParts.length >= 2) {
+            const firstName = nameParts[0];
+            const lastName = nameParts[nameParts.length - 1];
+            
+            // Buscar por usuário que tenha primeiro nome e último nome no nome completo
+            users = await sql`SELECT * FROM users WHERE name ILIKE ${`%${firstName}%${lastName}%`} LIMIT 1`;
+            console.log(`🔍 Users found by name pattern "${firstName} ${lastName}":`, users.length);
           }
         }
         
@@ -1514,7 +1836,7 @@ exports.handler = async (event, context) => {
         console.log('🔍 User found:', { id: user.id, name: user.name, role: user.role });
         
         // Verificar senha (simplificado para demo)
-        const validPasswords = ['admin123', '123456', 'admin', 'password', '7care'];
+        const validPasswords = ['admin123', '123456', 'admin', 'password', '7care', 'meu7care'];
         if (validPasswords.includes(password)) {
           return {
             statusCode: 200,
@@ -1774,10 +2096,11 @@ exports.handler = async (event, context) => {
         // Obter ID do usuário do header (se fornecido)
         const userId = event.headers['x-user-id'];
         let userChurch = null;
+        let userData = null;
         
         // Se userId fornecido, buscar igreja do usuário
         if (userId) {
-          const userData = await sql`SELECT church, role FROM users WHERE id = ${userId} LIMIT 1`;
+          userData = await sql`SELECT church, role FROM users WHERE id = ${userId} LIMIT 1`;
           if (userData.length > 0) {
             userChurch = userData[0].church;
             const userRole = userData[0].role;
@@ -1787,7 +2110,7 @@ exports.handler = async (event, context) => {
 
         // Buscar usuários com datas de nascimento válidas (filtrar por igreja se necessário)
         let users;
-        if (userChurch) {
+        if (userChurch && userChurch !== 'Sistema' && !(userData && userData.length > 0 && userData[0].role === 'admin')) {
           users = await sql`
           SELECT id, name, birth_date, church
           FROM users 
@@ -1887,33 +2210,33 @@ exports.handler = async (event, context) => {
       try {
         console.log('🔍 Buscando dados do visitômetro...');
         
-        // Buscar usuários que devem ser visitados (member ou missionary)
-        const targetUsers = await sql`
+        // Buscar TODOS os usuários do sistema (não apenas member/missionary)
+        const allUsers = await sql`
           SELECT id, name, email, role
           FROM users 
-          WHERE role = 'member' OR role = 'missionary'
           ORDER BY name ASC
         `;
         
-        console.log(`🎯 Usuários target (member/missionary): ${targetUsers.length}`);
+        console.log(`👥 Total de usuários no sistema: ${allUsers.length}`);
         
-        // Buscar dados de visitas
+        // Buscar dados de visitas de TODOS os usuários
         const visitsData = await sql`
           SELECT 
             v.user_id, 
             u.name, 
+            u.role,
             COUNT(v.id) as visit_count, 
             MAX(v.visit_date) as last_visit_date, 
             MIN(v.visit_date) as first_visit_date
           FROM visits v 
           JOIN users u ON v.user_id = u.id
-          WHERE u.role = 'member' OR u.role = 'missionary'
-          GROUP BY v.user_id, u.name
+          GROUP BY v.user_id, u.name, u.role
           ORDER BY u.name ASC
         `;
         
         console.log(`📊 Visitas encontradas: ${visitsData.length}`);
         
+        // Contar pessoas visitadas (usuários únicos que receberam pelo menos 1 visita)
         let visitedPeople = visitsData.length;
         let totalVisits = 0;
         const visitedUsersList = [];
@@ -1926,14 +2249,17 @@ exports.handler = async (event, context) => {
           visitedUsersList.push({
             id: visit.user_id,
             name: visit.name,
+            role: visit.role,
             visitCount: visitCount,
             lastVisitDate: visit.last_visit_date
           });
           
-          console.log(`✅ ${visit.name}: ${visitCount} visitas`);
+          console.log(`✅ ${visit.name} (${visit.role}): ${visitCount} visitas`);
         });
         
-        const expectedVisits = targetUsers.length;
+        // Pessoas visitadas = usuários únicos que receberam visitas
+        // Visitas realizadas = soma total de todas as visitas
+        const expectedVisits = allUsers.length; // Total de usuários no sistema
         const percentage = expectedVisits > 0 ? Math.round((visitedPeople / expectedVisits) * 100) : 0;
         
         console.log(`📊 Visitômetro: ${visitedPeople}/${expectedVisits} pessoas visitadas (${percentage}%), ${totalVisits} visitas totais`);
@@ -2652,7 +2978,24 @@ exports.handler = async (event, context) => {
     // Rota para configurar eleição
     if (path === '/api/elections/config' && method === 'POST') {
       try {
+        console.log('🔧 POST /api/elections/config - Iniciando');
         const body = JSON.parse(event.body || '{}');
+        console.log('🔧 Body recebido:', JSON.stringify(body, null, 2));
+        
+        // Validar campos obrigatórios
+        if (!body.churchId || !body.churchName || !body.voters || !body.positions) {
+          console.error('❌ Campos obrigatórios faltando:', {
+            churchId: body.churchId,
+            churchName: body.churchName,
+            voters: body.voters,
+            positions: body.positions
+          });
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Campos obrigatórios faltando' })
+          };
+        }
         
         // Criar tabela de configuração se não existir
         await sql`
@@ -2664,15 +3007,17 @@ exports.handler = async (event, context) => {
             criteria JSONB NOT NULL,
             positions TEXT[] NOT NULL,
             status VARCHAR(50) DEFAULT 'draft',
+            position_descriptions JSONB DEFAULT '{}'::jsonb,
             created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW()
           )
         `;
 
         // Inserir configuração
+        console.log('🔧 Inserindo configuração...');
         const result = await sql`
-          INSERT INTO election_configs (church_id, church_name, voters, criteria, positions, status)
-          VALUES (${body.churchId}, ${body.churchName}, ${body.voters}, ${JSON.stringify(body.criteria)}, ${body.positions}, ${body.status})
+          INSERT INTO election_configs (church_id, church_name, voters, criteria, positions, status, position_descriptions, eligible_candidates, max_nominations_per_voter)
+          VALUES (${body.churchId}, ${body.churchName}, ${body.voters}, ${JSON.stringify(body.criteria)}, ${body.positions}, ${body.status}, ${JSON.stringify(body.position_descriptions || {})}, ${JSON.stringify(body.eligible_candidates || [])}, ${body.max_nominations_per_voter || 1})
           RETURNING *
         `;
 
@@ -2686,10 +3031,11 @@ exports.handler = async (event, context) => {
 
       } catch (error) {
         console.error('❌ Erro ao salvar configuração:', error);
+        console.error('❌ Stack trace:', error.stack);
         return {
           statusCode: 500,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ error: 'Erro interno do servidor' })
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
         };
       }
     }
@@ -2784,7 +3130,7 @@ exports.handler = async (event, context) => {
           candidate_id INTEGER NOT NULL,
           vote_type VARCHAR(20) DEFAULT 'nomination',
           voted_at TIMESTAMP DEFAULT NOW(),
-          UNIQUE(election_id, voter_id, position_id, vote_type)
+          UNIQUE(election_id, voter_id, position_id, candidate_id, vote_type)
         )
         `;
 
@@ -2835,6 +3181,14 @@ exports.handler = async (event, context) => {
             body: JSON.stringify({ error: 'Configuração não encontrada' })
           };
         }
+
+        // DESATIVAR TODAS AS ELEIÇÕES ATIVAS ANTES DE CRIAR UMA NOVA
+        console.log('🔄 Desativando todas as eleições ativas...');
+        await sql`
+          UPDATE elections 
+          SET status = 'completed', updated_at = CURRENT_TIMESTAMP
+          WHERE status = 'active'
+        `;
 
         // Criar eleição
         const election = await sql`
@@ -2888,7 +3242,7 @@ exports.handler = async (event, context) => {
             }
 
             // Verificar presença regular (teveParticipacao)
-            if (criteria.attendance.enabled) {
+            if (criteria.attendance && criteria.attendance.enabled) {
               let attendanceMet = true;
               
               try {
@@ -2926,7 +3280,7 @@ exports.handler = async (event, context) => {
             }
 
             // Verificar tempo mínimo de igreja
-            if (criteria.churchTime.enabled) {
+            if (criteria.churchTime && criteria.churchTime.enabled) {
               const memberJoinDate = new Date(member.created_at);
               const currentDate = new Date();
               const monthsInChurch = (currentDate.getFullYear() - memberJoinDate.getFullYear()) * 12 + 
@@ -3089,7 +3443,7 @@ exports.handler = async (event, context) => {
 
         return {
           statusCode: 200,
-          body: JSON.stringify({ 
+            body: JSON.stringify({ 
             success: true, 
             message: 'Indicação registrada com sucesso' 
           })
@@ -3177,7 +3531,7 @@ exports.handler = async (event, context) => {
 
         return {
           statusCode: 200,
-          body: JSON.stringify({ 
+            body: JSON.stringify({ 
             success: true, 
             message: 'Voto registrado com sucesso' 
           })
@@ -3255,74 +3609,12 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // POST /api/elections/vote - Votação final (Fase 3)
-    if (path === '/api/elections/vote' && method === 'POST') {
-      try {
-        const body = JSON.parse(event.body || '{}');
-        const { electionId, positionId, candidateId } = body;
-        const voterId = parseInt(event.headers['x-user-id']);
-
-        if (!voterId) {
-          return {
-            statusCode: 401,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'Usuário não autenticado' })
-          };
-        }
-
-        // Verificar se o votante já votou para esta posição
-        const existingVote = await sql`
-          SELECT id FROM election_votes 
-          WHERE election_id = ${electionId} 
-          AND voter_id = ${voterId} 
-          AND position_id = ${positionId}
-          AND vote_type = 'final'
-        `;
-
-        if (existingVote.length > 0) {
-          return {
-            statusCode: 400,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'Você já votou para esta posição' })
-          };
-        }
-
-        // Registrar voto final
-        await sql`
-          INSERT INTO election_votes (election_id, voter_id, position_id, candidate_id, vote_type)
-          VALUES (${electionId}, ${voterId}, ${positionId}, ${candidateId}, 'final')
-        `;
-
-        // Atualizar contador de votos do candidato
-        await sql`
-          UPDATE election_candidates 
-          SET votes = votes + 1 
-          WHERE election_id = ${electionId} 
-          AND position_id = ${positionId} 
-          AND candidate_id = ${candidateId}
-        `;
-
-        return {
-          statusCode: 200,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: 'Voto registrado com sucesso' })
-        };
-
-      } catch (error) {
-        console.error('❌ Erro ao registrar voto:', error);
-        return {
-          statusCode: 500,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
-        };
-      }
-    }
 
     // POST /api/elections/advance-phase - Avançar fase (Admin)
     if (path === '/api/elections/advance-phase' && method === 'POST') {
       try {
         const body = JSON.parse(event.body || '{}');
-        const { electionId, newPhase } = body;
+        const { configId, phase } = body;
         const adminId = parseInt(event.headers['x-user-id']);
 
         if (!adminId) {
@@ -3346,21 +3638,310 @@ exports.handler = async (event, context) => {
           };
         }
 
+        // Buscar eleição ativa para o configId
+        const election = await sql`
+          SELECT * FROM elections 
+          WHERE config_id = ${configId}
+          AND status = 'active'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `;
+
+        if (election.length === 0) {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Nenhuma eleição ativa para esta configuração' })
+          };
+        }
+
+        console.log(`🔄 Atualizando fase da eleição ${election[0].id} para: ${phase}`);
+
+        // Garantir que a coluna current_phase existe (migration)
+        try {
+          await sql`
+            ALTER TABLE elections 
+            ADD COLUMN IF NOT EXISTS current_phase VARCHAR(20) DEFAULT 'nomination'
+          `;
+          console.log('✅ Coluna current_phase verificada/criada');
+        } catch (alterError) {
+          console.log('⚠️ Coluna current_phase já existe:', alterError.message);
+        }
+        
         // Atualizar fase da eleição
         await sql`
           UPDATE elections 
-          SET current_phase = ${newPhase}, updated_at = NOW()
-          WHERE id = ${electionId}
+          SET current_phase = ${phase}, updated_at = NOW()
+          WHERE id = ${election[0].id}
         `;
+
+        console.log(`✅ Fase da eleição ${election[0].id} atualizada com sucesso para: ${phase}`);
 
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: `Fase avançada para: ${newPhase}` })
+          body: JSON.stringify({ 
+            message: `Fase avançada para: ${phase}`,
+            phase: phase,
+            electionId: election[0].id
+          })
         };
 
       } catch (error) {
         console.error('❌ Erro ao avançar fase:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
+        };
+      }
+    }
+
+    // POST /api/elections/advance-position - Avançar posição (Admin)
+    if (path === '/api/elections/advance-position' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { configId, position } = body;
+        const adminId = parseInt(event.headers['x-user-id']);
+
+        if (!adminId) {
+          return {
+            statusCode: 401,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Usuário não autenticado' })
+          };
+        }
+
+        // Verificar se é admin
+        const admin = await sql`
+          SELECT role FROM users WHERE id = ${adminId}
+        `;
+
+        if (!admin[0] || !admin[0].role.includes('admin')) {
+          return {
+            statusCode: 403,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Acesso negado. Apenas administradores podem avançar posições' })
+          };
+        }
+
+        // Buscar eleição ativa para o configId
+        const election = await sql`
+          SELECT * FROM elections 
+          WHERE config_id = ${configId}
+          AND status = 'active'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `;
+
+        if (election.length === 0) {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Nenhuma eleição ativa para esta configuração' })
+          };
+        }
+
+        // Atualizar posição atual da eleição e resetar fase para nomination
+        await sql`
+          UPDATE elections 
+          SET current_position = ${position}, 
+              current_phase = 'nomination',
+              updated_at = NOW()
+          WHERE id = ${election[0].id}
+        `;
+
+        console.log(`✅ Posição avançada para ${position} e fase resetada para nomination`);
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            message: `Posição avançada para: ${position}`,
+            currentPosition: position,
+            currentPhase: 'nomination'
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao avançar posição:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
+        };
+      }
+    }
+
+    // POST /api/elections/reset-voting - Repetir votação da posição atual (Admin)
+    if (path === '/api/elections/reset-voting' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { configId } = body;
+        const adminId = parseInt(event.headers['x-user-id']);
+
+        if (!adminId) {
+          return {
+            statusCode: 401,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Usuário não autenticado' })
+          };
+        }
+
+        // Verificar se é admin
+        const admin = await sql`
+          SELECT role FROM users WHERE id = ${adminId}
+        `;
+
+        if (!admin[0] || !admin[0].role.includes('admin')) {
+          return {
+            statusCode: 403,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Acesso negado. Apenas administradores podem repetir votações' })
+          };
+        }
+
+        // Buscar eleição ativa para o configId
+        const election = await sql`
+          SELECT e.*, ec.positions
+          FROM elections e
+          JOIN election_configs ec ON e.config_id = ec.id
+          WHERE e.config_id = ${configId}
+          AND e.status = 'active'
+          ORDER BY e.created_at DESC
+          LIMIT 1
+        `;
+
+        if (election.length === 0) {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Nenhuma eleição ativa para esta configuração' })
+          };
+        }
+
+        // Garantir que positions seja um array
+        const positions = Array.isArray(election[0].positions) 
+          ? election[0].positions 
+          : JSON.parse(election[0].positions || '[]');
+        
+        const currentPositionIndex = election[0].current_position || 0;
+        if (currentPositionIndex >= positions.length) {
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Posição atual inválida' })
+          };
+        }
+
+        const currentPositionName = positions[currentPositionIndex];
+
+        console.log(`🔄 Resetando votos para a posição: ${currentPositionName}`);
+
+        // Deletar todos os votos (vote_type = 'vote') da posição atual
+        await sql`
+          DELETE FROM election_votes
+          WHERE election_id = ${election[0].id}
+          AND position_id = ${currentPositionName}
+          AND vote_type = 'vote'
+        `;
+
+        // Resetar a fase para 'voting' (mantém as indicações)
+        await sql`
+          UPDATE elections 
+          SET current_phase = 'voting',
+              updated_at = NOW()
+          WHERE id = ${election[0].id}
+        `;
+
+        console.log(`✅ Votação resetada para a posição: ${currentPositionName}`);
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            message: `Votação repetida com sucesso para: ${currentPositionName}`,
+            currentPosition: currentPositionName,
+            currentPhase: 'voting'
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao resetar votação:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor', details: error.message })
+        };
+      }
+    }
+
+    // POST /api/elections/set-max-nominations - Configurar número máximo de indicações por votante
+    if (path === '/api/elections/set-max-nominations' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { configId, maxNominations } = body;
+        const adminId = parseInt(event.headers['x-user-id']);
+
+        if (!adminId) {
+          return {
+            statusCode: 401,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Usuário não autenticado' })
+          };
+        }
+
+        // Verificar se é admin
+        const admin = await sql`
+          SELECT role FROM users WHERE id = ${adminId}
+        `;
+
+        if (!admin[0] || !admin[0].role.includes('admin')) {
+          return {
+            statusCode: 403,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Acesso negado. Apenas administradores podem alterar configurações' })
+          };
+        }
+
+        if (!maxNominations || maxNominations < 1) {
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Número de indicações deve ser maior que 0' })
+          };
+        }
+
+        // Criar coluna se não existir
+        try {
+          await sql`
+            ALTER TABLE election_configs 
+            ADD COLUMN IF NOT EXISTS max_nominations_per_voter INTEGER DEFAULT 1
+          `;
+        } catch (alterError) {
+          console.log('⚠️ Coluna max_nominations_per_voter já existe ou erro ao adicionar:', alterError.message);
+        }
+
+        // Atualizar configuração da eleição
+        await sql`
+          UPDATE election_configs 
+          SET max_nominations_per_voter = ${maxNominations}
+          WHERE id = ${configId}
+        `;
+
+        console.log(`✅ Máximo de indicações atualizado para ${maxNominations} na eleição ${configId}`);
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            message: `Máximo de indicações atualizado para ${maxNominations}`,
+            maxNominations
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao atualizar configuração:', error);
         return {
           statusCode: 500,
           headers: { 'Content-Type': 'application/json' },
@@ -3380,10 +3961,11 @@ exports.handler = async (event, context) => {
           SET 
             church_id = ${body.churchId},
             church_name = ${body.churchName},
-            voters = ${JSON.stringify(body.voters)},
+            voters = ${body.voters},
             criteria = ${JSON.stringify(body.criteria)},
-            positions = ${JSON.stringify(body.positions)},
+            positions = ${body.positions},
             status = ${body.status},
+            position_descriptions = ${JSON.stringify(body.position_descriptions || {})},
             updated_at = NOW()
           WHERE id = ${configId}
         `;
@@ -3548,96 +4130,1094 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // Variável global para controlar se já atualizou a constraint
+    if (!global.electionVotesConstraintUpdated) {
+      try {
+        await sql`
+          ALTER TABLE election_votes 
+          DROP CONSTRAINT IF EXISTS election_votes_election_id_voter_id_position_id_vote_type_key
+        `;
+        await sql`
+          ALTER TABLE election_votes 
+          ADD CONSTRAINT IF NOT EXISTS election_votes_unique_key 
+          UNIQUE (election_id, voter_id, position_id, candidate_id, vote_type)
+        `;
+        global.electionVotesConstraintUpdated = true;
+        console.log('✅ Constraint da tabela election_votes atualizada para permitir múltiplas indicações');
+      } catch (constraintError) {
+        // Se der erro, pode ser que a constraint nova já exista
+        console.log('⚠️ Constraint pode já estar atualizada:', constraintError.message);
+        global.electionVotesConstraintUpdated = true; // Marcar como tentado
+      }
+    }
+
     // Rota para registrar voto
     if (path === '/api/elections/vote' && method === 'POST') {
+      let userId, configId, candidateId, phase, body;
       try {
-        const userId = event.headers['x-user-id'];
-        const body = JSON.parse(event.body || '{}');
-        const { positionId, candidateId } = body;
 
-        if (!positionId || !candidateId) {
+        // Parse inicial com tratamento de erro
+        try {
+          body = JSON.parse(event.body || '{}');
+        } catch (parseError) {
+          console.error('❌ Erro ao fazer parse do body:', parseError);
           return {
             statusCode: 400,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'positionId e candidateId são obrigatórios' })
+            body: JSON.stringify({ error: 'Dados inválidos no corpo da requisição' })
           };
         }
 
-        // Buscar eleição ativa
+        userId = event.headers['x-user-id'];
+        configId = body.configId;
+        candidateId = body.candidateId;
+        phase = body.phase;
+
+        console.log('🔍 Dados recebidos na API de votação:', {
+          userId,
+          configId,
+          candidateId,
+          phase,
+          eventBody: event.body,
+          parsedBody: body
+        });
+
+        if (!userId) {
+          console.log('❌ Usuário não autenticado');
+          return {
+            statusCode: 401,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Usuário não autenticado' })
+          };
+        }
+
+        if (!candidateId) {
+          console.log('❌ candidateId é obrigatório');
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'candidateId é obrigatório' })
+          };
+        }
+
+        if (!configId) {
+          console.log('❌ configId é obrigatório');
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'configId é obrigatório' })
+          };
+        }
+
+        // Buscar eleição ativa usando configId
+        console.log('🔍 Buscando eleição com configId:', configId);
         const election = await sql`
-          SELECT e.*, ec.voters, ec.positions
+          SELECT 
+            e.id as election_id, 
+            e.config_id, 
+            e.status, 
+            e.current_position, 
+            e.current_phase,
+            e.created_at, 
+            ec.voters, 
+            ec.positions,
+            ec.max_nominations_per_voter
           FROM elections e
           JOIN election_configs ec ON e.config_id = ec.id
-          WHERE e.status = 'active'
+          WHERE e.config_id = ${parseInt(configId)}
+          AND e.status = 'active'
           ORDER BY e.created_at DESC
           LIMIT 1
         `;
 
+        // Debug adicional
+        console.log('🔍 Query executada, resultado:', election);
+        console.log('🔍 Primeiro resultado:', election[0]);
+        console.log('🔍 Election ID raw:', election[0]?.election_id);
+        console.log('🔍 Election ID type:', typeof election[0]?.election_id);
+
+        console.log('🔍 Resultado da busca da eleição:', election);
+        console.log('🔍 Election ID encontrado:', election[0]?.election_id);
+        console.log('🔍 Tipo do election ID:', typeof election[0]?.election_id);
+        console.log('🔍 Election ID é null?', election[0]?.election_id === null);
+        console.log('🔍 Election ID é undefined?', election[0]?.election_id === undefined);
+
         if (election.length === 0) {
+          console.log('❌ Nenhuma eleição ativa encontrada para configId:', configId);
           return {
             statusCode: 404,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'Nenhuma eleição ativa' })
+            body: JSON.stringify({ error: 'Nenhuma eleição ativa encontrada' })
           };
         }
 
-        // Verificar se o usuário é votante
-        if (!election[0].voters.includes(parseInt(userId))) {
+        if (!election[0].election_id || election[0].election_id === null || election[0].election_id === undefined) {
+          console.log('❌ Election ID é nulo ou indefinido');
+          console.log('❌ Election object completo:', election[0]);
           return {
-            statusCode: 403,
+            statusCode: 500,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'Usuário não autorizado a votar' })
+            body: JSON.stringify({ error: 'ID da eleição não encontrado' })
           };
         }
 
-        // Verificar se é a posição atual
+        // Garantir que election_id seja um número inteiro
+        const electionId = parseInt(election[0].election_id);
+        if (isNaN(electionId)) {
+          console.log('❌ Election ID não é um número válido:', election[0].election_id);
+          return {
+            statusCode: 500,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'ID da eleição inválido' })
+          };
+        }
+
+        console.log('✅ Election ID válido:', electionId);
+
+        // Verificar se o usuário é votante - se não for, adicionar automaticamente
+        if (!election[0].voters.includes(parseInt(userId))) {
+          console.log('⚠️ Usuário não está na lista de votantes, adicionando automaticamente...');
+          try {
+            const currentVoters = election[0].voters || [];
+            const newVoters = [...currentVoters, parseInt(userId)];
+            
+            await sql`
+              UPDATE election_configs 
+              SET voters = ${JSON.stringify(newVoters)}
+              WHERE id = ${parseInt(configId)}
+            `;
+            
+            console.log('✅ Usuário adicionado à lista de votantes');
+            
+            // Atualizar o objeto election local
+            election[0].voters = newVoters;
+          } catch (addVoterError) {
+            console.error('❌ Erro ao adicionar usuário à lista de votantes:', addVoterError);
+            return {
+              statusCode: 500,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ error: 'Erro ao autorizar usuário para votação' })
+            };
+          }
+        }
+
+        // Obter a posição atual
         const currentPosition = election[0].positions[election[0].current_position];
-        if (positionId !== currentPosition) {
+        const positionId = currentPosition;
+        
+        console.log('🔍 Posição atual:', {
+          currentPosition,
+          positionId,
+          positions: election[0].positions,
+          currentPositionIndex: election[0].current_position
+        });
+        
+        if (!positionId) {
+          console.log('❌ Posição atual não encontrada');
           return {
             statusCode: 400,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'Não é possível votar nesta posição no momento' })
+            body: JSON.stringify({ error: 'Posição atual não encontrada na eleição' })
           };
         }
 
-        // Registrar voto
+        // Determinar o tipo de voto baseado na fase
+        const voteType = phase === 'nomination' ? 'nomination' : 'vote';
+        
+        // Verificar limite de indicações/votos
+        if (phase === 'nomination') {
+          // Buscar configuração para pegar max_nominations_per_voter
+          const config = await sql`
+            SELECT max_nominations_per_voter FROM election_configs WHERE id = ${parseInt(configId)}
+          `;
+          
+          const maxNominations = config[0]?.max_nominations_per_voter || 1;
+          
+          // Contar quantas indicações já foram feitas
+          const existingNominations = await sql`
+            SELECT COUNT(*) as count FROM election_votes 
+            WHERE election_id = ${electionId} 
+            AND voter_id = ${parseInt(userId)}
+            AND position_id = ${positionId}
+            AND vote_type = 'nomination'
+          `;
+          
+          const nominationCount = parseInt(existingNominations[0]?.count) || 0;
+          
+          if (nominationCount >= maxNominations) {
+            return {
+              statusCode: 400,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                error: `Você já atingiu o limite de ${maxNominations} indicação(ões) para esta posição` 
+              })
+            };
+          }
+        } else {
+          // Para votação, apenas 1 voto permitido
+          const existingVote = await sql`
+            SELECT id FROM election_votes 
+            WHERE election_id = ${electionId} 
+            AND voter_id = ${parseInt(userId)}
+            AND position_id = ${positionId}
+            AND vote_type = 'vote'
+          `;
+
+          if (existingVote.length > 0) {
+            return {
+              statusCode: 400,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                error: 'Você já votou para esta posição' 
+              })
+            };
+          }
+        }
+
+        // Registrar voto/indicação
+        console.log('🔍 Registrando voto/indicação:', {
+          electionId: electionId,
+          voterId: parseInt(userId),
+          positionId,
+          candidateId,
+          voteType
+        });
+
+        // Debug antes da inserção
+        console.log('🔍 Dados para inserção:', {
+          electionId: electionId,
+          voterId: parseInt(userId),
+          positionId: positionId,
+          candidateId: candidateId,
+          voteType: voteType
+        });
+
         const vote = await sql`
-          INSERT INTO election_votes (election_id, voter_id, position_id, candidate_id)
-          VALUES (${election[0].id}, ${parseInt(userId)}, ${positionId}, ${candidateId})
-          ON CONFLICT (election_id, voter_id, position_id) 
-          DO UPDATE SET candidate_id = EXCLUDED.candidate_id, voted_at = NOW()
+          INSERT INTO election_votes (election_id, voter_id, position_id, candidate_id, vote_type)
+          VALUES (${electionId}, ${parseInt(userId)}, ${positionId}, ${candidateId}, ${voteType})
           RETURNING *
         `;
 
-        // Atualizar contagem de votos do candidato
-        await sql`
-          UPDATE election_candidates 
-          SET votes = (
-            SELECT COUNT(*) 
-            FROM election_votes 
-            WHERE election_id = ${election[0].id} 
-            AND position_id = ${positionId} 
-            AND candidate_id = ${candidateId}
-          )
-          WHERE election_id = ${election[0].id} 
-          AND position_id = ${positionId} 
-          AND candidate_id = ${candidateId}
-        `;
+        console.log('✅ Voto/indicação registrado:', vote[0]);
+
+        // Atualizar contagem de indicações/votos do candidato
+        if (phase === 'nomination') {
+          console.log('🔍 Atualizando contagem de indicações...');
+          try {
+            // Primeiro, verificar se o candidato existe na tabela election_candidates
+            const candidateExists = await sql`
+              SELECT id FROM election_candidates 
+              WHERE election_id = ${electionId} 
+              AND position_id = ${positionId} 
+              AND candidate_id = ${candidateId}
+            `;
+            
+            if (candidateExists.length === 0) {
+              console.log('⚠️ Candidato não encontrado na tabela election_candidates, criando entrada...');
+              // Criar entrada para o candidato se não existir
+              await sql`
+                INSERT INTO election_candidates (election_id, position_id, candidate_id, candidate_name, nominations, votes, phase)
+                VALUES (${electionId}, ${positionId}, ${candidateId}, 'Candidato', 1, 0, 'nomination')
+              `;
+            } else {
+              // Atualizar contagem existente
+              const updateResult = await sql`
+                UPDATE election_candidates 
+                SET nominations = nominations + 1
+                WHERE election_id = ${electionId} 
+                AND position_id = ${positionId} 
+                AND candidate_id = ${candidateId}
+                RETURNING *
+              `;
+              console.log('✅ Contagem de indicações atualizada:', updateResult);
+            }
+          } catch (updateError) {
+            console.error('❌ Erro ao atualizar indicações:', updateError);
+            // Não falhar a operação se a atualização de contagem falhar
+          }
+        } else {
+          console.log('🔍 Atualizando contagem de votos...');
+          try {
+            // Primeiro, verificar se o candidato existe na tabela election_candidates
+            const candidateExists = await sql`
+              SELECT id FROM election_candidates 
+              WHERE election_id = ${electionId} 
+              AND position_id = ${positionId} 
+              AND candidate_id = ${candidateId}
+            `;
+            
+            if (candidateExists.length === 0) {
+              console.log('⚠️ Candidato não encontrado na tabela election_candidates, criando entrada...');
+              // Criar entrada para o candidato se não existir
+              await sql`
+                INSERT INTO election_candidates (election_id, position_id, candidate_id, candidate_name, nominations, votes, phase)
+                VALUES (${electionId}, ${positionId}, ${candidateId}, 'Candidato', 0, 1, 'voting')
+              `;
+            } else {
+              // Atualizar contagem existente
+              const updateResult = await sql`
+                UPDATE election_candidates 
+                SET votes = votes + 1
+                WHERE election_id = ${electionId} 
+                AND position_id = ${positionId} 
+                AND candidate_id = ${candidateId}
+                RETURNING *
+              `;
+              console.log('✅ Contagem de votos atualizada:', updateResult);
+            }
+          } catch (updateError) {
+            console.error('❌ Erro ao atualizar votos:', updateError);
+            // Não falhar a operação se a atualização de contagem falhar
+          }
+        }
 
         console.log('✅ Voto registrado:', vote[0].id);
 
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ success: true })
+          body: JSON.stringify({ 
+            success: true,
+            message: phase === 'nomination' 
+              ? 'Indicação registrada com sucesso' 
+              : 'Voto registrado com sucesso',
+            voteId: vote[0].id
+          })
         };
 
       } catch (error) {
         console.error('❌ Erro ao registrar voto:', error);
+        console.error('❌ Nome do erro:', error.name);
+        console.error('❌ Mensagem do erro:', error.message);
+        console.error('❌ Stack trace:', error.stack);
+        console.error('❌ Dados que causaram o erro:', {
+          userId: userId || 'não definido',
+          configId: configId || 'não definido',
+          candidateId: candidateId || 'não definido',
+          phase: phase || 'não definido',
+          hasBody: !!body,
+          bodyKeys: body ? Object.keys(body) : 'sem body',
+          eventPath: path,
+          eventMethod: method
+        });
+        
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            error: 'Erro interno do servidor',
+            message: error.message || 'Erro desconhecido',
+            errorName: error.name || 'Unknown',
+            details: `${error.name}: ${error.message}`,
+            timestamp: new Date().toISOString()
+          })
+        };
+      }
+    }
+
+    // GET /api/elections/vote-log/:electionId - Obter log de votos
+    if (path.startsWith('/api/elections/vote-log/') && method === 'GET') {
+      try {
+        const electionId = path.split('/').pop();
+        
+        console.log(`🔍 Buscando log de votos para eleição: ${electionId}`);
+        
+        // Buscar todos os votos E indicações da eleição com informações do votante e candidato
+        const votes = await sql`
+          SELECT 
+            ev.id,
+            ev.voter_id,
+            ev.candidate_id,
+            ev.position_id,
+            ev.vote_type,
+            ev.voted_at as created_at,
+            u_voter.name as voter_name,
+            u_candidate.name as candidate_name
+          FROM election_votes ev
+          LEFT JOIN users u_voter ON ev.voter_id = u_voter.id
+          LEFT JOIN users u_candidate ON ev.candidate_id = u_candidate.id
+          WHERE ev.election_id = ${electionId}
+          ORDER BY ev.voted_at DESC
+        `;
+        
+        console.log(`✅ Log encontrado: ${votes.length} registro(s) (votos + indicações)`);
+        
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(votes)
+        };
+      } catch (error) {
+        console.error('❌ Erro ao buscar log de votos:', error);
         return {
           statusCode: 500,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // GET /api/debug/elections - Debug: Listar todas as eleições
+    if (path === '/api/debug/elections' && method === 'GET') {
+      try {
+        const allElections = await sql`
+          SELECT e.*, ec.voters, ec.positions
+          FROM elections e
+          JOIN election_configs ec ON e.config_id = ec.id
+          ORDER BY e.created_at DESC
+        `;
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            elections: allElections,
+            total: allElections.length
+          })
+        };
+      } catch (error) {
+        console.error('❌ Erro ao buscar eleições:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // GET /api/debug/users - Debug: Listar usuários da igreja
+    if (path === '/api/debug/users' && method === 'GET') {
+      try {
+        const churchName = 'Santana do Livramento (i)';
+        
+        const users = await sql`
+          SELECT u.id, u.name, u.church, u.role, u.status, u.extra_data, u.attendance
+          FROM users u
+          WHERE u.church = ${churchName}
+          AND u.role LIKE '%member%'
+          AND (u.status = 'approved' OR u.status = 'pending')
+          ORDER BY u.name ASC
+          LIMIT 10
+        `;
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            churchName,
+            users: users,
+            total: users.length
+          })
+        };
+      } catch (error) {
+        console.error('❌ Erro ao buscar usuários:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+
+    // POST /api/debug/add-voter - Debug: Adicionar votante à eleição
+    if (path === '/api/debug/add-voter' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { configId, userId } = body;
+
+        if (!configId || !userId) {
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'configId e userId são obrigatórios' })
+          };
+        }
+
+        // Buscar configuração atual
+        const config = await sql`
+          SELECT voters FROM election_configs WHERE id = ${configId}
+        `;
+
+        if (config.length === 0) {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Configuração não encontrada' })
+          };
+        }
+
+        const currentVoters = config[0].voters || [];
+        
+        // Adicionar usuário se não estiver na lista
+        if (!currentVoters.includes(parseInt(userId))) {
+          const newVoters = [...currentVoters, parseInt(userId)];
+          
+          await sql`
+            UPDATE election_configs 
+            SET voters = ${JSON.stringify(newVoters)}
+            WHERE id = ${configId}
+          `;
+
+          return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              message: 'Votante adicionado com sucesso',
+              configId,
+              userId,
+              voters: newVoters
+            })
+          };
+        } else {
+          return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              message: 'Usuário já é votante',
+              configId,
+              userId,
+              voters: currentVoters
+            })
+          };
+        }
+      } catch (error) {
+        console.error('❌ Erro ao adicionar votante:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // GET /api/elections/active - Listar eleições ativas para o usuário votante
+    if (path === '/api/elections/active' && method === 'GET') {
+      try {
+        const userId = event.headers['x-user-id'];
+        
+        if (!userId) {
+          return {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'ID do usuário é obrigatório' })
+          };
+        }
+
+        // Buscar eleições ativas onde o usuário é votante
+        const elections = await sql`
+          SELECT 
+            e.id as election_id,
+            e.config_id,
+            e.status,
+            e.current_position,
+            e.created_at,
+            ec.church_name,
+            ec.positions,
+            ec.voters
+          FROM elections e
+          JOIN election_configs ec ON e.config_id = ec.id
+          WHERE e.status = 'active'
+          AND ${parseInt(userId)} = ANY(ec.voters)
+          ORDER BY e.created_at DESC
+        `;
+
+        console.log(`✅ Eleições ativas encontradas para usuário ${userId}: ${elections.length}`);
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+            elections: elections,
+            total: elections.length
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao buscar eleições ativas:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            error: 'Erro interno do servidor',
+            details: error.message
+          })
+        };
+      }
+    }
+
+    // GET /api/elections/voting/:configId - Dados para interface de votação mobile
+    if (path.startsWith('/api/elections/voting/') && method === 'GET') {
+      try {
+        const configId = parseInt(path.split('/').pop());
+        
+        // Buscar eleição ativa
+        console.log('🔍 Buscando eleição com configId:', configId);
+        const election = await sql`
+          SELECT e.*, ec.voters, ec.positions, ec.church_name
+          FROM elections e
+          JOIN election_configs ec ON e.config_id = ec.id
+          WHERE e.config_id = ${configId}
+          AND e.status = 'active'
+        `;
+
+        console.log('🔍 Resultado da busca da eleição:', election);
+        console.log('🔍 Quantidade de eleições encontradas:', election.length);
+
+        if (election.length === 0) {
+          // Buscar todas as eleições para debug
+          const allElections = await sql`
+            SELECT e.id, e.config_id, e.status, ec.church_name
+            FROM elections e
+            JOIN election_configs ec ON e.config_id = ec.id
+            ORDER BY e.created_at DESC
+            LIMIT 10
+          `;
+          console.log('🔍 Todas as eleições (últimas 10):', allElections);
+          
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              error: 'Nenhuma eleição ativa encontrada',
+              debug: {
+                configId,
+                message: 'Verifique se o ID da configuração está correto e se há uma eleição ativa',
+                allElections: allElections
+              }
+            })
+          };
+        }
+
+        const currentPosition = election[0].current_position;
+        const currentPositionName = election[0].positions[currentPosition] || '';
+        const currentPhase = election[0].current_phase || 'nomination';
+        
+        console.log('🔍 Estado atual da eleição:', {
+          currentPosition,
+          currentPositionName,
+          currentPhase,
+          electionId: election[0].id
+        });
+
+        // Buscar configuração com critérios (necessário para max_nominations_per_voter)
+        let config;
+        try {
+          // Primeiro, tentar criar a coluna se não existir
+          await sql`
+            ALTER TABLE election_configs 
+            ADD COLUMN IF NOT EXISTS position_descriptions JSONB DEFAULT '{}'::jsonb
+          `;
+          
+          config = await sql`
+            SELECT criteria, church_name, max_nominations_per_voter, position_descriptions 
+            FROM election_configs WHERE id = ${configId}
+          `;
+        } catch (error) {
+          console.log('⚠️ Erro ao buscar position_descriptions:', error);
+          config = await sql`
+            SELECT criteria, church_name, max_nominations_per_voter 
+            FROM election_configs WHERE id = ${configId}
+          `;
+          // Adicionar position_descriptions como null se não existir
+          if (config.length > 0) {
+            config[0].position_descriptions = null;
+          }
+        }
+        
+        if (config.length === 0) {
+          console.log('❌ Configuração não encontrada');
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Configuração não encontrada' })
+          };
+        }
+
+        // Buscar candidatos baseado na fase
+        let candidates;
+        
+        if (currentPhase === 'voting') {
+          // FASE DE VOTAÇÃO: Mostrar apenas candidatos que foram indicados
+          console.log('🗳️ FASE DE VOTAÇÃO - Buscando candidatos indicados...');
+          
+          // Buscar IDs dos candidatos indicados
+          const votesData = await sql`
+            SELECT 
+              candidate_id,
+              COUNT(*) as nominations
+            FROM election_votes
+            WHERE election_id = ${election[0].id}
+            AND position_id = ${currentPositionName}
+            AND vote_type = 'nomination'
+            GROUP BY candidate_id
+          `;
+          
+          console.log(`✅ Encontrados ${votesData.length} candidatos com indicações`);
+          
+          // Buscar dados completos dos usuários
+          const candidateIds = votesData.map(v => v.candidate_id);
+          
+          if (candidateIds.length > 0) {
+            const usersData = await sql`
+              SELECT id, name, church
+              FROM users
+              WHERE id = ANY(${candidateIds})
+            `;
+            
+            console.log(`✅ Encontrados ${usersData.length} usuários na tabela users`);
+            
+            // Combinar dados
+            candidates = votesData.map(v => {
+              const user = usersData.find(u => u.id === v.candidate_id);
+              console.log(`   Candidato ID ${v.candidate_id}: nome="${user ? user.name : 'NÃO ENCONTRADO'}"`);
+              return {
+                candidate_id: v.candidate_id,
+                candidate_name: user ? user.name : null,
+                church: user ? user.church : null,
+                nominations: parseInt(v.nominations),
+                votes: 0,
+                points: 0
+              };
+            });
+          } else {
+            candidates = [];
+          }
+        } else {
+          // FASE DE INDICAÇÃO: Mostrar todos os candidatos elegíveis
+          console.log('📝 FASE DE INDICAÇÃO - Consultando candidatos elegíveis...');
+          
+          // config já foi buscado acima
+          console.log('🔍 Configuração encontrada:', config);
+        
+        const criteria = config[0].criteria;
+        const churchName = config[0].church_name || election[0].church_name || 'Santana do Livramento (i)';
+        
+        console.log('🔍 Nome da igreja a ser usado:', churchName);
+        console.log('🔍 Critérios encontrados:', criteria);
+        
+        // Construir query baseada nos critérios
+        let whereClause = `
+          u.church = '${churchName}'
+          AND u.role LIKE '%member%'
+          AND (u.status = 'approved' OR u.status = 'pending')
+        `;
+        
+        // Aplicar critérios
+        if (criteria?.faithfulness?.enabled) {
+          if (criteria.faithfulness.recurring) {
+            whereClause += ` AND u.is_tither = true AND u.is_donor = true`;
+          } else if (criteria.faithfulness.seasonal) {
+            whereClause += ` AND u.is_donor = true`;
+          }
+        }
+        
+        if (criteria?.churchTime?.enabled) {
+          const months = criteria.churchTime.minimumMonths;
+          whereClause += ` AND u.created_at <= NOW() - INTERVAL '${months} months'`;
+        }
+        
+        if (criteria?.attendance?.enabled) {
+          if (criteria.attendance.recurring) {
+            whereClause += ` AND u.attendance >= 90`;
+          } else if (criteria.attendance.seasonal) {
+            whereClause += ` AND u.attendance >= 60`;
+          }
+        }
+        
+        // Aplicar filtros de critérios da configuração
+        console.log('🔍 Aplicando filtros de critérios:', criteria);
+        
+        // Implementar filtros baseados na página de usuários com aplicação de critérios
+        const faithfulnessActive = criteria.faithfulness && criteria.faithfulness.enabled;
+        const churchTimeActive = criteria.churchTime && criteria.churchTime.enabled && criteria.churchTime.minimumMonths;
+        const attendanceActive = criteria.attendance && criteria.attendance.enabled;
+        
+        console.log('🔍 Filtros ativos:', {
+          faithfulness: faithfulnessActive,
+          churchTime: churchTimeActive,
+          attendance: attendanceActive
+        });
+        console.log('🔍 Critérios completos:', JSON.stringify(criteria, null, 2));
+        console.log('🔍 Critérios de fidelidade:', JSON.stringify(criteria.faithfulness, null, 2));
+        
+        // Buscar todos os usuários da igreja (como na página de usuários) e aplicar filtros de critérios
+        console.log('🔍 Buscando usuários da igreja e aplicando filtros de critérios...');
+        
+        // Primeiro, buscar todos os usuários da igreja (baseado na página de usuários)
+        let allUsers = await sql`
+          SELECT DISTINCT 
+            u.id as candidate_id,
+            u.name as candidate_name,
+            u.email,
+            u.church,
+            u.role,
+            u.status,
+            u.created_at,
+            u.is_tither,
+            u.is_donor,
+            u.attendance,
+            u.extra_data,
+            u.points,
+            0 as nominations,
+            0 as votes,
+            0 as percentage
+          FROM users u
+          WHERE u.church = ${churchName}
+          AND u.role LIKE '%member%'
+          AND (u.status = 'approved' OR u.status = 'pending')
+          ORDER BY u.name ASC
+        `;
+        
+        console.log(`🔍 Total de usuários encontrados: ${allUsers.length}`);
+        
+        // Aplicar filtros de critérios nos dados já carregados
+        console.log('🔍 Aplicando filtros de critérios em', allUsers.length, 'usuários');
+        
+        // Se não há critérios definidos, retornar todos os usuários
+        if (!criteria || Object.keys(criteria).length === 0) {
+          console.log('🔍 Nenhum critério definido, retornando todos os usuários');
+          candidates = allUsers;
+        } else {
+          candidates = allUsers.filter(user => {
+            let passesFaithfulness = true;
+            let passesChurchTime = true;
+            let passesAttendance = true;
+            
+            console.log(`🔍 Analisando usuário: ${user.candidate_name} (ID: ${user.candidate_id})`);
+          
+            // Filtro de fidelidade (dizimista)
+            if (faithfulnessActive) {
+              let dizimistaType = '';
+              try {
+                // extra_data pode ser string JSON ou objeto
+                const extraData = typeof user.extra_data === 'string' ? JSON.parse(user.extra_data) : user.extra_data;
+                dizimistaType = extraData?.dizimistaType || '';
+              } catch (e) {
+                console.log(`🔍 Erro ao parsear extra_data para ${user.candidate_name}:`, e.message);
+                dizimistaType = '';
+              }
+              
+              // Aplicar filtros baseados nos critérios específicos habilitados
+              let meetsFaithfulnessCriteria = false;
+              
+              if (criteria.faithfulness.punctual && dizimistaType.includes('Pontual')) {
+                meetsFaithfulnessCriteria = true;
+              }
+              if (criteria.faithfulness.seasonal && dizimistaType.includes('Sazonal')) {
+                meetsFaithfulnessCriteria = true;
+              }
+              if (criteria.faithfulness.recurring && dizimistaType.includes('Recorrente')) {
+                meetsFaithfulnessCriteria = true;
+              }
+              
+              passesFaithfulness = meetsFaithfulnessCriteria;
+              console.log(`🔍 Usuário ${user.candidate_name}: dizimistaType=${dizimistaType}, criteria=${JSON.stringify(criteria.faithfulness)}, passesFaithfulness=${passesFaithfulness}`);
+            }
+          
+          // Filtro de tempo de igreja (baseado no tempo de batismo)
+          if (churchTimeActive) {
+            let tempoBatismoAnos = 0;
+            try {
+              const extraData = typeof user.extra_data === 'string' ? JSON.parse(user.extra_data) : user.extra_data;
+              tempoBatismoAnos = extraData?.tempoBatismoAnos || 0;
+            } catch (e) {
+              console.log(`🔍 Erro ao parsear extra_data para tempo de batismo: ${user.candidate_name}`, e.message);
+              tempoBatismoAnos = 0;
+            }
+            
+            const minimumYears = Math.round(criteria.churchTime.minimumMonths / 12);
+            passesChurchTime = tempoBatismoAnos >= minimumYears;
+            console.log(`🔍 Usuário ${user.candidate_name}: tempoBatismoAnos=${tempoBatismoAnos}, minimumYears=${minimumYears}, passesChurchTime=${passesChurchTime}`);
+          }
+          
+          // Filtro de presença
+          if (attendanceActive) {
+            passesAttendance = user.attendance >= 60; // 60% ou mais de presença
+            console.log(`🔍 Usuário ${user.candidate_name}: attendance=${user.attendance}, passesAttendance=${passesAttendance}`);
+          }
+          
+            return passesFaithfulness && passesChurchTime && passesAttendance;
+          });
+        }
+        
+        console.log(`🔍 Candidatos após aplicar filtros: ${candidates.length}`);
+        
+        console.log('🔍 Query executada com sucesso');
+        console.log('🔍 Filtros aplicados:', {
+          faithfulness: faithfulnessActive,
+          churchTime: churchTimeActive,
+          attendance: attendanceActive
+        });
+        console.log('🔍 Critérios:', criteria);
+        
+        // Debug: testar consulta simples sem filtros
+        const debugCandidates = await sql`
+          SELECT u.id, u.name, u.extra_data->>'dizimistaType' as dizimista_type
+          FROM users u
+          WHERE u.church = ${churchName}
+          AND u.role LIKE '%member%'
+          AND (u.status = 'approved' OR u.status = 'pending')
+          LIMIT 5
+        `;
+        console.log('🔍 Debug - Primeiros 5 membros:', debugCandidates);
+        
+        // Debug: testar consulta com filtro de dizimista
+        const debugDizimistas = await sql`
+          SELECT u.id, u.name, u.extra_data->>'dizimistaType' as dizimista_type
+          FROM users u
+          WHERE u.church = ${churchName}
+          AND u.role LIKE '%member%'
+          AND (u.status = 'approved' OR u.status = 'pending')
+          AND u.extra_data->>'dizimistaType' IN ('Recorrente (8-12)', 'Sazonal (4-7)', 'Pontual (1-3)')
+          LIMIT 5
+        `;
+        console.log('🔍 Debug - Dizimistas encontrados:', debugDizimistas);
+        
+        // Debug: testar consulta mais específica
+        const debugSpecific = await sql`
+          SELECT u.id, u.name, u.extra_data->>'dizimistaType' as dizimista_type
+          FROM users u
+          WHERE u.church = ${churchName}
+          AND u.role LIKE '%member%'
+          AND (u.status = 'approved' OR u.status = 'pending')
+          AND u.extra_data->>'dizimistaType' = 'Recorrente (8-12)'
+          LIMIT 3
+        `;
+        console.log('🔍 Debug - Recorrente específico:', debugSpecific);
+        
+        console.log('🔍 Resultado da query:', candidates);
+
+          console.log(`✅ Candidatos elegíveis encontrados: ${candidates.length}`);
+        }
+        
+        // Normalizar estrutura dos candidatos
+        const normalizedCandidates = candidates.map(c => ({
+          id: c.candidate_id,
+          name: c.candidate_name || c.name || 'Nome não encontrado',
+          unit: c.church || 'N/A',
+          points: c.points || 0,
+          nominations: c.nominations || 0,
+          votes: c.votes || 0,
+          percentage: c.percentage || 0
+        }));
+
+        console.log(`✅ Retornando ${normalizedCandidates.length} candidatos para interface de votação`);
+        if (normalizedCandidates.length > 0) {
+          console.log('🔍 Primeiro candidato:', JSON.stringify(normalizedCandidates[0]));
+        }
+        
+        let finalCandidates = normalizedCandidates;
+        
+        if (false && currentPhase === 'voting') {
+          // REMOVIDO - lógica conflitante que sobrescrevia os nomes
+          finalCandidates = normalizedCandidates.map(candidate => ({
+            id: candidate.id,
+            name: candidate.name,
+            unit: candidate.church || 'N/A',
+            points: candidate.points || 0,
+            nominations: candidate.nominations || 0,
+            votes: candidate.votes || 0,
+            percentage: candidate.votes > 0 ? ((candidate.votes / electionCandidates.reduce((sum, c) => sum + (c.votes || 0), 0)) * 100) : 0
+          }));
+        }
+        
+        console.log('🔍 Candidatos finais para retornar:', finalCandidates);
+
+        // Verificar se o usuário já votou ou indicou (baseado na fase)
+        const userId = event.headers['x-user-id'];
+        let hasVoted = false;
+        let hasNominated = false;
+        let userVote = null;
+        let nominationCount = 0;
+        const maxNominationsPerVoter = config[0].max_nominations_per_voter || 1;
+        const positionDescriptions = config[0].position_descriptions || {};
+        const currentPositionDescription = positionDescriptions && positionDescriptions[currentPositionName] ? positionDescriptions[currentPositionName] : '';
+
+        if (userId) {
+          // Verificar VOTO (fase de votação)
+          const voteCheck = await sql`
+            SELECT candidate_id FROM election_votes 
+            WHERE election_id = ${election[0].id} 
+            AND voter_id = ${parseInt(userId)}
+            AND position_id = ${currentPositionName}
+            AND vote_type = 'vote'
+          `;
+          
+          // Verificar INDICAÇÃO (fase de indicação) e contar
+          const nominationCheck = await sql`
+            SELECT COUNT(*) as count FROM election_votes 
+            WHERE election_id = ${election[0].id} 
+            AND voter_id = ${parseInt(userId)}
+            AND position_id = ${currentPositionName}
+            AND vote_type = 'nomination'
+          `;
+          
+          if (voteCheck.length > 0) {
+            hasVoted = true;
+            userVote = voteCheck[0].candidate_id;
+          }
+          
+          nominationCount = parseInt(nominationCheck[0]?.count) || 0;
+          const hasReachedNominationLimit = nominationCount >= maxNominationsPerVoter;
+          
+          if (nominationCount > 0) {
+            hasNominated = hasReachedNominationLimit;
+          }
+          
+          console.log(`🔍 Verificação usuário ${userId}: hasVoted=${hasVoted}, hasNominated=${hasNominated}, nominationCount=${nominationCount}/${maxNominationsPerVoter}, phase=${currentPhase}`);
+        }
+
+        // Buscar nome do candidato votado
+        let votedCandidateName = null;
+        if (hasVoted && userVote) {
+          const votedCandidate = await sql`
+            SELECT name FROM users WHERE id = ${userVote}
+          `;
+          if (votedCandidate.length > 0) {
+            votedCandidateName = votedCandidate[0].name;
+          }
+        }
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            election: {
+              id: election[0].id,
+              config_id: election[0].config_id,
+              status: election[0].status,
+              current_position: election[0].current_position,
+              created_at: election[0].created_at,
+              updated_at: election[0].updated_at,
+              voters: election[0].voters,
+              positions: election[0].positions,
+              church_name: election[0].church_name
+            },
+            currentPosition: currentPosition,
+            totalPositions: election[0].positions.length,
+            currentPositionName: currentPositionName,
+            currentPositionDescription: currentPositionDescription,
+            candidates: finalCandidates,
+            phase: currentPhase,
+            hasVoted: hasVoted,
+            hasNominated: hasNominated,
+            nominationCount: nominationCount,
+            maxNominationsPerVoter: maxNominationsPerVoter,
+            userVote: userVote,
+            votedCandidateName: votedCandidateName
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro na rota de voting:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            error: 'Erro interno do servidor',
+            details: error.message 
+          })
         };
       }
     }
@@ -3913,6 +5493,137 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // Rota para dashboard do admin com configId específico
+    if (path.startsWith('/api/elections/dashboard/') && method === 'GET') {
+      try {
+        const configId = parseInt(path.split('/').pop());
+        
+        // Buscar eleição ativa para o configId específico
+        const election = await sql`
+          SELECT e.*, ec.voters, ec.positions, ec.church_name
+          FROM elections e
+          JOIN election_configs ec ON e.config_id = ec.id
+          WHERE e.config_id = ${configId}
+          AND e.status = 'active'
+          ORDER BY e.created_at DESC
+          LIMIT 1
+        `;
+
+        if (election.length === 0) {
+          return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Nenhuma eleição ativa para esta configuração' })
+          };
+        }
+
+        // Buscar estatísticas
+        const totalVoters = election[0].voters.length;
+        const votedVoters = await sql`
+          SELECT COUNT(DISTINCT voter_id) as count
+          FROM election_votes
+          WHERE election_id = ${election[0].id}
+        `;
+
+        // Buscar todos os resultados de uma vez (otimizado)
+        const allResults = await sql`
+          SELECT 
+            ev.position_id,
+            ev.candidate_id,
+            COALESCE(u.name, 'Usuário não encontrado') as candidate_name,
+            COUNT(CASE WHEN ev.vote_type = 'nomination' THEN 1 END) as nominations,
+            COUNT(CASE WHEN ev.vote_type = 'vote' THEN 1 END) as votes
+          FROM election_votes ev
+          LEFT JOIN users u ON ev.candidate_id = u.id
+          WHERE ev.election_id = ${election[0].id}
+          GROUP BY ev.position_id, ev.candidate_id, u.name
+          HAVING COUNT(CASE WHEN ev.vote_type = 'nomination' THEN 1 END) > 0 
+             OR COUNT(CASE WHEN ev.vote_type = 'vote' THEN 1 END) > 0
+          ORDER BY ev.position_id, votes DESC, nominations DESC
+        `;
+
+        // Agrupar resultados por posição
+        const positions = [];
+        const resultsByPosition = new Map();
+        
+        // Agrupar resultados por posição
+        allResults.forEach(result => {
+          if (!resultsByPosition.has(result.position_id)) {
+            resultsByPosition.set(result.position_id, []);
+          }
+          resultsByPosition.get(result.position_id).push(result);
+        });
+
+        // Processar cada posição
+        for (const position of election[0].positions) {
+          const results = resultsByPosition.get(position) || [];
+          
+          // Converter votos e indicações para números e calcular percentuais
+          results.forEach(r => {
+            r.votes = parseInt(r.votes) || 0;
+            r.nominations = parseInt(r.nominations) || 0;
+          });
+          
+          const totalVotes = results.reduce((sum, r) => sum + r.votes, 0);
+          results.forEach(r => {
+            r.percentage = totalVotes > 0 ? (r.votes / totalVotes * 100) : 0;
+          });
+
+          const winner = results.length > 0 && results[0].votes > 0 ? results[0] : null;
+          const totalNominations = results.reduce((sum, r) => sum + r.nominations, 0);
+
+          positions.push({
+            position: position,
+            totalNominations: totalNominations,
+            winner: winner ? {
+              id: winner.candidate_id,
+              name: winner.candidate_name,
+              votes: winner.votes,
+              percentage: winner.percentage
+            } : null,
+            results: results.map(r => ({
+              id: r.candidate_id,
+              name: r.candidate_name,
+              nominations: r.nominations,
+              votes: r.votes,
+              percentage: r.percentage
+            }))
+          });
+        }
+
+        const response = {
+          election: {
+            id: election[0].id,
+            config_id: election[0].config_id,
+            status: election[0].status,
+            current_position: election[0].current_position,
+            current_phase: election[0].current_phase || 'nomination',
+            church_name: election[0].church_name,
+            created_at: election[0].created_at
+          },
+          totalVoters,
+          votedVoters: votedVoters[0].count,
+          currentPosition: election[0].current_position,
+          totalPositions: election[0].positions.length,
+          positions
+        };
+
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(response)
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao buscar dashboard com configId:', error);
+        return {
+          statusCode: 500,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
     // Rota para avançar para próxima posição
     if (path === '/api/elections/next-position' && method === 'POST') {
       try {
@@ -4075,7 +5786,7 @@ exports.handler = async (event, context) => {
         
         return {
           statusCode: 200,
-            headers,
+          headers,
           body: JSON.stringify(requests)
         };
       } catch (error) {
@@ -4422,35 +6133,76 @@ exports.handler = async (event, context) => {
     // Rota para orações
     if (path === '/api/prayers' && method === 'GET') {
       try {
+        console.log('🔍 [PRAYERS] Iniciando busca de orações...');
+        
         // Obter parâmetros da query string
         const queryString = event.queryStringParameters || {};
         const userId = queryString.userId;
         const userRole = queryString.userRole;
         const userChurch = queryString.userChurch;
         
-        console.log(`🔍 Buscando orações para usuário ${userId} (${userRole}) da igreja ${userChurch}`);
+        console.log(`🔍 [PRAYERS] Parâmetros: userId=${userId}, userRole=${userRole}, userChurch=${userChurch}`);
         
         // Verificar se a tabela existe e criar se necessário
         try {
           await sql`SELECT 1 FROM prayers LIMIT 1`;
+          console.log('✅ [PRAYERS] Tabela prayers existe');
+          
+          // Verificar se a coluna user_id existe, se não, adicionar
+          try {
+            await sql`SELECT user_id FROM prayers LIMIT 1`;
+            console.log('✅ [PRAYERS] Coluna user_id existe');
+          } catch (columnError) {
+            console.log('🔄 [PRAYERS] Coluna user_id não existe, adicionando coluna...');
+            await sql`ALTER TABLE prayers ADD COLUMN user_id INTEGER`;
+            await sql`ALTER TABLE prayers ADD COLUMN is_private BOOLEAN DEFAULT false`;
+            await sql`ALTER TABLE prayers ADD COLUMN allow_church_members BOOLEAN DEFAULT true`;
+            await sql`ALTER TABLE prayers ADD COLUMN is_answered BOOLEAN DEFAULT false`;
+            console.log('✅ [PRAYERS] Colunas adicionadas com sucesso');
+          }
         } catch (tableError) {
-          console.log('📋 Criando tabela prayers...');
+          console.log('📋 [PRAYERS] Criando tabela prayers...');
           await sql`
-            CREATE TABLE IF NOT EXISTS prayers (
+            CREATE TABLE prayers (
               id SERIAL PRIMARY KEY,
               user_id INTEGER NOT NULL,
               title VARCHAR(255) NOT NULL,
               description TEXT,
+              is_private BOOLEAN DEFAULT false,
+              allow_church_members BOOLEAN DEFAULT true,
+              is_answered BOOLEAN DEFAULT false,
               status VARCHAR(20) DEFAULT 'active',
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
           `;
+          console.log('✅ [PRAYERS] Tabela prayers criada com sucesso');
+        }
+
+        // Criar tabela de intercessores se não existir
+        try {
+          await sql`SELECT 1 FROM prayer_intercessors LIMIT 1`;
+          console.log('✅ [INTERCESSORS] Tabela prayer_intercessors existe');
+        } catch (tableError) {
+          console.log('📋 [INTERCESSORS] Criando tabela prayer_intercessors...');
+          await sql`
+            CREATE TABLE prayer_intercessors (
+              id SERIAL PRIMARY KEY,
+              prayer_id INTEGER NOT NULL,
+              intercessor_id INTEGER NOT NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(prayer_id, intercessor_id),
+              FOREIGN KEY (prayer_id) REFERENCES prayers(id) ON DELETE CASCADE,
+              FOREIGN KEY (intercessor_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+          `;
+          console.log('✅ [INTERCESSORS] Tabela prayer_intercessors criada com sucesso');
         }
         
-        // Buscar orações da igreja do usuário
+        // Buscar orações
         let prayers;
-        if (userChurch) {
+        if (userChurch && userChurch !== 'Sistema') {
+          console.log(`🔍 [PRAYERS] Buscando orações da igreja: ${userChurch}`);
           prayers = await sql`
             SELECT p.*, u.name as requester_name, u.church
             FROM prayers p
@@ -4460,6 +6212,7 @@ exports.handler = async (event, context) => {
             LIMIT 50
           `;
         } else {
+          console.log('🔍 [PRAYERS] Buscando todas as orações (admin/global)');
           prayers = await sql`
             SELECT p.*, u.name as requester_name, u.church
             FROM prayers p
@@ -4469,7 +6222,7 @@ exports.handler = async (event, context) => {
           `;
         }
         
-        console.log(`📊 Encontradas ${prayers.length} orações`);
+        console.log(`📊 [PRAYERS] Encontradas ${prayers.length} orações`);
         
         return {
           statusCode: 200,
@@ -4477,22 +6230,171 @@ exports.handler = async (event, context) => {
           body: JSON.stringify(prayers)
         };
       } catch (error) {
-        console.error('❌ Prayers error:', error);
+        console.error('❌ [PRAYERS] Erro ao buscar orações:', error);
         return {
           statusCode: 500,
           headers,
-          body: JSON.stringify({ error: 'Erro ao buscar orações' })
+          body: JSON.stringify({ 
+            error: 'Erro ao buscar orações',
+            details: error.message 
+          })
         };
       }
     }
 
-    // Rota para oração específica
-    if (path.startsWith('/api/prayers/') && method === 'GET') {
+    // Rota para criar pedido de oração
+    if (path === '/api/prayers' && method === 'POST') {
       try {
-        const prayerId = path.split('/')[3];
-        const prayers = await sql`SELECT * FROM prayers WHERE id = ${parseInt(prayerId)} LIMIT 1`;
+        console.log('🔍 [PRAYERS POST] Iniciando criação de pedido de oração...');
         
-        if (prayers.length === 0) {
+        const body = JSON.parse(event.body || '{}');
+        const { userId, title, description, isPrivate = false, allowChurchMembers = true } = body;
+        
+        console.log(`🔍 [PRAYERS POST] Dados recebidos:`, { userId, title, description, isPrivate, allowChurchMembers });
+        
+        if (!userId || !title) {
+          console.log('❌ [PRAYERS POST] Dados obrigatórios faltando');
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'userId e title são obrigatórios' })
+          };
+        }
+
+        // Verificar se a tabela existe e criar se necessário
+        try {
+          await sql`SELECT 1 FROM prayers LIMIT 1`;
+          console.log('✅ [PRAYERS POST] Tabela prayers existe');
+          
+          // Verificar se a coluna user_id existe, se não, adicionar
+          try {
+            await sql`SELECT user_id FROM prayers LIMIT 1`;
+            console.log('✅ [PRAYERS POST] Coluna user_id existe');
+          } catch (columnError) {
+            console.log('🔄 [PRAYERS POST] Coluna user_id não existe, adicionando coluna...');
+            await sql`ALTER TABLE prayers ADD COLUMN user_id INTEGER`;
+            await sql`ALTER TABLE prayers ADD COLUMN is_private BOOLEAN DEFAULT false`;
+            await sql`ALTER TABLE prayers ADD COLUMN allow_church_members BOOLEAN DEFAULT true`;
+            await sql`ALTER TABLE prayers ADD COLUMN is_answered BOOLEAN DEFAULT false`;
+            console.log('✅ [PRAYERS POST] Colunas adicionadas com sucesso');
+          }
+        } catch (tableError) {
+          console.log('📋 [PRAYERS POST] Criando tabela prayers...');
+          await sql`
+            CREATE TABLE prayers (
+              id SERIAL PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              title VARCHAR(255) NOT NULL,
+              description TEXT,
+              is_private BOOLEAN DEFAULT false,
+              allow_church_members BOOLEAN DEFAULT true,
+              is_answered BOOLEAN DEFAULT false,
+              status VARCHAR(20) DEFAULT 'active',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+          `;
+          console.log('✅ [PRAYERS POST] Tabela prayers criada com sucesso');
+        }
+
+        console.log('🔍 [PRAYERS POST] Inserindo dados na tabela...');
+        const result = await sql`
+          INSERT INTO prayers (user_id, title, description)
+          VALUES (${userId}, ${title}, ${description || ''})
+          RETURNING *
+        `;
+        
+        console.log('✅ [PRAYERS POST] Pedido de oração criado com sucesso:', result[0]);
+        
+        return {
+          statusCode: 201,
+          headers,
+          body: JSON.stringify({ success: true, data: result[0] })
+        };
+      } catch (error) {
+        console.error('❌ [PRAYERS POST] Erro ao criar pedido de oração:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Erro interno do servidor',
+            details: error.message 
+          })
+        };
+      }
+    }
+
+    // API para listar intercessores de uma oração
+    if (path.startsWith('/api/prayers/') && path.endsWith('/intercessors') && method === 'GET') {
+      try {
+        console.log('🔍 [INTERCESSORS] Buscando intercessores...');
+        const prayerId = path.split('/')[3];
+        
+        if (!prayerId || isNaN(parseInt(prayerId))) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID de oração inválido' })
+          };
+        }
+
+        const intercessors = await sql`
+          SELECT pi.*, u.name as intercessor_name, u.email, u.role, u.church
+          FROM prayer_intercessors pi
+          JOIN users u ON pi.user_id = u.id
+          WHERE pi.prayer_id = ${parseInt(prayerId)}
+          ORDER BY pi.joined_at ASC
+        `;
+
+        console.log(`✅ [INTERCESSORS] Encontrados ${intercessors.length} intercessores`);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(intercessors)
+        };
+      } catch (error) {
+        console.error('❌ [INTERCESSORS] Erro ao buscar intercessores:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Erro interno do servidor',
+            details: error.message 
+          })
+        };
+      }
+    }
+
+    // API para adicionar intercessor a uma oração
+    if (path.startsWith('/api/prayers/') && path.endsWith('/intercessor') && method === 'POST') {
+      try {
+        console.log('🔍 [INTERCESSOR ADD] Adicionando intercessor...');
+        const prayerId = path.split('/')[3];
+        const body = JSON.parse(event.body || '{}');
+        const { intercessorId } = body;
+
+        if (!prayerId || isNaN(parseInt(prayerId))) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID de oração inválido' })
+          };
+        }
+
+        if (!intercessorId) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID do intercessor é obrigatório' })
+          };
+        }
+
+        // Verificar se a oração existe
+        const prayer = await sql`
+          SELECT id FROM prayers WHERE id = ${parseInt(prayerId)}
+        `;
+
+        if (prayer.length === 0) {
           return {
             statusCode: 404,
             headers,
@@ -4500,17 +6402,141 @@ exports.handler = async (event, context) => {
           };
         }
 
+        // Adicionar intercessor
+        const result = await sql`
+          INSERT INTO prayer_intercessors (prayer_id, user_id)
+          VALUES (${parseInt(prayerId)}, ${parseInt(intercessorId)})
+          RETURNING *
+        `;
+
+        console.log(`✅ [INTERCESSOR ADD] Intercessor adicionado: ${result.length > 0 ? 'Sim' : 'Já existia'}`);
+        return {
+          statusCode: 201,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: result.length > 0 ? 'Intercessor adicionado' : 'Intercessor já estava orando',
+            data: result[0] || null
+          })
+        };
+      } catch (error) {
+        console.error('❌ [INTERCESSOR ADD] Erro ao adicionar intercessor:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Erro interno do servidor',
+            details: error.message 
+          })
+        };
+      }
+    }
+
+    // API para remover intercessor de uma oração
+    if (path.startsWith('/api/prayers/') && path.includes('/intercessor/') && method === 'DELETE') {
+      try {
+        console.log('🔍 [INTERCESSOR REMOVE] Removendo intercessor...');
+        const pathParts = path.split('/');
+        const prayerId = pathParts[3];
+        const intercessorId = pathParts[5];
+
+        if (!prayerId || isNaN(parseInt(prayerId))) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID de oração inválido' })
+          };
+        }
+
+        if (!intercessorId || isNaN(parseInt(intercessorId))) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID do intercessor inválido' })
+          };
+        }
+
+        const result = await sql`
+          DELETE FROM prayer_intercessors 
+          WHERE prayer_id = ${parseInt(prayerId)} AND user_id = ${parseInt(intercessorId)}
+          RETURNING *
+        `;
+
+        console.log(`✅ [INTERCESSOR REMOVE] Intercessor removido: ${result.length > 0 ? 'Sim' : 'Não encontrado'}`);
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: result.length > 0 ? 'Intercessor removido' : 'Intercessor não encontrado',
+            data: result[0] || null
+          })
+        };
+      } catch (error) {
+        console.error('❌ [INTERCESSOR REMOVE] Erro ao remover intercessor:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Erro interno do servidor',
+            details: error.message 
+          })
+        };
+      }
+    }
+
+    // Rota para oração específica
+    if (path.startsWith('/api/prayers/') && method === 'GET' && !path.includes('/users') && !path.includes('/intercessors')) {
+      try {
+        console.log('🔍 [PRAYERS DETAIL] Buscando oração específica...');
+        
+        // Extrair ID da oração da URL (remover parâmetros de query se existirem)
+        const pathParts = path.split('/');
+        const prayerIdWithParams = pathParts[3];
+        const prayerId = prayerIdWithParams.split('?')[0]; // Remover parâmetros de query
+        
+        console.log(`🔍 [PRAYERS DETAIL] ID da oração: ${prayerId}`);
+        
+        if (!prayerId || isNaN(parseInt(prayerId))) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'ID de oração inválido' })
+          };
+        }
+
+        const prayers = await sql`
+          SELECT p.*, u.name as requester_name, u.church
+          FROM prayers p
+          LEFT JOIN users u ON p.user_id = u.id
+          WHERE p.id = ${parseInt(prayerId)}
+          LIMIT 1
+        `;
+        
+        if (prayers.length === 0) {
+          console.log(`❌ [PRAYERS DETAIL] Oração ${prayerId} não encontrada`);
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Oração não encontrada' })
+          };
+        }
+
+        console.log(`✅ [PRAYERS DETAIL] Oração ${prayerId} encontrada`);
         return {
           statusCode: 200,
           headers,
           body: JSON.stringify(prayers[0])
         };
       } catch (error) {
-        console.error('❌ Prayers error:', error);
+        console.error('❌ [PRAYERS DETAIL] Erro ao buscar oração:', error);
         return {
           statusCode: 500,
           headers,
-          body: JSON.stringify({ error: 'Erro ao buscar oração' })
+          body: JSON.stringify({ 
+            error: 'Erro interno do servidor',
+            details: error.message 
+          })
         };
       }
     }
@@ -4518,65 +6544,90 @@ exports.handler = async (event, context) => {
     // Rota para configurações do sistema
     if (path === '/api/system/points-config' && method === 'GET') {
       try {
-        const config = {
-          engajamento: {
-            baixo: 50,
-            medio: 100,
-            alto: 200
-          },
-          classificacao: {
-            frequente: 100,
-            naoFrequente: 50
-          },
-          dizimista: {
-            naoDizimista: 0,
-            pontual: 25,
-            sazonal: 50,
-            recorrente: 100
-          },
-          ofertante: {
-            naoOfertante: 0,
-            pontual: 15,
-            sazonal: 30,
-            recorrente: 60
-          },
-          tempoBatismo: {
-            doisAnos: 25,
-            cincoAnos: 50,
-            dezAnos: 100,
-            vinteAnos: 150,
-            maisVinte: 200
-          },
-          cargos: {
-            umCargo: 50,
-            doisCargos: 100,
-            tresOuMais: 150
-          },
-          nomeUnidade: {
-            comUnidade: 25
-          },
-          temLicao: {
-            comLicao: 30
-          },
-          totalPresenca: {
-            zeroATres: 0,
-            quatroASete: 50,
-            oitoATreze: 100
-          },
-          escolaSabatina: {
-            comunhao: 10,
-            missao: 15,
-            estudoBiblico: 5,
-            batizouAlguem: 100,
-            discipuladoPosBatismo: 20
-          },
-          cpfValido: {
-            valido: 25
-          },
-          camposVaziosACMS: {
-            completos: 50
-          }
-        };
+        console.log('🔍 Buscando configuração de pontos do banco de dados...');
+        
+        // Buscar configurações do banco de dados
+        const configRow = await sql`
+          SELECT engajamento, classificacao, dizimista, ofertante, tempoBatismo,
+                 cargos, nomeUnidade, temLicao, totalPresenca, escolaSabatina,
+                 cpfValido, camposVaziosACMS
+          FROM points_configuration 
+          LIMIT 1
+        `;
+        
+        if (configRow.length === 0) {
+          console.log('⚠️ Nenhuma configuração encontrada, retornando valores padrão');
+          // Retornar valores padrão se não houver configuração salva
+          const defaultConfig = {
+            engajamento: {
+              baixo: 50,
+              medio: 100,
+              alto: 200
+            },
+            classificacao: {
+              frequente: 100,
+              naoFrequente: 50
+            },
+            dizimista: {
+              naoDizimista: 0,
+              pontual: 25,
+              sazonal: 50,
+              recorrente: 100
+            },
+            ofertante: {
+              naoOfertante: 0,
+              pontual: 15,
+              sazonal: 30,
+              recorrente: 60
+            },
+            tempoBatismo: {
+              doisAnos: 25,
+              cincoAnos: 50,
+              dezAnos: 100,
+              vinteAnos: 150,
+              maisVinte: 200
+            },
+            cargos: {
+              umCargo: 50,
+              doisCargos: 100,
+              tresOuMais: 150
+            },
+            nomeUnidade: {
+              comUnidade: 25
+            },
+            temLicao: {
+              comLicao: 30
+            },
+            totalPresenca: {
+              zeroATres: 0,
+              quatroASete: 50,
+              oitoATreze: 100
+            },
+            escolaSabatina: {
+              comunhao: 10,
+              missao: 15,
+              estudoBiblico: 5,
+              batizouAlguem: 100,
+              discipuladoPosBatismo: 20
+            },
+            cpfValido: {
+              valido: 25
+            },
+            camposVaziosACMS: {
+              completos: 50
+            }
+          };
+          
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify(defaultConfig)
+          };
+        }
+        
+        // Usar configuração do banco de dados
+        const config = configRow[0];
+        console.log('✅ Configuração carregada do banco de dados');
         
         return {
           statusCode: 200,
@@ -7132,13 +9183,143 @@ exports.handler = async (event, context) => {
     if (path === '/api/system/points-config' && method === 'POST') {
       try {
         const body = JSON.parse(event.body || '{}');
-        console.log('🔍 Saving points config:', body);
+        console.log('🔄 Salvando configuração de pontos e recalculando automaticamente...', body);
         
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ success: true, message: 'Configuração de pontos salva com sucesso' })
-        };
+        // Salvar a configuração real no banco de dados
+        console.log('💾 Salvando configuração no banco de dados...');
+        
+        // Verificar se já existe uma configuração
+        const existingConfig = await sql`SELECT id FROM points_configuration LIMIT 1`;
+        
+        if (existingConfig.length > 0) {
+          // Atualizar configuração existente (usar o ID que existe)
+          const existingId = existingConfig[0].id;
+          await sql`
+            UPDATE points_configuration SET 
+              engajamento = ${JSON.stringify(body.engajamento || {})},
+              classificacao = ${JSON.stringify(body.classificacao || {})},
+              dizimista = ${JSON.stringify(body.dizimista || {})},
+              ofertante = ${JSON.stringify(body.ofertante || {})},
+              tempobatismo = ${JSON.stringify(body.tempoBatismo || {})},
+              cargos = ${JSON.stringify(body.cargos || {})},
+              nomeunidade = ${JSON.stringify(body.nomeUnidade || {})},
+              temlicao = ${JSON.stringify(body.temLicao || {})},
+              totalpresenca = ${JSON.stringify(body.totalPresenca || {})},
+              escolasabatina = ${JSON.stringify(body.escolaSabatina || {})},
+              cpfvalido = ${JSON.stringify(body.cpfValido || {})},
+              camposvaziosacms = ${JSON.stringify(body.camposVaziosACMS || {})},
+              updated_at = NOW()
+            WHERE id = ${existingId}
+          `;
+        } else {
+          // Inserir nova configuração
+          await sql`
+            INSERT INTO points_configuration (
+              engajamento, classificacao, dizimista, ofertante, tempobatismo,
+              cargos, nomeunidade, temlicao, totalpresenca, escolasabatina,
+              cpfvalido, camposvaziosacms
+            ) VALUES (
+              ${JSON.stringify(body.engajamento || {})},
+              ${JSON.stringify(body.classificacao || {})},
+              ${JSON.stringify(body.dizimista || {})},
+              ${JSON.stringify(body.ofertante || {})},
+              ${JSON.stringify(body.tempoBatismo || {})},
+              ${JSON.stringify(body.cargos || {})},
+              ${JSON.stringify(body.nomeUnidade || {})},
+              ${JSON.stringify(body.temLicao || {})},
+              ${JSON.stringify(body.totalPresenca || {})},
+              ${JSON.stringify(body.escolaSabatina || {})},
+              ${JSON.stringify(body.cpfValido || {})},
+              ${JSON.stringify(body.camposVaziosACMS || {})}
+            )
+          `;
+        }
+        
+        console.log('✅ Configuração salva no banco de dados com sucesso');
+        
+        // Invalidar cache da configuração para forçar recarregamento
+        global.pointsConfigCache = null;
+        
+        // Recalcular pontos de todos os usuários automaticamente (VERSÃO SÍNCRONA CORRIGIDA)
+        console.log('🔄 Iniciando recálculo automático de pontos...');
+        
+        try {
+          // Buscar todos os usuários
+          const users = await sql`SELECT * FROM users WHERE role != 'admin' ORDER BY id`;
+          console.log(`👥 ${users.length} usuários encontrados para recálculo`);
+          
+          let updatedCount = 0;
+          let errorCount = 0;
+          
+          // Processar em lotes para otimizar performance
+          const batchSize = 20;
+          for (let i = 0; i < users.length; i += batchSize) {
+            const batch = users.slice(i, i + batchSize);
+            
+            // Processar lote em paralelo
+            const batchPromises = batch.map(async (user) => {
+              try {
+                // Calcular pontos usando a nova configuração
+                const calculatedPoints = await calculateUserPoints(user);
+                
+                // Atualizar pontos no banco se mudaram
+                if (user.points !== calculatedPoints) {
+                  await sql`UPDATE users SET points = ${calculatedPoints} WHERE id = ${user.id}`;
+                  return { updated: true, userId: user.id, userName: user.name, oldPoints: user.points, newPoints: calculatedPoints };
+                }
+                
+                return { updated: false, userId: user.id, points: calculatedPoints };
+                
+              } catch (userError) {
+                console.error(`❌ Erro ao processar usuário ${user.name}:`, userError);
+                return { error: true, userId: user.id, errorMsg: userError.message };
+              }
+            });
+            
+            // Aguardar lote atual
+            const batchResults = await Promise.all(batchPromises);
+            
+            // Contar resultados
+            batchResults.forEach(result => {
+              if (result.error) {
+                errorCount++;
+              } else if (result.updated) {
+                updatedCount++;
+                console.log(`✅ Usuário ${result.userName} (ID ${result.userId}): ${result.oldPoints} → ${result.newPoints} pontos`);
+              }
+            });
+          }
+          
+          console.log(`🎉 Recálculo concluído: ${updatedCount} usuários atualizados, ${errorCount} erros`);
+          
+          // Retornar resposta com informações do recálculo
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ 
+              success: true, 
+              message: 'Configuração salva e pontos recalculados com sucesso!',
+              updatedUsers: updatedCount,
+              errors: errorCount,
+              totalUsers: users.length
+            })
+          };
+          
+        } catch (calcError) {
+          console.error('❌ Erro no recálculo:', calcError);
+          // Se falhar o recálculo, ainda assim retornar que a config foi salva
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ 
+              success: true, 
+              message: 'Configuração salva, mas houve erro no recálculo de pontos.',
+              error: calcError.message,
+              updatedUsers: 0
+            })
+          };
+        }
+        
       } catch (error) {
         console.error('❌ Save points config error:', error);
         return {
@@ -7149,13 +9330,133 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // Rota para recálculo manual de pontos (versão simplificada)
+    if (path === '/api/system/recalculate-points' && method === 'POST') {
+      try {
+        console.log('🔄 Iniciando recálculo manual de pontos...');
+        
+        // Buscar apenas alguns usuários para teste
+        const users = await sql`SELECT * FROM users WHERE role != 'admin' ORDER BY id LIMIT 10`;
+        console.log(`👥 ${users.length} usuários encontrados para recálculo`);
+        
+        let updatedCount = 0;
+        let errorCount = 0;
+        const results = [];
+        
+        // Processar usuários sequencialmente para evitar timeout
+        for (const user of users) {
+          try {
+            // Calcular pontos usando a mesma função que está na rota /api/users
+            const calculatedPoints = await calculateUserPoints(user);
+            
+            // Atualizar pontos no banco se mudaram
+            if (user.points !== calculatedPoints) {
+              await sql`UPDATE users SET points = ${calculatedPoints} WHERE id = ${user.id}`;
+              results.push({ 
+                updated: true, 
+                userId: user.id, 
+                name: user.name,
+                oldPoints: user.points, 
+                newPoints: calculatedPoints 
+              });
+              updatedCount++;
+              console.log(`✅ ${user.name} (${user.id}): ${user.points} → ${calculatedPoints}`);
+            } else {
+              results.push({ 
+                updated: false, 
+                userId: user.id, 
+                name: user.name,
+                points: calculatedPoints 
+              });
+            }
+            
+          } catch (userError) {
+            console.error(`❌ Erro ao processar usuário ${user.name}:`, userError);
+            results.push({ 
+              error: true, 
+              userId: user.id, 
+              name: user.name,
+              error: userError.message 
+            });
+            errorCount++;
+          }
+        }
+        
+        console.log(`🎉 Recálculo concluído: ${updatedCount} usuários atualizados, ${errorCount} erros`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: `Recálculo concluído! ${updatedCount} usuários atualizados.`,
+            updatedCount,
+            totalUsers: users.length,
+            errors: errorCount,
+            results: results
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Recalculate points error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao recalcular pontos' })
+        };
+      }
+    }
+
     // Rota para resetar configuração de pontos
     if (path === '/api/system/points-config/reset' && method === 'POST') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ success: true, message: 'Configuração de pontos resetada com sucesso' })
-      };
+      try {
+        console.log('🔄 Resetando configuração de pontos e recalculando automaticamente...');
+        
+        // Limpar configuração existente e inserir valores padrão
+        console.log('🔄 Limpando configuração existente...');
+        await sql`DELETE FROM points_configuration`;
+        
+        // Inserir configuração padrão
+        await sql`
+          INSERT INTO points_configuration (
+            engajamento, classificacao, dizimista, ofertante, tempoBatismo,
+            cargos, nomeUnidade, temLicao, totalPresenca, escolaSabatina,
+            cpfValido, camposVaziosACMS
+          ) VALUES (
+            '{"baixo": 50, "medio": 100, "alto": 200}',
+            '{"frequente": 100, "naoFrequente": 50}',
+            '{"naoDizimista": 0, "pontual": 25, "sazonal": 50, "recorrente": 100}',
+            '{"naoOfertante": 0, "pontual": 15, "sazonal": 30, "recorrente": 60}',
+            '{"doisAnos": 25, "cincoAnos": 50, "dezAnos": 100, "vinteAnos": 150, "maisVinte": 200}',
+            '{"umCargo": 50, "doisCargos": 100, "tresOuMais": 150}',
+            '{"comUnidade": 25, "semUnidade": 0}',
+            '{"comLicao": 30}',
+            '{"zeroATres": 0, "quatroASete": 50, "oitoATreze": 100}',
+            '{"comunhao": 10, "missao": 15, "estudoBiblico": 5, "batizouAlguem": 100, "discipuladoPosBatismo": 20}',
+            '{"valido": 25, "invalido": 0}',
+            '{"completos": 50, "incompletos": 0}'
+          )
+        `;
+        
+        console.log('✅ Configuração resetada para valores padrão');
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            success: true, 
+            message: 'Configuração resetada com sucesso!'
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Reset points config error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao resetar configuração de pontos' })
+        };
+      }
     }
 
     // Rota para limpar tudo
@@ -7254,7 +9555,7 @@ exports.handler = async (event, context) => {
         const missionaries = await sql`
           SELECT id, name, email, role, church, points, level, status, created_at
           FROM users 
-          WHERE role = 'missionary'
+          WHERE role LIKE '%missionary%'
           ORDER BY name ASC
         `;
         
@@ -9612,6 +11913,1605 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // ===== FUNÇÕES DE SINCRONIZAÇÃO DE TAREFAS COM GOOGLE SHEETS =====
+    
+    // Função para adicionar tarefas à planilha do Google Drive
+    async function addTasksToGoogleDrive(tasks) {
+      try {
+        console.log('📊 [TASKS-GOOGLE-DRIVE] Tentando adicionar tarefas à planilha...');
+        
+        // Buscar configuração do Google Drive
+        const configResult = await sql`
+          SELECT value FROM system_settings 
+          WHERE key = 'google_drive_config'
+          LIMIT 1
+        `;
+        
+        if (configResult.length === 0 || !configResult[0].value) {
+          console.log('⚠️ [TASKS-GOOGLE-DRIVE] Configuração do Google Drive não encontrada');
+          return { success: false, message: 'Configuração do Google Drive não encontrada' };
+        }
+        
+        const config = typeof configResult[0].value === 'object' ? 
+          configResult[0].value : 
+          JSON.parse(configResult[0].value);
+        
+        if (!config.spreadsheetUrl) {
+          console.log('⚠️ [TASKS-GOOGLE-DRIVE] URL da planilha não configurada');
+          return { success: false, message: 'URL da planilha não configurada' };
+        }
+        
+        console.log(`📊 [TASKS-GOOGLE-DRIVE] Configuração encontrada: ${config.spreadsheetUrl}`);
+        
+        // Extrair ID da planilha e gid
+        const match = config.spreadsheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+).*[#?].*gid=([0-9]+)/);
+        if (!match) {
+          throw new Error('URL inválida da planilha');
+        }
+        
+        const spreadsheetId = match[1];
+        const gid = match[2];
+        
+        console.log(`📊 [TASKS-GOOGLE-DRIVE] Spreadsheet ID: ${spreadsheetId}, GID: ${gid}`);
+        
+        let addedCount = 0;
+        
+        // Processar cada tarefa
+        for (const task of tasks) {
+          try {
+            console.log(`📊 [TASKS-GOOGLE-DRIVE] Processando tarefa: ${task.title}`);
+            
+            // Buscar informações do usuário responsável
+            let assignedToName = 'Não atribuída';
+            if (task.assigned_to) {
+              const userResult = await sql`
+                SELECT name FROM users WHERE id = ${task.assigned_to}
+              `;
+              if (userResult.length > 0) {
+                assignedToName = userResult[0].name;
+              }
+            }
+            
+            // Buscar informações do criador
+            let createdByName = 'Sistema';
+            if (task.created_by) {
+              const creatorResult = await sql`
+                SELECT name FROM users WHERE id = ${task.created_by}
+              `;
+              if (creatorResult.length > 0) {
+                createdByName = creatorResult[0].name;
+              }
+            }
+            
+            // Formatar data de vencimento
+            const dueDate = task.due_date ? 
+              new Date(task.due_date).toLocaleDateString('pt-BR') : 
+              'Sem prazo';
+            
+            // Formatar data de criação
+            const createdAt = new Date(task.created_at).toLocaleDateString('pt-BR');
+            
+            // Formatar data de conclusão
+            const completedAt = task.completed_at ? 
+              new Date(task.completed_at).toLocaleDateString('pt-BR') : 
+              '';
+            
+            // Dados da tarefa para a planilha
+            const taskData = {
+              id: task.id,
+              titulo: task.title,
+              descricao: task.description || '',
+              status: task.status === 'completed' ? 'Concluída' : 
+                     task.status === 'in_progress' ? 'Em Progresso' : 'Pendente',
+              prioridade: task.priority === 'high' ? 'Alta' : 
+                         task.priority === 'low' ? 'Baixa' : 'Média',
+              responsavel: assignedToName,
+              criador: createdByName,
+              data_criacao: createdAt,
+              data_vencimento: dueDate,
+              data_conclusao: completedAt,
+              tags: task.tags || ''
+            };
+            
+            console.log(`📊 [TASKS-GOOGLE-DRIVE] Dados da tarefa preparados:`, taskData);
+            
+            // Tentar adicionar via Google Apps Script
+            try {
+              // URL do Google Apps Script
+              const scriptUrl = 'https://script.google.com/macros/s/AKfycbw7ylcQvor2tlElCamOqsBKuFyb-tVLYIVejzIsJ-OsOFpe8lO15Sz0GMuCTiBzN3xh/exec';
+              
+              console.log(`📊 [TASKS-GOOGLE-DRIVE] Chamando Google Apps Script para: ${task.title}`);
+              
+              const scriptResponse = await fetch(scriptUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  action: 'addTask',
+                  spreadsheetId: spreadsheetId,
+                  sheetName: 'tarefas',
+                  taskData: taskData
+                })
+              });
+              
+              console.log(`📊 [TASKS-GOOGLE-DRIVE] Status da resposta: ${scriptResponse.status}`);
+              
+              if (!scriptResponse.ok) {
+                throw new Error(`HTTP ${scriptResponse.status}: ${scriptResponse.statusText}`);
+              }
+              
+              const scriptResult = await scriptResponse.json();
+              console.log(`📊 [TASKS-GOOGLE-DRIVE] Resultado do script:`, scriptResult);
+              
+              if (scriptResult.success) {
+                console.log(`✅ [TASKS-GOOGLE-DRIVE] Tarefa "${task.title}" adicionada à planilha`);
+                addedCount++;
+              } else {
+                throw new Error(`Google Apps Script falhou: ${scriptResult.message}`);
+              }
+              
+            } catch (scriptError) {
+              console.error(`❌ [TASKS-GOOGLE-DRIVE] Erro ao chamar Google Apps Script para "${task.title}":`, scriptError.message);
+              
+              // Fallback: Salvar para processamento posterior
+              try {
+                await sql`
+                  INSERT INTO pending_google_drive_tasks (title, description, status, priority, assigned_to, created_by, due_date, tags, spreadsheet_id, created_at)
+                  VALUES (${task.title}, ${task.description || ''}, ${task.status}, ${task.priority}, ${task.assigned_to}, ${task.created_by}, ${task.due_date}, ${task.tags || ''}, ${spreadsheetId}, NOW())
+                `;
+                
+                console.log(`✅ [TASKS-GOOGLE-DRIVE] Tarefa "${task.title}" salva para processamento posterior`);
+                addedCount++;
+              } catch (fallbackError) {
+                console.error(`❌ [TASKS-GOOGLE-DRIVE] Erro no fallback para "${task.title}":`, fallbackError.message);
+              }
+            }
+            
+          } catch (error) {
+            console.error(`❌ [TASKS-GOOGLE-DRIVE] Erro ao processar tarefa "${task.title}":`, error.message);
+          }
+        }
+        
+        const result = {
+          success: true,
+          message: `${addedCount} tarefas processadas para a planilha do Google Drive`,
+          addedCount,
+          totalTasks: tasks.length
+        };
+        
+        console.log(`✅ [TASKS-GOOGLE-DRIVE] Resultado: ${result.message}`);
+        return result;
+        
+      } catch (error) {
+        console.error('❌ [TASKS-GOOGLE-DRIVE] Erro ao adicionar tarefas à planilha:', error);
+        return { success: false, message: `Erro: ${error.message}` };
+      }
+    }
+    
+    // Função para sincronizar tarefas da planilha para o app
+    async function syncTasksFromGoogleDrive(csvUrl, spreadsheetUrl) {
+      try {
+        console.log('🔄 [TASKS-SYNC] Iniciando sincronização de tarefas do Google Drive...');
+        console.log('📊 [TASKS-SYNC] Spreadsheet URL:', spreadsheetUrl);
+        
+        // Extrair ID da planilha
+        const match = spreadsheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+        if (!match) {
+          throw new Error('URL inválida da planilha');
+        }
+        
+        const spreadsheetId = match[1];
+        console.log(`📊 [TASKS-SYNC] Spreadsheet ID: ${spreadsheetId}`);
+        
+        // Chamar Google Apps Script para obter tarefas da planilha
+        const scriptUrl = 'https://script.google.com/macros/s/AKfycbw7ylcQvor2tlElCamOqsBKuFyb-tVLYIVejzIsJ-OsOFpe8lO15Sz0GMuCTiBzN3xh/exec';
+        
+        console.log('📊 [TASKS-SYNC] Chamando Google Apps Script para obter tarefas...');
+        
+        const scriptResponse = await fetch(scriptUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'getTasks',
+            spreadsheetId: spreadsheetId,
+            sheetName: 'tarefas'
+          })
+        });
+        
+        if (!scriptResponse.ok) {
+          throw new Error(`Erro ao chamar Google Apps Script: ${scriptResponse.status}`);
+        }
+        
+        const scriptResult = await scriptResponse.json();
+        console.log('📊 [TASKS-SYNC] Resultado do Google Apps Script:', scriptResult);
+        
+        if (!scriptResult.success) {
+          throw new Error(`Google Apps Script falhou: ${scriptResult.message}`);
+        }
+        
+        const tasks = scriptResult.tasks || [];
+        console.log(`📊 [TASKS-SYNC] ${tasks.length} tarefas obtidas da planilha`);
+        
+        if (tasks.length === 0) {
+          console.log('📄 [TASKS-SYNC] Planilha vazia');
+          return { success: true, importedTasks: 0, removedTasks: 0, totalTasks: 0, message: 'Planilha vazia' };
+        }
+        
+        const spreadsheetTaskIds = new Set();
+        let importedCount = 0;
+        let errorCount = 0;
+        
+        // Processar cada tarefa
+        for (const task of tasks) {
+          try {
+            const taskId = task.id || task.ID;
+            const title = task.titulo || task.title || task.Título;
+            const description = task.descricao || task.description || task.Descrição || '';
+            const status = task.status || task.Status || 'pending';
+            const priority = task.prioridade || task.priority || task.Prioridade || 'medium';
+            const assignedTo = task.responsavel || task.assignedTo || task.Responsável || '';
+            const createdBy = task.criador || task.createdBy || task.Criador || '';
+            const dueDate = task.data_vencimento || task.dueDate || task['Data Vencimento'] || '';
+            const completedAt = task.data_conclusao || task.completedAt || task['Data Conclusão'] || '';
+            const tags = task.tags || task.Tags || '';
+            
+            // Validar dados obrigatórios
+            if (!title) {
+              console.log(`⚠️ [TASKS-SYNC] Tarefa sem título, pulando...`);
+              errorCount++;
+              continue;
+            }
+            
+            // Mapear status
+            let mappedStatus = 'pending';
+            if (status.toLowerCase().includes('concluída') || status.toLowerCase().includes('completed')) {
+              mappedStatus = 'completed';
+            } else if (status.toLowerCase().includes('progresso') || status.toLowerCase().includes('progress')) {
+              mappedStatus = 'in_progress';
+            }
+            
+            // Mapear prioridade
+            let mappedPriority = 'medium';
+            if (priority.toLowerCase().includes('alta') || priority.toLowerCase().includes('high')) {
+              mappedPriority = 'high';
+            } else if (priority.toLowerCase().includes('baixa') || priority.toLowerCase().includes('low')) {
+              mappedPriority = 'low';
+            }
+            
+            // Buscar ID do responsável pelo nome
+            let assignedToId = null;
+            if (assignedTo && assignedTo !== 'Não atribuída') {
+              const userResult = await sql`
+                SELECT id FROM users WHERE name = ${assignedTo} LIMIT 1
+              `;
+              if (userResult.length > 0) {
+                assignedTo = userResult[0].id;
+              }
+            }
+            
+            // Buscar ID do criador pelo nome
+            let createdById = 1; // Sistema como padrão
+            if (createdBy && createdBy !== 'Sistema') {
+              const creatorResult = await sql`
+                SELECT id FROM users WHERE name = ${createdBy} LIMIT 1
+              `;
+              if (creatorResult.length > 0) {
+                createdById = creatorResult[0].id;
+              }
+            }
+            
+            // Parsear data de vencimento
+            let dueDateFormatted = null;
+            if (dueDate && dueDate !== 'Sem prazo') {
+              try {
+                const dateParts = dueDate.split('/');
+                if (dateParts.length === 3) {
+                  dueDateFormatted = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]).toISOString();
+                }
+              } catch (e) {
+                console.log(`⚠️ [TASKS-SYNC] Erro ao parsear data de vencimento: ${dueDate}`);
+              }
+            }
+            
+            // Parsear data de conclusão
+            let completedAtFormatted = null;
+            if (completedAt && completedAt !== '') {
+              try {
+                const dateParts = completedAt.split('/');
+                if (dateParts.length === 3) {
+                  completedAtFormatted = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]).toISOString();
+                }
+              } catch (e) {
+                console.log(`⚠️ [TASKS-SYNC] Erro ao parsear data de conclusão: ${completedAt}`);
+              }
+            }
+            
+            const taskData = {
+              id: taskId,
+              title,
+              description,
+              status: mappedStatus,
+              priority: mappedPriority,
+              assigned_to: assignedToId,
+              created_by: createdById,
+              due_date: dueDateFormatted,
+              completed_at: completedAtFormatted,
+              tags: tags ? tags.split(',').map(t => t.trim()) : []
+            };
+            
+            spreadsheetTaskIds.add(taskId);
+            
+            // Verificar se a tarefa já existe
+            const existingTask = await sql`
+              SELECT id FROM tasks WHERE id = ${taskId}
+            `;
+            
+            if (existingTask.length > 0) {
+              // Atualizar tarefa existente
+              await sql`
+                UPDATE tasks SET
+                  title = ${taskData.title},
+                  description = ${taskData.description},
+                  status = ${taskData.status},
+                  priority = ${taskData.priority},
+                  assigned_to = ${taskData.assigned_to},
+                  created_by = ${taskData.created_by},
+                  due_date = ${taskData.due_date},
+                  completed_at = ${taskData.completed_at},
+                  tags = ${JSON.stringify(taskData.tags)},
+                  updated_at = NOW()
+                WHERE id = ${taskId}
+              `;
+              
+              console.log(`🔄 [TASKS-SYNC] Tarefa "${title}" atualizada`);
+            } else {
+              // Criar nova tarefa
+              await sql`
+                INSERT INTO tasks (
+                  id, title, description, status, priority, assigned_to, 
+                  created_by, due_date, completed_at, tags, created_at, updated_at
+                ) VALUES (
+                  ${taskId}, ${taskData.title}, ${taskData.description}, ${taskData.status}, 
+                  ${taskData.priority}, ${taskData.assigned_to}, ${taskData.created_by}, 
+                  ${taskData.due_date}, ${taskData.completed_at}, ${JSON.stringify(taskData.tags)}, 
+                  NOW(), NOW()
+                )
+              `;
+              
+              console.log(`➕ [TASKS-SYNC] Tarefa "${title}" criada`);
+            }
+            
+            importedCount++;
+            
+          } catch (error) {
+            console.error(`❌ [TASKS-SYNC] Erro ao processar tarefa:`, error);
+            errorCount++;
+          }
+        }
+        
+        console.log(`📊 [TASKS-SYNC] ${tasks.length} tarefas processadas, ${errorCount} erros`);
+        
+        // Obter IDs das tarefas que existem na planilha
+        
+        // Importar tarefas para o banco de dados
+        for (const task of tasks) {
+          try {
+            // Verificar se já existe uma tarefa com o mesmo título e criador
+            const existingTask = await sql`
+              SELECT id FROM tasks 
+              WHERE title = ${task.title} 
+              AND created_by = ${task.created_by}
+              LIMIT 1
+            `;
+            
+            if (existingTask.length > 0) {
+              // Atualizar tarefa existente
+              await sql`
+                UPDATE tasks SET
+                  description = ${task.description},
+                  status = ${task.status},
+                  priority = ${task.priority},
+                  assigned_to = ${task.assigned_to},
+                  due_date = ${task.due_date},
+                  tags = ${task.tags},
+                  updated_at = NOW()
+                WHERE id = ${existingTask[0].id}
+              `;
+              console.log(`✅ [TASKS-SYNC] Tarefa "${task.title}" atualizada`);
+              spreadsheetTaskIds.add(existingTask[0].id);
+            } else {
+              // Criar nova tarefa
+              const newTask = await sql`
+                INSERT INTO tasks (title, description, status, priority, assigned_to, created_by, due_date, tags, source, source_url, created_at, updated_at)
+                VALUES (${task.title}, ${task.description}, ${task.status}, ${task.priority}, ${task.assigned_to}, ${task.created_by}, ${task.due_date}, ${task.tags}, ${task.source}, ${task.sourceUrl}, NOW(), NOW())
+                RETURNING id
+              `;
+              console.log(`✅ [TASKS-SYNC] Tarefa "${task.title}" criada`);
+              if (newTask.length > 0) {
+                spreadsheetTaskIds.add(newTask[0].id);
+              }
+            }
+            
+            importedCount++;
+            
+          } catch (error) {
+            console.error(`❌ [TASKS-SYNC] Erro ao importar tarefa "${task.title}":`, error);
+            errorCount++;
+          }
+        }
+        
+        // Remover tarefas que não existem mais na planilha
+        console.log('🗑️ [TASKS-SYNC] Verificando tarefas para remoção...');
+        
+        // Obter títulos das tarefas que existem na planilha
+        const spreadsheetTitles = new Set(tasks.map(task => task.title));
+        
+        // Buscar todas as tarefas do sistema para verificar quais devem ser removidas
+        const allSystemTasks = await sql`
+          SELECT id, title FROM tasks 
+          ORDER BY created_at DESC
+        `;
+        
+        let removedCount = 0;
+        for (const dbTask of allSystemTasks) {
+          // Se a tarefa não existe na planilha, remover do sistema
+          if (!spreadsheetTitles.has(dbTask.title)) {
+            try {
+              await sql`
+                DELETE FROM tasks WHERE id = ${dbTask.id}
+              `;
+              console.log(`🗑️ [TASKS-SYNC] Tarefa "${dbTask.title}" removida (não existe mais na planilha)`);
+              removedCount++;
+            } catch (error) {
+              console.error(`❌ [TASKS-SYNC] Erro ao remover tarefa "${dbTask.title}":`, error);
+              errorCount++;
+            }
+          }
+        }
+        
+        // Atualizar configuração com última sincronização
+        const configResult = await sql`
+          SELECT value FROM system_settings 
+          WHERE key = 'google_drive_config'
+          LIMIT 1
+        `;
+        
+        if (configResult.length > 0) {
+          const config = typeof configResult[0].value === 'object' ? 
+            configResult[0].value : 
+            JSON.parse(configResult[0].value);
+          
+          await sql`
+            UPDATE system_settings 
+            SET value = ${JSON.stringify({ ...config, lastTasksSync: new Date().toISOString() })}
+            WHERE key = 'google_drive_config'
+          `;
+        }
+        
+        console.log(`✅ [TASKS-SYNC] Sincronização concluída: ${importedCount} tarefas importadas, ${removedCount} tarefas removidas`);
+        
+        return {
+          success: true,
+          importedTasks: importedCount,
+          removedTasks: removedCount,
+          totalTasks: tasks.length,
+          errorCount,
+          message: `${importedCount} tarefas sincronizadas, ${removedCount} tarefas removidas`
+        };
+        
+      } catch (error) {
+        console.error('❌ [TASKS-SYNC] Erro na sincronização de tarefas:', error);
+        return { 
+          success: false, 
+          error: `Erro na sincronização: ${error.message}` 
+        };
+      }
+    }
+
+    // ==================== ROTAS DE TAREFAS ====================
+    
+    // Rota para listar tarefas
+    if (path === '/api/tasks' && method === 'GET') {
+      try {
+        const userId = event.headers['x-user-id'];
+        const { status, priority, assigned_to } = event.queryStringParameters || {};
+        
+        console.log('📋 [TASKS] Listando tarefas para usuário:', userId);
+        
+        // Construir filtros
+        let whereConditions = [];
+        let queryParams = [];
+        
+        if (status) {
+          whereConditions.push(`t.status = $${queryParams.length + 1}`);
+          queryParams.push(status);
+        }
+        
+        if (priority) {
+          whereConditions.push(`t.priority = $${queryParams.length + 1}`);
+          queryParams.push(priority);
+        }
+        
+        if (assigned_to) {
+          whereConditions.push(`t.assigned_to = $${queryParams.length + 1}`);
+          queryParams.push(assigned_to);
+        }
+        
+        const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+        
+        // Consulta simples primeiro
+        const tasks = await sql`
+          SELECT t.*, 
+                 creator.name as created_by_name,
+                 assignee.name as assigned_to_name
+          FROM tasks t
+          LEFT JOIN users creator ON t.created_by = creator.id
+          LEFT JOIN users assignee ON t.assigned_to = assignee.id
+          ORDER BY t.created_at DESC
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            tasks: tasks.map(task => ({
+              ...task,
+              due_date: task.due_date ? new Date(task.due_date).toISOString() : null,
+              created_at: new Date(task.created_at).toISOString(),
+              updated_at: new Date(task.updated_at).toISOString(),
+              completed_at: task.completed_at ? new Date(task.completed_at).toISOString() : null
+            }))
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao listar tarefas:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+    
+    // Rota para criar tarefa
+    if (path === '/api/tasks' && method === 'POST') {
+      try {
+        const userId = event.headers['x-user-id'];
+        const body = JSON.parse(event.body || '{}');
+        const { title, description, priority = 'medium', due_date, assigned_to, tags = [] } = body;
+        
+        if (!title) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'Título é obrigatório' })
+          };
+        }
+        
+        console.log('📋 [TASKS] Criando tarefa:', { title, priority, assigned_to });
+        
+        const result = await sql`
+          INSERT INTO tasks (title, description, priority, due_date, created_by, assigned_to, tags)
+          VALUES (${title}, ${description || null}, ${priority}, ${due_date ? new Date(due_date).toISOString() : null}, ${userId}, ${assigned_to || null}, ${tags})
+          RETURNING *
+        `;
+        
+        const task = result[0];
+        
+        return {
+          statusCode: 201,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            task: {
+              ...task,
+              due_date: task.due_date ? new Date(task.due_date).toISOString() : null,
+              created_at: new Date(task.created_at).toISOString(),
+              updated_at: new Date(task.updated_at).toISOString()
+            }
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao criar tarefa:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+    
+    // Rota para buscar tarefa específica
+    if (path.startsWith('/api/tasks/') && method === 'GET' && !path.includes('/users')) {
+      try {
+        const taskId = path.split('/')[3];
+        
+        if (!taskId || isNaN(parseInt(taskId))) {
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'ID da tarefa inválido' })
+          };
+        }
+
+        const task = await sql`
+          SELECT t.*, 
+                 uc.name as created_by_name,
+                 ua.name as assigned_to_name
+          FROM tasks t
+          LEFT JOIN users uc ON t.created_by = uc.id
+          LEFT JOIN users ua ON t.assigned_to = ua.id
+          WHERE t.id = ${parseInt(taskId)}
+        `;
+
+        if (task.length === 0) {
+          return {
+            statusCode: 404,
+            body: JSON.stringify({ error: 'Tarefa não encontrada' })
+          };
+        }
+
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ success: true, task: task[0] })
+        };
+      } catch (error) {
+        console.error('❌ Erro ao buscar tarefa:', error);
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+    
+    // Rota para atualizar tarefa
+    if (path.startsWith('/api/tasks/') && method === 'PUT') {
+      try {
+        const userId = event.headers['x-user-id'];
+        const taskId = path.split('/')[3];
+        const body = JSON.parse(event.body || '{}');
+        const { title, description, status, priority, due_date, assigned_to, tags } = body;
+        
+        console.log('📋 [TASKS] Atualizando tarefa:', taskId, body);
+        
+        // Construir objeto de atualização
+        const updateData = {
+          updated_at: new Date().toISOString()
+        };
+        
+        if (title !== undefined) updateData.title = title;
+        if (description !== undefined) updateData.description = description;
+        if (priority !== undefined) updateData.priority = priority;
+        if (due_date !== undefined) updateData.due_date = due_date ? new Date(due_date).toISOString() : null;
+        if (assigned_to !== undefined) updateData.assigned_to = assigned_to;
+        if (tags !== undefined) updateData.tags = tags;
+        
+        if (status !== undefined) {
+          updateData.status = status;
+          // Se marcando como concluída, definir completed_at
+          if (status === 'completed') {
+            updateData.completed_at = new Date().toISOString();
+          } else {
+            updateData.completed_at = null;
+          }
+        }
+        
+        console.log('📋 [TASKS] Update data:', updateData);
+        
+        // Usar template literal do Neon
+        const result = await sql`
+          UPDATE tasks 
+          SET 
+            status = ${updateData.status || 'pending'},
+            completed_at = ${updateData.completed_at || null},
+            updated_at = ${updateData.updated_at}
+          WHERE id = ${parseInt(taskId)}
+          RETURNING *
+        `;
+        
+        if (result.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Tarefa não encontrada' })
+          };
+        }
+        
+        const task = result[0];
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            task: {
+              ...task,
+              due_date: task.due_date ? new Date(task.due_date).toISOString() : null,
+              created_at: new Date(task.created_at).toISOString(),
+              updated_at: new Date(task.updated_at).toISOString(),
+              completed_at: task.completed_at ? new Date(task.completed_at).toISOString() : null
+            }
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao atualizar tarefa:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+    
+    // Rota para deletar tarefa
+    if (path.startsWith('/api/tasks/') && method === 'DELETE') {
+      try {
+        const taskId = path.split('/')[3];
+        
+        console.log('📋 [TASKS] Deletando tarefa:', taskId);
+        
+        const result = await sql`
+          DELETE FROM tasks WHERE id = ${taskId} RETURNING id
+        `;
+        
+        if (result.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Tarefa não encontrada' })
+          };
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, message: 'Tarefa deletada com sucesso' })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao deletar tarefa:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+    
+    // Rota para buscar usuários para atribuição de tarefas
+    if (path === '/api/tasks/users' && method === 'GET') {
+      try {
+        const users = await sql`
+          SELECT id, name, email, role, church
+          FROM users 
+          WHERE role IN ('admin', 'member', 'missionary')
+          ORDER BY name ASC
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            users: users.map(user => ({
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              church: user.church
+            }))
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao buscar usuários:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // ===== ROTAS DE SINCRONIZAÇÃO DE TAREFAS COM GOOGLE SHEETS =====
+    
+    // Rota para sincronizar tarefas com Google Drive
+    if (path === '/api/tasks/sync-google-drive' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { csvUrl, spreadsheetUrl } = body;
+        
+        if (!csvUrl || !spreadsheetUrl) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'URL do CSV e URL da planilha são obrigatórias' })
+          };
+        }
+        
+        // Função para sincronizar tarefas da planilha para o app
+        const result = await syncTasksFromGoogleDrive(csvUrl, spreadsheetUrl);
+        
+        return {
+          statusCode: result.success ? 200 : 500,
+          headers,
+          body: JSON.stringify(result)
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro na sincronização de tarefas:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+    
+    // Rota para adicionar tarefas à planilha do Google Drive
+    if (path === '/api/tasks/add-to-google-drive' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { taskIds, tasks: tasksFromBody } = body;
+        
+        let tasks = [];
+        
+        if (tasksFromBody && Array.isArray(tasksFromBody)) {
+          // Se tarefas foram enviadas diretamente
+          tasks = tasksFromBody;
+        } else if (taskIds && Array.isArray(taskIds)) {
+          // Se IDs foram enviados, buscar tarefas do banco
+          const tasksFromDb = await sql`
+            SELECT t.*, 
+                   uc.name as created_by_name,
+                   ua.name as assigned_to_name
+            FROM tasks t
+            LEFT JOIN users uc ON t.created_by = uc.id
+            LEFT JOIN users ua ON t.assigned_to = ua.id
+            WHERE t.id = ANY(${taskIds})
+          `;
+          tasks = tasksFromDb;
+        } else {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ error: 'IDs das tarefas ou tarefas são obrigatórios' })
+          };
+        }
+        
+        if (tasks.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Nenhuma tarefa encontrada' })
+          };
+        }
+        
+        // Função para adicionar tarefas à planilha do Google Drive
+        const result = await addTasksToGoogleDrive(tasks);
+        
+        return {
+          statusCode: result.success ? 200 : 500,
+          headers,
+          body: JSON.stringify(result)
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao adicionar tarefas à planilha:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+    
+    // Rota para configurar sincronização automática de tarefas
+    if (path === '/api/tasks/google-drive-config' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { autoSync, syncInterval } = body;
+        
+        // Buscar configuração atual do Google Drive
+        const configResult = await sql`
+          SELECT value FROM system_settings 
+          WHERE key = 'google_drive_config'
+          LIMIT 1
+        `;
+        
+        let config = {};
+        if (configResult.length > 0 && configResult[0].value) {
+          config = typeof configResult[0].value === 'object' ? 
+            configResult[0].value : 
+            JSON.parse(configResult[0].value);
+        }
+        
+        // Atualizar configuração de tarefas
+        config.tasksAutoSync = autoSync || false;
+        config.tasksSyncInterval = syncInterval || 60; // minutos
+        
+        // Salvar configuração
+        await sql`
+          INSERT INTO system_settings (key, value, created_at, updated_at)
+          VALUES ('google_drive_config', ${JSON.stringify(config)}, NOW(), NOW())
+          ON CONFLICT (key) DO UPDATE SET
+            value = ${JSON.stringify(config)},
+            updated_at = NOW()
+        `;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Configuração de sincronização de tarefas salva com sucesso',
+            config: {
+              tasksAutoSync: config.tasksAutoSync,
+              tasksSyncInterval: config.tasksSyncInterval
+            }
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao configurar sincronização de tarefas:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro interno do servidor' })
+        };
+      }
+    }
+
+    // Rota para resetar senhas de todos os usuários
+    if (path === '/api/reset-all-passwords' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { newPassword, adminKey } = body;
+        
+        // Verificar chave de administrador
+        if (adminKey !== 'reset-passwords-2024') {
+          return {
+            statusCode: 401,
+            headers,
+            body: JSON.stringify({ 
+              success: false, 
+              error: 'Chave de administrador inválida' 
+            })
+          };
+        }
+        
+        if (!newPassword) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ 
+              success: false, 
+              error: 'Nova senha é obrigatória' 
+            })
+          };
+        }
+        
+        console.log('🔄 Resetando senhas de todos os usuários...');
+        
+        // Atualizar senhas de todos os usuários
+        const result = await sql`
+          UPDATE users 
+          SET password = ${newPassword}, 
+              updated_at = NOW()
+          WHERE id IS NOT NULL
+        `;
+        
+        console.log('✅ Senhas resetadas com sucesso');
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Senhas resetadas com sucesso',
+            updatedCount: result.count || 'N/A'
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao resetar senhas:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            success: false, 
+            error: 'Erro interno do servidor: ' + error.message 
+          })
+        };
+      }
+    }
+
+    // Rota para verificar usuário
+    if (path === '/api/check-user' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { email, adminKey } = body;
+        
+        // Verificar chave de administrador
+        if (adminKey !== 'check-user-2024') {
+          return {
+            statusCode: 401,
+            headers,
+            body: JSON.stringify({ 
+              success: false, 
+              error: 'Chave de administrador inválida' 
+            })
+          };
+        }
+        
+        if (!email) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ 
+              success: false, 
+              error: 'Email é obrigatório' 
+            })
+          };
+        }
+        
+        console.log('🔍 Verificando usuário:', email);
+        
+        // Buscar usuário por email exato
+        let users = await sql`SELECT * FROM users WHERE email = ${email} LIMIT 1`;
+        
+        // Se não encontrou por email exato, tentar por formato nome.ultimonome
+        if (users.length === 0) {
+          console.log('🔍 Tentando formato nome.ultimonome...');
+          users = await sql`SELECT * FROM users WHERE email LIKE ${`%${email}@%`} LIMIT 1`;
+        }
+        
+        if (users.length > 0) {
+          const user = users[0];
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              success: true,
+              user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                church: user.church
+              }
+            })
+          };
+        } else {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({
+              success: false,
+              message: 'Usuário não encontrado'
+            })
+          };
+        }
+        
+      } catch (error) {
+        console.error('❌ Erro ao verificar usuário:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            success: false, 
+            error: 'Erro interno do servidor: ' + error.message 
+          })
+        };
+      }
+    }
+
+    // Rota para criar usuário
+    if (path === '/api/create-user' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { name, email, password, role, church, adminKey } = body;
+        
+        // Verificar chave de administrador
+        if (adminKey !== 'create-user-2024') {
+          return {
+            statusCode: 401,
+            headers,
+            body: JSON.stringify({ 
+              success: false, 
+              error: 'Chave de administrador inválida' 
+            })
+          };
+        }
+        
+        if (!name || !email || !password) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({ 
+              success: false, 
+              error: 'Nome, email e senha são obrigatórios' 
+            })
+          };
+        }
+        
+        console.log('🔄 Criando usuário:', { name, email, role });
+        
+        // Hash da senha
+        const hashedPassword = await bcrypt.hash(password, 10);
+        
+        // Verificar se usuário já existe
+        const existingUsers = await sql`SELECT * FROM users WHERE email = ${email} LIMIT 1`;
+        if (existingUsers.length > 0) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({
+              success: false,
+              error: 'Usuário já existe com este email'
+            })
+          };
+        }
+        
+        // Criar novo usuário
+        const newUser = await sql`
+          INSERT INTO users (
+            name, email, password, role, church, 
+            is_approved, status, created_at, updated_at
+          ) VALUES (
+            ${name},
+            ${email},
+            ${hashedPassword},
+            ${role || 'member'},
+            ${church || 'Sistema'},
+            ${role === 'admin'},
+            ${role === 'admin' ? 'active' : 'pending'},
+            NOW(),
+            NOW()
+          ) RETURNING *
+        `;
+        
+        console.log('✅ Usuário criado com sucesso');
+        
+        return {
+          statusCode: 201,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Usuário criado com sucesso',
+            user: {
+              id: newUser[0].id,
+              name: newUser[0].name,
+              email: newUser[0].email,
+              role: newUser[0].role,
+              church: newUser[0].church
+            }
+          })
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro ao criar usuário:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            success: false, 
+            error: 'Erro interno do servidor: ' + error.message 
+          })
+        };
+      }
+    }
+
+    // Push notifications routes
+    if (path === '/api/push/subscribe' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { subscription, userId } = body;
+
+        if (!subscription || !userId) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({
+              success: false,
+              error: 'Subscription e userId são obrigatórios'
+            })
+          };
+        }
+
+        console.log('📱 Salvando push subscription para usuário:', userId);
+
+        // Criar tabela se não existir
+        await sql`
+          CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            endpoint TEXT NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT true,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          )
+        `;
+
+        // Desativar subscriptions antigas do usuário
+        await sql`
+          UPDATE push_subscriptions 
+          SET is_active = false, updated_at = NOW()
+          WHERE user_id = ${userId}
+        `;
+
+        // Salvar nova subscription
+        const result = await sql`
+          INSERT INTO push_subscriptions (
+            user_id, endpoint, p256dh, auth, is_active, created_at, updated_at
+          ) VALUES (
+            ${userId},
+            ${subscription.endpoint},
+            ${subscription.keys.p256dh},
+            ${subscription.keys.auth},
+            true,
+            NOW(),
+            NOW()
+          ) RETURNING *
+        `;
+
+        console.log('✅ Push subscription salva com sucesso');
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Subscription salva com sucesso',
+            subscription: result[0]
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao salvar push subscription:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: 'Erro interno do servidor: ' + error.message
+          })
+        };
+      }
+    }
+
+    if (path === '/api/push/unsubscribe' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { userId } = body;
+
+        if (!userId) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({
+              success: false,
+              error: 'userId é obrigatório'
+            })
+          };
+        }
+
+        console.log('📱 Removendo push subscription para usuário:', userId);
+
+        // Criar tabela se não existir
+        await sql`
+          CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            endpoint TEXT NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT true,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          )
+        `;
+
+        // Desativar subscription do usuário
+        const result = await sql`
+          UPDATE push_subscriptions 
+          SET is_active = false, updated_at = NOW()
+          WHERE user_id = ${userId}
+          RETURNING *
+        `;
+
+        console.log('✅ Push subscription removida com sucesso');
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Subscription removida com sucesso',
+            removed: result.length
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao remover push subscription:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: 'Erro interno do servidor: ' + error.message
+          })
+        };
+      }
+    }
+
+    if (path === '/api/push/send' && method === 'POST') {
+      try {
+        const body = JSON.parse(event.body || '{}');
+        const { title, message, userId, type = 'general' } = body;
+
+        if (!title || !message) {
+          return {
+            statusCode: 400,
+            headers,
+            body: JSON.stringify({
+              success: false,
+              error: 'Título e mensagem são obrigatórios'
+            })
+          };
+        }
+
+        console.log('📱 Enviando push notification:', { title, message, userId, type });
+
+        // Buscar subscriptions ativas
+        let subscriptions;
+        if (userId) {
+          // Enviar para usuário específico
+          subscriptions = await sql`
+            SELECT * FROM push_subscriptions 
+            WHERE user_id = ${userId} AND is_active = true
+          `;
+        } else {
+          // Enviar para todos os usuários
+          subscriptions = await sql`
+            SELECT * FROM push_subscriptions 
+            WHERE is_active = true
+          `;
+        }
+
+        if (subscriptions.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({
+              success: false,
+              error: 'Nenhuma subscription ativa encontrada'
+            })
+          };
+        }
+
+        // Salvar notificação no banco
+        await sql`
+          INSERT INTO notifications (title, message, user_id, type, is_read, created_at)
+          VALUES (${title}, ${message}, ${userId || null}, ${type}, false, NOW())
+        `;
+
+        // Enviar push notifications reais
+        // Para máxima compatibilidade (especialmente iOS), usamos payload de TEXTO puro.
+        // O Service Worker fará o parse e montará o título/ícone.
+        const payload = String(message || 'Nova notificação');
+
+        let sentCount = 0;
+        const errors = [];
+
+        for (const subscription of subscriptions) {
+          try {
+            const pushSubscription = {
+              endpoint: subscription.endpoint,
+              keys: {
+                p256dh: subscription.p256dh,
+                auth: subscription.auth
+              }
+            };
+
+            await webpush.sendNotification(pushSubscription, payload);
+            sentCount++;
+            console.log(`📱 Notificação enviada para usuário ${subscription.user_id}`);
+          } catch (error) {
+            console.error(`❌ Erro ao enviar para usuário ${subscription.user_id}:`, error);
+            errors.push({ userId: subscription.user_id, error: error.message });
+            
+            // Se a subscription expirou, marcar como inativa
+            if (error.statusCode === 410) {
+              await sql`
+                UPDATE push_subscriptions 
+                SET is_active = false, updated_at = NOW()
+                WHERE id = ${subscription.id}
+              `;
+            }
+          }
+        }
+
+        console.log(`📱 Notificação enviada: ${sentCount}/${subscriptions.length} subscriptions`);
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Notificação enviada com sucesso',
+            sentTo: sentCount,
+            totalSubscriptions: subscriptions.length,
+            errors: errors,
+            subscriptions: subscriptions.map(sub => ({ id: sub.id, userId: sub.user_id }))
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao enviar push notification:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: 'Erro interno do servidor: ' + error.message
+          })
+        };
+      }
+    }
+
+    if (path === '/api/push/subscriptions' && method === 'GET') {
+      try {
+        // Verificar se a tabela push_subscriptions existe, se não, criar
+        await sql`
+          CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            endpoint TEXT NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT true,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          )
+        `;
+
+        // Extrair userId da query string de forma mais robusta
+        let userId = null;
+        if (event.queryStringParameters && event.queryStringParameters.userId) {
+          userId = event.queryStringParameters.userId;
+        } else if (event.rawUrl) {
+          try {
+            const url = new URL(event.rawUrl);
+            userId = url.searchParams.get('userId');
+          } catch (urlError) {
+            console.log('⚠️ Erro ao parsear URL:', urlError.message);
+          }
+        }
+
+        console.log('📱 Listando push subscriptions ativas', userId ? `para usuário ${userId}` : 'todas');
+        console.log('🔍 Event object:', JSON.stringify({
+          path: event.path,
+          queryStringParameters: event.queryStringParameters,
+          rawUrl: event.rawUrl
+        }, null, 2));
+
+        let subscriptions = [];
+        try {
+          if (userId) {
+            // Buscar subscription de usuário específico
+            console.log('🔍 Buscando subscription para userId:', parseInt(userId));
+            subscriptions = await sql`
+              SELECT ps.*, u.name as user_name, u.email as user_email
+              FROM push_subscriptions ps
+              JOIN users u ON ps.user_id = u.id
+              WHERE ps.user_id = ${parseInt(userId)} AND ps.is_active = true
+              ORDER BY ps.created_at DESC
+            `;
+          } else {
+            // Buscar todas as subscriptions ativas
+            console.log('🔍 Buscando todas as subscriptions ativas');
+            subscriptions = await sql`
+              SELECT ps.*, u.name as user_name, u.email as user_email
+              FROM push_subscriptions ps
+              JOIN users u ON ps.user_id = u.id
+              WHERE ps.is_active = true
+              ORDER BY ps.created_at DESC
+            `;
+          }
+          console.log('✅ Subscriptions encontradas:', subscriptions.length);
+        } catch (dbError) {
+          console.error('❌ Erro na consulta ao banco:', dbError);
+          throw dbError;
+        }
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            subscriptions: subscriptions || []
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao listar push subscriptions:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: 'Erro interno do servidor: ' + error.message
+          })
+        };
+      }
+    }
+
+    // System endpoints
+    if (path === '/api/system/check-missionary-profiles' && method === 'POST') {
+      try {
+        console.log('🔍 Verificando perfis missionários...');
+
+        // Buscar todos os usuários com role missionary
+        const missionaries = await sql`
+          SELECT id, name, email, role
+          FROM users 
+          WHERE role = 'missionary'
+        `;
+
+        let correctedCount = 0;
+
+        // Para cada missionário, verificar se tem relacionamentos ativos
+        for (const missionary of missionaries) {
+          const activeRelationships = await sql`
+            SELECT COUNT(*) as count
+            FROM relationships 
+            WHERE missionary_id = ${missionary.id} AND is_active = true
+          `;
+
+          const hasActiveRelationships = activeRelationships[0]?.count > 0;
+
+          // Se não tem relacionamentos ativos, criar um relacionamento padrão
+          if (!hasActiveRelationships) {
+            await sql`
+              INSERT INTO relationships (missionary_id, interested_id, is_active, created_at, updated_at)
+              VALUES (${missionary.id}, ${missionary.id}, true, NOW(), NOW())
+            `;
+            correctedCount++;
+            console.log(`✅ Relacionamento padrão criado para missionário: ${missionary.name}`);
+          }
+        }
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            correctedCount,
+            message: `${correctedCount} perfis missionários corrigidos`
+          })
+        };
+
+      } catch (error) {
+        console.error('❌ Erro ao verificar perfis missionários:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: 'Erro interno do servidor: ' + error.message
+          })
+        };
+      }
+    }
 
     // Rota padrão - retornar erro 404
     return {
