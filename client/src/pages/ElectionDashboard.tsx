@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
   BarChart3, 
   Users, 
@@ -19,7 +21,8 @@ import {
   Eye,
   Loader2,
   Plus,
-  Settings
+  Settings,
+  FileText
 } from 'lucide-react';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { useNavigate } from 'react-router-dom';
@@ -44,6 +47,9 @@ export default function ElectionDashboard() {
   const [configs, setConfigs] = useState<ElectionConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [showVoteLog, setShowVoteLog] = useState(false);
+  const [voteLog, setVoteLog] = useState<any[]>([]);
+  const [selectedElectionId, setSelectedElectionId] = useState<number | null>(null);
 
   useEffect(() => {
     loadConfigs();
@@ -73,6 +79,35 @@ export default function ElectionDashboard() {
     }
   };
 
+  const loadVoteLog = async (electionId: number) => {
+    try {
+      const response = await fetch(`/api/elections/vote-log/${electionId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setVoteLog(data);
+        setSelectedElectionId(electionId);
+        setShowVoteLog(true);
+        
+        toast({
+          title: "Log de Votos Carregado",
+          description: `${data.length} voto(s) registrado(s)`,
+        });
+      } else {
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar o log de votos.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar o log de votos.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleStartElection = async (configId: number) => {
     try {
       const response = await fetch('/api/elections/start', {
@@ -90,7 +125,16 @@ export default function ElectionDashboard() {
         });
         loadConfigs();
       } else {
-        throw new Error('Erro ao iniciar nomeação');
+        const errorData = await response.json();
+        if (response.status === 400 && errorData.error.includes('Já existe uma eleição ativa')) {
+          toast({
+            title: "Nomeação já ativa",
+            description: "Esta configuração já possui uma eleição em andamento.",
+            variant: "destructive",
+          });
+        } else {
+          throw new Error('Erro ao iniciar nomeação');
+        }
       }
     } catch (error) {
       toast({
@@ -269,6 +313,46 @@ export default function ElectionDashboard() {
                         <>
                           <Button
                             size="sm"
+                            onClick={() => navigate(`/election-manage/${config.id}`)}
+                            className="bg-purple-600 hover:bg-purple-700"
+                          >
+                            <Settings className="h-4 w-4 mr-2" />
+                            Gerenciar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              // Buscar o electionId da configuração
+                              try {
+                                const response = await fetch(`/api/elections/dashboard/${config.id}`);
+                                if (response.ok) {
+                                  const data = await response.json();
+                                  if (data.election?.id) {
+                                    loadVoteLog(data.election.id);
+                                  } else {
+                                    toast({
+                                      title: "Erro",
+                                      description: "Eleição não encontrada.",
+                                      variant: "destructive",
+                                    });
+                                  }
+                                }
+                              } catch (error) {
+                                toast({
+                                  title: "Erro",
+                                  description: "Não foi possível carregar o log.",
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                            className="bg-blue-50 hover:bg-blue-100 border-blue-200"
+                          >
+                            <FileText className="h-4 w-4 mr-2" />
+                            Ver Log de Votos
+                          </Button>
+                          <Button
+                            size="sm"
                             variant="outline"
                             onClick={() => navigate(`/election-dashboard/${config.id}`)}
                           >
@@ -331,6 +415,81 @@ export default function ElectionDashboard() {
           </Alert>
         )}
       </div>
+
+      {/* Modal de Log de Votos */}
+      <Dialog open={showVoteLog} onOpenChange={setShowVoteLog}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Log de Votos - Eleição #{selectedElectionId}</DialogTitle>
+            <DialogDescription>
+              Histórico completo de todos os votos e indicações registrados nesta eleição.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="mt-4">
+            {voteLog.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Vote className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>Nenhum voto registrado ainda</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Total: <strong>{voteLog.length}</strong> registro(s)
+                  </p>
+                </div>
+                
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ID</TableHead>
+                      <TableHead>Votante</TableHead>
+                      <TableHead>Candidato</TableHead>
+                      <TableHead>Cargo</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Data/Hora</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {voteLog.map((vote) => (
+                      <TableRow key={vote.id}>
+                        <TableCell className="font-mono text-xs">#{vote.id}</TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{vote.voter_name || 'Desconhecido'}</div>
+                            <div className="text-xs text-muted-foreground">ID: {vote.voter_id}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{vote.candidate_name || 'Desconhecido'}</div>
+                            <div className="text-xs text-muted-foreground">ID: {vote.candidate_id}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{vote.position_id}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={vote.vote_type === 'nomination' ? 'secondary' : 'default'}
+                            className={vote.vote_type === 'nomination' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}
+                          >
+                            {vote.vote_type === 'nomination' ? 'Indicação' : 'Voto'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {vote.created_at ? new Date(vote.created_at).toLocaleString('pt-BR') : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </MobileLayout>
   );
 }

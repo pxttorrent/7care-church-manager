@@ -42,22 +42,49 @@ export const useAuth = () => {
   });
 
   useEffect(() => {
+    console.log('🔍 useAuth useEffect - Starting auth check');
+    
+    // Timeout de segurança para evitar loading infinito
+    const timeoutId = setTimeout(() => {
+      console.log('🔍 useAuth useEffect - Timeout reached, forcing loading to false');
+      setAuthState(prev => ({ ...prev, isLoading: false }));
+    }, 10000); // 10 segundos (aumentado para dar mais tempo)
+    
     // Check for stored auth on mount
     const storedAuth = localStorage.getItem('7care_auth');
+    console.log('🔍 useAuth useEffect - Stored auth:', storedAuth ? 'exists' : 'not found');
+    
     if (storedAuth) {
-      const user = JSON.parse(storedAuth);
-      setAuthState({
-        user,
-        isAuthenticated: true,
-        isLoading: false
-      });
+      try {
+        const user = JSON.parse(storedAuth);
+        console.log('🔍 useAuth useEffect - User parsed:', { id: user.id, name: user.name, role: user.role });
+        clearTimeout(timeoutId);
+        setAuthState({
+          user,
+          isAuthenticated: true,
+          isLoading: false
+        });
+        console.log('🔍 useAuth useEffect - Auth state set to authenticated');
+      } catch (error) {
+        console.error('🔍 useAuth useEffect - Error parsing stored auth:', error);
+        localStorage.removeItem('7care_auth');
+        clearTimeout(timeoutId);
+        setAuthState(prev => ({ ...prev, isLoading: false }));
+      }
     } else {
+      console.log('🔍 useAuth useEffect - No stored auth, setting loading to false');
+      clearTimeout(timeoutId);
       setAuthState(prev => ({ ...prev, isLoading: false }));
     }
+    
+    return () => clearTimeout(timeoutId);
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      console.log('🔍 useAuth login - Starting login request');
+      console.log('🔍 useAuth login - Email:', email);
+      
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -66,7 +93,11 @@ export const useAuth = () => {
         body: JSON.stringify({ email, password }),
       });
 
+      console.log('🔍 useAuth login - Response status:', response.status);
+      console.log('🔍 useAuth login - Response ok:', response.ok);
+
       const data = await response.json();
+      console.log('🔍 useAuth login - Response data:', data);
       
       if (data.success && data.user) {
         // Store the extended user data including usingDefaultPassword
@@ -77,11 +108,17 @@ export const useAuth = () => {
         
         // Fetch church information using the simple route
         try {
+          console.log('🔍 useAuth login - Fetching church data for user:', extendedUser.id);
           const churchResponse = await fetch(`/api/user/church?userId=${extendedUser.id}`);
+          console.log('🔍 useAuth login - Church response status:', churchResponse.status);
+          
           if (churchResponse.ok) {
             const churchData = await churchResponse.json();
+            console.log('🔍 useAuth login - Church data:', churchData);
+            
             if (churchData.success && churchData.church) {
               const userWithChurch = { ...extendedUser, church: churchData.church };
+              console.log('🔍 useAuth login - Setting user with church data');
               localStorage.setItem('7care_auth', JSON.stringify(userWithChurch));
               setAuthState({
                 user: userWithChurch,
@@ -90,6 +127,7 @@ export const useAuth = () => {
               });
             } else {
               // Fallback to login data if church fetch fails
+              console.log('🔍 useAuth login - Church data invalid, using fallback');
               localStorage.setItem('7care_auth', JSON.stringify(extendedUser));
               setAuthState({
                 user: extendedUser,
@@ -99,6 +137,7 @@ export const useAuth = () => {
             }
           } else {
             // Fallback to login data if church fetch fails
+            console.log('🔍 useAuth login - Church response not ok, using fallback');
             localStorage.setItem('7care_auth', JSON.stringify(extendedUser));
             setAuthState({
               user: extendedUser,
@@ -107,7 +146,7 @@ export const useAuth = () => {
             });
           }
         } catch (fetchError) {
-          console.warn('Failed to fetch church data, using login data:', fetchError);
+          console.warn('🔍 useAuth login - Failed to fetch church data, using fallback:', fetchError);
           // Fallback to login data if church fetch fails
           localStorage.setItem('7care_auth', JSON.stringify(extendedUser));
           setAuthState({

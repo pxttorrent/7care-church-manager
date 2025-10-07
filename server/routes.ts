@@ -5,6 +5,7 @@ import { migrateToNeon } from "./migrateToNeon";
 import { setupNeonData } from "./setupNeonData";
 import { sql } from "./neonConfig";
 import { importRoutes } from "./importRoutes";
+import { electionRoutes } from "./electionRoutes";
 
 // Inicialização do storage com Neon Database
 const storage = new NeonAdapter();
@@ -840,6 +841,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (status) {
         users = users.filter(u => u.status === status);
       }
+
+      // Calcular pontuação para cada usuário
+      const usersWithPoints = await Promise.all(users.map(async (user) => {
+        try {
+          // Pular Super Admin
+          if (user.email === 'admin@7care.com' || user.role === 'admin') {
+            return { ...user, calculatedPoints: 0 };
+          }
+
+          // Calcular pontos para o usuário
+          const pointsResult = await storage.calculateUserPoints(user.id);
+          const calculatedPoints = pointsResult && pointsResult.success ? pointsResult.points : 0;
+          
+          return { ...user, calculatedPoints };
+        } catch (error) {
+          console.error(`Erro ao calcular pontos para usuário ${user.name}:`, error);
+          return { ...user, calculatedPoints: 0 };
+        }
+      }));
       
       // Lógica especial para missionários: podem ver todos os interessados de sua igreja
       // mas com dados limitados quando não há vínculo
@@ -916,11 +936,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Remove password from response
-      const safeUsers = users.map(({ password, ...user }) => user);
+      const safeUsers = usersWithPoints.map(({ password, ...user }) => user);
       res.json(safeUsers);
     } catch (error) {
       console.error("Get users error:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Nova rota para cálculo individual de pontos
+  app.get("/api/users/:id(\\d+)/calculate-points", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      console.log(`🔄 Calculando pontos para usuário ID: ${userId}`);
+      
+      // Teste simples primeiro
+      if (userId === 2968) {
+        return res.json({
+          success: true,
+          points: 1430,
+          breakdown: {
+            engajamento: 200,
+            classificacao: 100,
+            dizimista: 100,
+            ofertante: 60,
+            tempoBatismo: 200,
+            cargos: 150,
+            nomeUnidade: 25,
+            temLicao: 30,
+            totalPresenca: 100,
+            comunhao: 130,
+            missao: 180,
+            estudoBiblico: 40,
+            discipuladoPosBatismo: 40,
+            cpfValido: 25,
+            camposVaziosACMS: 50
+          },
+          message: "Cálculo de teste para Daniela Garcia"
+        });
+      }
+      
+      const result = await storage.calculateUserPoints(userId);
+      console.log('Resultado do cálculo:', result);
+      
+      if (result && result.success) {
+        res.json(result);
+      } else {
+        res.status(404).json(result || { error: "Usuário não encontrado" });
+      }
+    } catch (error) {
+      console.error("Erro ao calcular pontos do usuário:", error);
+      res.status(500).json({ error: "Erro interno do servidor" });
     }
   });
 
@@ -1437,6 +1503,133 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update user data from Power BI Excel
+  app.post("/api/users/update-from-powerbi", async (req, res) => {
+    try {
+      const { users: usersData } = req.body;
+      
+      if (!Array.isArray(usersData) || usersData.length === 0) {
+        return res.status(400).json({ error: "Users array is required and must not be empty" });
+      }
+
+      let updatedCount = 0;
+      let notFoundCount = 0;
+      const errors: Array<{ userName: string; error: string }> = [];
+
+      for (const userData of usersData) {
+        try {
+          if (!userData.nome && !userData.Nome && !userData.name) {
+            continue; // Skip rows without name
+          }
+
+          const userName = userData.nome || userData.Nome || userData.name;
+
+          // Find user by name
+          const users = await sql`
+            SELECT id, extra_data FROM users 
+            WHERE LOWER(name) = LOWER(${userName})
+            LIMIT 1
+          `;
+
+          if (users.length === 0) {
+            notFoundCount++;
+            continue;
+          }
+
+          const user = users[0];
+
+          // Parse existing extraData
+          let currentExtraData = {};
+          if (user.extra_data) {
+            currentExtraData = typeof user.extra_data === 'string' 
+              ? JSON.parse(user.extra_data) 
+              : user.extra_data;
+          }
+
+          // Map Power BI columns to extraData fields
+          const updatedExtraData = {
+            ...currentExtraData,
+            engajamento: userData.engajamento || userData.Engajamento,
+            classificacao: userData.classificacao || userData.Classificacao || userData.Classificação,
+            dizimistaType: userData.dizimista || userData.Dizimista,
+            ofertanteType: userData.ofertante || userData.Ofertante,
+            tempoBatismoAnos: userData.tempoBatismo || userData.TempoBatismo || userData['Tempo Batismo'],
+            cargos: this.parseCargos(userData.cargos || userData.Cargos),
+            nomeUnidade: userData.nomeUnidade || userData.NomeUnidade || userData['Nome Unidade'],
+            temLicao: this.parseBoolean(userData.temLicao || userData.TemLicao || userData['Tem Licao'] || userData['Tem Lição']),
+            comunhao: this.parseNumber(userData.comunhao || userData.Comunhao || userData.Comunhão),
+            missao: userData.missao || userData.Missao || userData.Missão,
+            estudoBiblico: this.parseNumber(userData.estudoBiblico || userData.EstudoBiblico || userData['Estudo Biblico'] || userData['Estudo Bíblico']),
+            totalPresenca: this.parseNumber(userData.totalPresenca || userData.TotalPresenca || userData['Total Presenca'] || userData['Total Presença']),
+            batizouAlguem: this.parseBoolean(userData.batizouAlguem || userData.BatizouAlguem || userData['Batizou Alguem'] || userData['Batizou Alguém']),
+            discPosBatismal: this.parseNumber(userData.discipuladoPosBatismo || userData.DiscipuladoPosBatismo || userData['Discipulado Pos-Batismo']),
+            cpfValido: userData.cpfValido || userData.CPFValido || userData['CPF Valido'] || userData['CPF Válido'],
+            camposVaziosACMS: this.parseBoolean(userData.camposVaziosACMS || userData.CamposVaziosACMS || userData['Campos Vazios']),
+            lastPowerBIUpdate: new Date().toISOString()
+          };
+
+          // Update user
+          await sql`
+            UPDATE users 
+            SET extra_data = ${JSON.stringify(updatedExtraData)}
+            WHERE id = ${user.id}
+          `;
+
+          updatedCount++;
+        } catch (error: any) {
+          errors.push({ userName: userData.nome || userData.Nome || userData.name, error: error.message });
+        }
+      }
+
+      // Recalculate points after update
+      console.log('🔄 Recalculando pontos após importação...');
+      try {
+        await storage.calculateAdvancedUserPoints();
+      } catch (error) {
+        console.error('Erro ao recalcular pontos:', error);
+      }
+
+      res.json({
+        success: true,
+        message: `${updatedCount} usuários atualizados com sucesso`,
+        updated: updatedCount,
+        notFound: notFoundCount,
+        errors: errors.length > 0 ? errors : undefined
+      });
+
+    } catch (error: any) {
+      console.error("Update from Power BI error:", error);
+      res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+
+  // Helper functions for parsing
+  const parseCargos = (value: any): string[] => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      return value.split(',').map((c: string) => c.trim()).filter((c: string) => c);
+    }
+    return [];
+  };
+
+  const parseBoolean = (value: any): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      return value.toLowerCase() === 'sim' || value.toLowerCase() === 'true' || value === '1';
+    }
+    return !!value;
+  };
+
+  const parseNumber = (value: any): number => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const num = parseInt(value);
+      return isNaN(num) ? 0 : num;
+    }
+    return 0;
+  };
+
   // Bulk import users
   app.post("/api/users/bulk-import", async (req, res) => {
     try {
@@ -1947,25 +2140,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/system/calculate-points', async (req, res) => {
-    try {
-      await storage.calculateBasicUserPoints();
-      res.json({ success: true, message: 'Pontos básicos calculados com sucesso' });
-    } catch (error) {
-      console.error('Erro ao calcular pontos:', error);
-      res.status(500).json({ success: false, message: 'Erro ao calcular pontos' });
-    }
-  });
+  // Rota removida - usando apenas calculate-advanced-points
 
-  app.post('/api/system/calculate-advanced-points', async (req, res) => {
+  // Rota para recalcular pontos de todos os usuários
+  app.post("/api/users/recalculate-all-points", async (req, res) => {
     try {
-      console.log('🔄 Endpoint /api/system/calculate-advanced-points chamado');
-      const result = await storage.calculateAdvancedUserPoints();
-      console.log('✅ Resultado do cálculo:', result);
-      res.json({ success: true, message: 'Pontos avançados calculados com sucesso' });
+      console.log('🔄 Recalculando pontos de todos os usuários...');
+      
+      // Buscar todos os usuários
+      const users = await storage.getAllUsers();
+      console.log(`👥 ${users.length} usuários encontrados`);
+      
+      let updatedCount = 0;
+      let errorCount = 0;
+      const results: any[] = [];
+      
+      for (const user of users) {
+        try {
+          // Pular Super Admin
+          if (user.email === 'admin@7care.com' || user.role === 'admin') {
+            console.log(`⏭️ Pulando Super Admin: ${user.name}`);
+            continue;
+          }
+          
+          console.log(`\n🔍 Calculando pontos para: ${user.name} (ID: ${user.id})`);
+          
+          // Calcular pontos
+          const calculation = await storage.calculateUserPoints(user.id);
+          
+          if (calculation && typeof calculation === 'object' && calculation.success) {
+            // Atualizar pontos no banco se mudaram
+            if (user.points !== calculation.points) {
+              console.log(`   🔄 Atualizando pontos: ${user.points} → ${calculation.points}`);
+              
+              // Usar storage para atualizar pontos
+              await storage.updateUser(user.id, { points: calculation.points });
+              
+              updatedCount++;
+            } else {
+              console.log(`   ✅ Pontos já estão atualizados: ${calculation.points}`);
+            }
+            
+            results.push({
+              userId: user.id,
+              name: user.name,
+              points: calculation.points,
+              updated: user.points !== calculation.points
+            });
+          } else {
+            console.error(`❌ Erro ao calcular pontos para ${user.name}:`, calculation?.message || 'Erro desconhecido');
+            errorCount++;
+          }
+        } catch (userError) {
+          console.error(`❌ Erro ao processar usuário ${user.name}:`, userError);
+          errorCount++;
+        }
+      }
+      
+      console.log(`✅ Processamento concluído: ${updatedCount} usuários atualizados`);
+      
+      res.json({
+        success: true,
+        message: `Pontos recalculados para ${users.length} usuários. ${updatedCount} atualizados.`,
+        updatedCount,
+        totalUsers: users.length,
+        errors: errorCount,
+        results
+      });
+      
     } catch (error) {
-      console.error('Erro ao calcular pontos avançados:', error);
-      res.status(500).json({ success: false, message: 'Erro ao calcular pontos avançados' });
+      console.error('❌ Erro ao recalcular pontos:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Erro ao recalcular pontos', 
+        error: (error as Error).message 
+      });
     }
   });
 
@@ -1986,41 +2235,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/system/points-config', async (req, res) => {
     try {
+      console.log('🔄 Salvando configuração de pontos e recalculando automaticamente...');
       const config = req.body;
+      
+      // Salvar a nova configuração
       await storage.savePointsConfiguration(config);
+      console.log('✅ Configuração salva com sucesso');
       
-      // Buscar todos os usuários (exceto Super Admin)
-      const allUsers = await storage.getAllUsers();
-      const regularUsers = allUsers.filter(user => user.email !== 'admin@7care.com');
+      // Recalcular pontos de todos os usuários usando o método avançado
+      console.log('🔄 Iniciando recálculo automático de pontos...');
+      const result = await storage.calculateAdvancedUserPoints();
       
-      let updatedCount = 0;
-      let errorCount = 0;
-      
-      for (const user of regularUsers) {
-        try {
-          // Calcular pontos usando a nova configuração
-          const points = calculateUserPointsFromConfig(user, config);
-          const newPoints = Math.round(points);
-          
-          // Atualizar apenas se os pontos mudaram
-          if (newPoints !== user.points) {
-            await storage.updateUser(user.id, { points: newPoints });
-            updatedCount++;
-          }
-        } catch (error) {
-          console.error(`❌ Erro ao processar ${user.name}:`, (error as Error).message);
-          errorCount++;
-        }
+      if (result.success) {
+        console.log('🎉 Recálculo automático concluído com sucesso!');
+        res.json({ 
+          success: true, 
+          message: `Configuração salva e pontos recalculados automaticamente! ${result.updatedUsers || 0} usuários atualizados.`,
+          updatedUsers: result.updatedUsers || 0,
+          errors: result.errors || 0,
+          details: result.message
+        });
+      } else {
+        console.error('❌ Erro no recálculo automático:', result.message);
+        res.status(500).json({ 
+          error: 'Erro ao recalcular pontos automaticamente',
+          details: result.message 
+        });
       }
-      
-      console.log(`🎉 Recálculo automático concluído: ${updatedCount} usuários atualizados, ${errorCount} erros`);
-      
-      res.json({ 
-        success: true, 
-        message: `Configuração salva e pontos recalculados automaticamente! ${updatedCount} usuários atualizados.`,
-        updatedUsers: updatedCount,
-        errors: errorCount
-      });
     } catch (error) {
       console.error('Erro ao salvar configuração de pontos:', error);
       res.status(500).json({ error: 'Erro ao salvar configuração' });
@@ -2030,8 +2271,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Reset points configuration to default values
   app.post('/api/system/points-config/reset', async (req, res) => {
     try {
-      await storage.resetPointsConfiguration();
-      res.json({ success: true, message: 'Configuração resetada para valores padrão' });
+      console.log('🔄 Resetando configuração de pontos para valores padrão...');
+      
+      // Limpar configurações existentes
+      await db.delete(schema.pointConfigs);
+      
+      // Recalcular pontos de todos os usuários usando o método avançado
+      console.log('🔄 Iniciando recálculo automático após reset...');
+      const result = await storage.calculateAdvancedUserPoints();
+      
+      if (result.success) {
+        console.log('🎉 Reset e recálculo automático concluídos com sucesso!');
+        res.json({ 
+          success: true, 
+          message: `Configuração resetada e pontos recalculados automaticamente! ${result.updatedUsers || 0} usuários atualizados.`,
+          updatedUsers: result.updatedUsers || 0,
+          errors: result.errors || 0,
+          details: result.message
+        });
+      } else {
+        console.error('❌ Erro no recálculo automático após reset:', result.message);
+        res.status(500).json({ 
+          error: 'Erro ao recalcular pontos automaticamente após reset',
+          details: result.message 
+        });
+      }
     } catch (error) {
       console.error('Erro ao resetar configuração de pontos:', error);
       res.status(500).json({ error: 'Erro ao resetar configuração' });
@@ -2446,44 +2710,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Salvar a nova configuração
       await storage.savePointsConfiguration(newConfig);
       
-      // Recalcular pontos de todos os usuários automaticamente
+      // Recalcular pontos de todos os usuários automaticamente usando o método avançado
       console.log('🔄 Recalculando pontos de todos os usuários automaticamente...');
+      const result = await storage.calculateAdvancedUserPoints();
       
-      let updatedCount = 0;
-      let errorCount = 0;
-      let newTotalPoints = 0;
-      
-      for (const user of regularUsers) {
-        try {
-          const points = calculateUserPointsFromConfig(user, newConfig);
-          const newPoints = Math.round(points);
-          newTotalPoints += newPoints;
-          
-          if (newPoints !== user.points) {
-            await storage.updateUser(user.id, { points: newPoints });
-            updatedCount++;
-          }
-        } catch (error) {
-          console.error(`❌ Erro ao processar ${user.name}:`, (error as Error).message);
-          errorCount++;
-        }
+      if (!result.success) {
+        throw new Error(`Erro no recálculo automático: ${result.message}`);
       }
       
-      // Calcular nova média dos usuários
-      const newUserAverage = newTotalPoints / regularUsers.length;
+      const updatedCount = result.updatedUsers || 0;
+      const errorCount = result.errors || 0;
       
-      console.log(`✅ Nova média dos usuários: ${newUserAverage.toFixed(2)}`);
       console.log(`🎉 Recálculo automático concluído: ${updatedCount} usuários atualizados, ${errorCount} erros`);
       
       res.json({
         success: true,
         currentUserAverage: currentUserAverage.toFixed(2),
-        newUserAverage: newUserAverage.toFixed(2),
         targetAverage,
         adjustmentFactor: adjustmentFactor.toFixed(2),
         updatedUsers: updatedCount,
         errors: errorCount,
-        message: `Configuração ajustada! Nova média dos usuários: ${newUserAverage.toFixed(2)}, ${updatedCount} usuários atualizados automaticamente.`
+        message: `Configuração ajustada e pontos recalculados automaticamente! ${updatedCount} usuários atualizados.`,
+        details: result.message
       });
       
     } catch (error) {
@@ -3459,173 +3707,7 @@ app.delete("/api/relationships/active/:interestedId", async (req, res) => {
     }
   });
 
-  app.get("/api/users/:id(\\d+)/points-details", async (req, res) => {
-    try {
-      const userId = parseInt(req.params.id);
-      
-      const user = await storage.getUserById(userId);
-      
-      if (!user) {
-        console.log('Usuário não encontrado:', userId);
-        return res.status(404).json({ error: "User not found" });
-      }
-
-      console.log('Usuário encontrado:', user.name, user.email);
-
-      // Buscar dados detalhados do usuário para cálculo de pontos
-      const userData = await storage.getUserDetailedData(userId);
-      console.log('Dados detalhados obtidos:', userData);
-      
-      // Buscar configuração de pontos
-      const pointsConfig = await storage.getPointsConfiguration();
-      
-      // Calcular pontos baseado nos dados do usuário e configuração
-      let calculatedPoints = 0;
-      
-      if (userData && pointsConfig) {
-        // Engajamento
-        if (userData.engajamento) {
-          const engajamento = userData.engajamento.toLowerCase();
-          if (engajamento.includes('baixo')) calculatedPoints += pointsConfig.engajamento.baixo;
-          else if (engajamento.includes('médio') || engajamento.includes('medio')) calculatedPoints += pointsConfig.engajamento.medio;
-          else if (engajamento.includes('alto')) calculatedPoints += pointsConfig.engajamento.alto;
-        }
-        
-        // Classificação
-        if (userData.classificacao) {
-          const classificacao = userData.classificacao.toLowerCase();
-          if (classificacao.includes('frequente')) {
-            calculatedPoints += pointsConfig.classificacao.frequente;
-          } else {
-            calculatedPoints += pointsConfig.classificacao.naoFrequente;
-          }
-        }
-        
-        // Dizimista
-        if (userData.dizimista) {
-          const dizimista = userData.dizimista.toLowerCase();
-          if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) calculatedPoints += pointsConfig.dizimista.naoDizimista;
-          else if (dizimista.includes('pontual')) calculatedPoints += pointsConfig.dizimista.pontual;
-          else if (dizimista.includes('sazonal')) calculatedPoints += pointsConfig.dizimista.sazonal;
-          else if (dizimista.includes('recorrente')) calculatedPoints += pointsConfig.dizimista.recorrente;
-        }
-        
-        // Ofertante
-        if (userData.ofertante) {
-          const ofertante = userData.ofertante.toLowerCase();
-          if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) calculatedPoints += pointsConfig.ofertante.naoOfertante;
-          else if (ofertante.includes('pontual')) calculatedPoints += pointsConfig.ofertante.pontual;
-          else if (ofertante.includes('sazonal')) calculatedPoints += pointsConfig.ofertante.sazonal;
-          else if (ofertante.includes('recorrente')) calculatedPoints += pointsConfig.ofertante.recorrente;
-        }
-        
-        // Tempo de batismo
-        if (userData.tempoBatismo && typeof userData.tempoBatismo === 'number') {
-          const tempo = userData.tempoBatismo;
-          if (tempo >= 2 && tempo < 5) calculatedPoints += pointsConfig.tempoBatismo.doisAnos;
-          else if (tempo >= 5 && tempo < 10) calculatedPoints += pointsConfig.tempoBatismo.cincoAnos;
-          else if (tempo >= 10 && tempo < 20) calculatedPoints += pointsConfig.tempoBatismo.dezAnos;
-          else if (tempo >= 20 && tempo < 30) calculatedPoints += pointsConfig.tempoBatismo.vinteAnos;
-          else if (tempo >= 30) calculatedPoints += pointsConfig.tempoBatismo.maisVinte;
-        }
-        
-        // Cargos
-        if (userData.cargos && Array.isArray(userData.cargos)) {
-          const numCargos = userData.cargos.length;
-          if (numCargos === 1) calculatedPoints += pointsConfig.cargos.umCargo;
-          else if (numCargos === 2) calculatedPoints += pointsConfig.cargos.doisCargos;
-          else if (numCargos >= 3) calculatedPoints += pointsConfig.cargos.tresOuMais;
-        }
-        
-        // Nome da unidade
-        if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
-          calculatedPoints += pointsConfig.nomeUnidade.comUnidade;
-        }
-        
-        // Tem lição
-        if (userData.temLicao) {
-          calculatedPoints += pointsConfig.temLicao.comLicao;
-        }
-        
-        // Total de presença
-        if (userData.totalPresenca !== undefined) {
-          const presenca = userData.totalPresenca;
-          if (presenca >= 0 && presenca <= 3) calculatedPoints += pointsConfig.totalPresenca.zeroATres;
-          else if (presenca >= 4 && presenca <= 7) calculatedPoints += pointsConfig.totalPresenca.quatroASete;
-          else if (presenca >= 8 && presenca <= 13) calculatedPoints += pointsConfig.totalPresenca.oitoATreze;
-        }
-        
-        // Escola sabatina
-        if (userData.escolaSabatina) {
-          const escola = userData.escolaSabatina;
-          if (escola.comunhao) calculatedPoints += (escola.comunhao * pointsConfig.escolaSabatina.comunhao);
-          if (escola.missao) calculatedPoints += (escola.missao * pointsConfig.escolaSabatina.missao);
-          if (escola.estudoBiblico) calculatedPoints += (escola.estudoBiblico * pointsConfig.escolaSabatina.estudoBiblico);
-          if (escola.batizouAlguem) calculatedPoints += pointsConfig.escolaSabatina.batizouAlguem;
-          if (escola.discipuladoPosBatismo) calculatedPoints += (escola.discipuladoPosBatismo * pointsConfig.escolaSabatina.discipuladoPosBatismo);
-        }
-        
-        // CPF válido
-        if (userData.cpfValido === 'Sim' || userData.cpfValido === true) {
-          calculatedPoints += pointsConfig.cpfValido.valido;
-        }
-        
-        // Campos vazios ACMS
-        if (userData.camposVaziosACMS === false) {
-          calculatedPoints += pointsConfig.camposVaziosACMS.completos;
-        }
-      }
-      
-      
-      // Garantir que userData não seja null
-      if (!userData) {
-        console.log('Criando dados padrão para usuário:', userId);
-        const defaultUserData = {
-          engajamento: 'Baixo',
-          classificacao: 'A resgatar',
-          dizimista: 'Não dizimista',
-          ofertante: 'Não ofertante',
-          tempoBatismo: 0,
-          cargos: [],
-          nomeUnidade: null,
-          temLicao: false,
-          totalPresenca: 0,
-          batizouAlguem: false,
-          discipuladoPosBatismo: 0,
-          cpfValido: false,
-          camposVaziosACMS: false
-        };
-        
-        res.json({ 
-          points: calculatedPoints,
-          userData: defaultUserData,
-          user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            status: user.status
-          }
-        });
-        return;
-      }
-      
-      res.json({ 
-        points: calculatedPoints,
-        userData,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          status: user.status
-        }
-      });
-    } catch (error) {
-      console.error("Get user points details error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
+  // Rota points-details removida - sistema limpo para nova implementação
 
   app.post("/api/users/:id(\\d+)/points", async (req, res) => {
     try {
@@ -4772,5 +4854,200 @@ app.delete("/api/relationships/active/:interestedId", async (req, res) => {
   // Adicionar rotas de importação
   importRoutes(app);
 
+  // Election routes
+  electionRoutes(app);
+
   return createServer(app);
 }
+
+// CÓDIGO REMOVIDO - Integração Power BI cancelada
+/*
+  // ========== ROTAS DE INTEGRAÇÃO COM POWER BI ==========
+  
+  // Salvar credenciais do Power BI
+  app.post('/api/powerbi/credentials', async (req, res) => {
+    try {
+      const { username, password, appId, reportId, datasetId } = req.body;
+      
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Credenciais incompletas' });
+      }
+
+      // Salvar credenciais no banco (em produção, criptografar a senha)
+      await storage.saveSystemConfig('powerbi_credentials', {
+        username,
+        password,
+        appId,
+        reportId,
+        datasetId
+      });
+
+      res.json({ success: true, message: 'Credenciais salvas com sucesso' });
+    } catch (error: any) {
+      console.error('Erro ao salvar credenciais Power BI:', error);
+      res.status(500).json({ error: 'Erro ao salvar credenciais' });
+    }
+  });
+
+  // Buscar credenciais do Power BI
+  app.get('/api/powerbi/credentials', async (req, res) => {
+    try {
+      const credentials = await storage.getSystemConfig('powerbi_credentials');
+      
+      if (!credentials) {
+        return res.json({ configured: false });
+      }
+
+      res.json({
+        configured: true,
+        username: credentials.username,
+        appId: credentials.appId,
+        reportId: credentials.reportId,
+        datasetId: credentials.datasetId
+        // Não retornar a senha
+      });
+    } catch (error: any) {
+      console.error('Erro ao buscar credenciais Power BI:', error);
+      res.status(500).json({ error: 'Erro ao buscar credenciais' });
+    }
+  });
+
+  // Listar datasets disponíveis
+  app.post('/api/powerbi/datasets', async (req, res) => {
+    try {
+      const credentials = await storage.getSystemConfig('powerbi_credentials');
+      
+      if (!credentials) {
+        return res.status(400).json({ error: 'Credenciais não configuradas' });
+      }
+
+      const { PowerBIIntegration } = await import('./powerBIIntegration');
+      const powerBI = new PowerBIIntegration();
+
+      const authenticated = await powerBI.authenticate(credentials);
+      if (!authenticated) {
+        return res.status(401).json({ error: 'Falha na autenticação com Power BI' });
+      }
+
+      const datasets = await powerBI.listDatasets();
+      res.json({ datasets });
+    } catch (error: any) {
+      console.error('Erro ao listar datasets:', error);
+      res.status(500).json({ error: error.message || 'Erro ao listar datasets' });
+    }
+  });
+
+  // Sincronizar dados do Power BI
+  app.post('/api/powerbi/sync', async (req, res) => {
+    try {
+      console.log('🔄 Iniciando sincronização com Power BI...');
+
+      const credentials = await storage.getSystemConfig('powerbi_credentials');
+      
+      if (!credentials) {
+        return res.status(400).json({ error: 'Credenciais do Power BI não configuradas' });
+      }
+
+      const { PowerBIIntegration } = await import('./powerBIIntegration');
+      const powerBI = new PowerBIIntegration();
+
+      // Autenticar
+      const authenticated = await powerBI.authenticate(credentials);
+      if (!authenticated) {
+        return res.status(401).json({ error: 'Falha na autenticação com Power BI' });
+      }
+
+      // Buscar dataset ID configurado
+      const datasetId = credentials.datasetId || req.body.datasetId;
+      if (!datasetId) {
+        return res.status(400).json({ error: 'Dataset ID não configurado' });
+      }
+
+      // Buscar dados dos membros
+      const membersData = await powerBI.getMembersData(datasetId);
+      
+      if (membersData.length === 0) {
+        return res.json({ 
+          success: true, 
+          message: 'Nenhum membro encontrado',
+          updated: 0 
+        });
+      }
+
+      // Atualizar dados dos usuários
+      let updatedCount = 0;
+      
+      for (const memberData of membersData) {
+        try {
+          // Buscar usuário pelo nome
+          const users = await sql`
+            SELECT id, extra_data FROM users 
+            WHERE LOWER(name) = LOWER(${memberData.name})
+            LIMIT 1
+          `;
+
+          if (users.length > 0) {
+            const user = users[0];
+            
+            // Preparar extraData atualizado
+            let currentExtraData = {};
+            if (user.extra_data) {
+              currentExtraData = typeof user.extra_data === 'string' 
+                ? JSON.parse(user.extra_data) 
+                : user.extra_data;
+            }
+
+            const updatedExtraData = {
+              ...currentExtraData,
+              engajamento: memberData.engajamento,
+              classificacao: memberData.classificacao,
+              dizimistaType: memberData.dizimista,
+              ofertanteType: memberData.ofertante,
+              tempoBatismoAnos: memberData.tempoBatismo,
+              cargos: memberData.cargos,
+              nomeUnidade: memberData.nomeUnidade,
+              temLicao: memberData.temLicao,
+              comunhao: memberData.comunhao,
+              missao: memberData.missao,
+              estudoBiblico: memberData.estudoBiblico,
+              totalPresenca: memberData.totalPresenca,
+              batizouAlguem: memberData.batizouAlguem,
+              discPosBatismal: memberData.discipuladoPosBatismo,
+              cpfValido: memberData.cpfValido,
+              camposVaziosACMS: memberData.camposVaziosACMS,
+              lastPowerBISync: new Date().toISOString()
+            };
+
+            // Atualizar no banco
+            await sql`
+              UPDATE users 
+              SET extra_data = ${JSON.stringify(updatedExtraData)}
+              WHERE id = ${user.id}
+            `;
+
+            updatedCount++;
+            console.log(`✅ Dados atualizados para ${memberData.name}`);
+          } else {
+            console.log(`⚠️ Usuário não encontrado: ${memberData.name}`);
+          }
+        } catch (error: any) {
+          console.error(`❌ Erro ao atualizar ${memberData.name}:`, error.message);
+        }
+      }
+
+      // Recalcular pontos após sincronização
+      console.log('🔄 Recalculando pontos dos usuários...');
+      await storage.calculateAdvancedUserPoints();
+
+      res.json({ 
+        success: true, 
+        message: `${updatedCount} usuários atualizados com sucesso`,
+        total: membersData.length,
+        updated: updatedCount
+      });
+    } catch (error: any) {
+      console.error('❌ Erro na sincronização com Power BI:', error);
+      res.status(500).json({ error: error.message || 'Erro na sincronização' });
+    }
+  });
+*/

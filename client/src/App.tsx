@@ -15,15 +15,11 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Calendar = lazy(() => import("./pages/Calendar"));
 const Menu = lazy(() => import("./pages/Menu"));
 const MeuCadastro = lazy(() => import("./pages/MeuCadastro"));
-const Meetings = lazy(() => import("./pages/Meetings"));
-const VideoCall = lazy(() => import("./pages/VideoCall"));
 const Users = lazy(() => import("./pages/Users"));
 const Interested = lazy(() => import("./pages/Interested"));
-const Messages = lazy(() => import("./pages/Messages"));
 const Chat = lazy(() => import("./pages/Chat"));
 const Settings = lazy(() => import("./pages/Settings"));
-const Reports = lazy(() => import("./pages/Reports"));
-const VideoCallRoom = lazy(() => import("./pages/VideoCallRoom"));
+const Tasks = lazy(() => import("./pages/Tasks"));
 const MyInterested = lazy(() => import("./pages/MyInterested"));
 const Gamification = lazy(() => import("./pages/Gamification"));
 const Prayers = lazy(() => import("./pages/Prayers"));
@@ -33,6 +29,9 @@ const ElectionConfig = lazy(() => import("./pages/ElectionConfig"));
 const ElectionVoting = lazy(() => import("./pages/ElectionVoting"));
 const ElectionDashboard = lazy(() => import("./pages/ElectionDashboard"));
 const ElectionResults = lazy(() => import("./pages/ElectionResults"));
+const ElectionManage = lazy(() => import("./pages/ElectionManage"));
+const ElectionVotingMobile = lazy(() => import("./pages/ElectionVotingMobile"));
+const UnifiedElection = lazy(() => import("./pages/UnifiedElection"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Loading component for lazy loaded pages
@@ -79,25 +78,26 @@ const App = () => {
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/menu" element={<Menu />} />
               <Route path="/meu-cadastro" element={<MeuCadastro />} />
-              <Route path="/meetings" element={<Meetings />} />
-              <Route path="/video-calls" element={<VideoCall />} />
               <Route path="/users" element={<Users />} />
               <Route path="/interested" element={<Interested />} />
               <Route path="/my-interested" element={<MyInterested />} />
-              <Route path="/messages" element={<Messages />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/gamification" element={<Gamification />} />
               <Route path="/prayers" element={<Prayers />} />
               <Route path="/settings" element={<Settings />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/my-reports" element={<Reports />} />
+              <Route path="/tasks" element={<Tasks />} />
+              <Route path="/reports" element={<Tasks />} />
+              <Route path="/my-reports" element={<Tasks />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/election-config" element={<ElectionConfig />} />
               <Route path="/election-voting" element={<ElectionVoting />} />
               <Route path="/election-dashboard" element={<ElectionDashboard />} />
+              <Route path="/elections" element={<UnifiedElection />} />
               <Route path="/election-dashboard/:configId" element={<ElectionResults />} />
+              <Route path="/election-manage" element={<ElectionDashboard />} />
+              <Route path="/election-manage/:configId" element={<ElectionManage />} />
+              <Route path="/election-vote/:configId" element={<ElectionVotingMobile />} />
               {/* <Route path="/test-calendar" element={<TestCalendar />} /> */}
-              <Route path="/video-call/:meetingId" element={<VideoCallRoom />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

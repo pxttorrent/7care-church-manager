@@ -70,9 +70,8 @@ const getGenderByName = (name: string): 'male' | 'female' => {
 // Função para buscar eventos da API
 const fetchEvents = async (userRole?: string): Promise<CalendarEvent[]> => {
   try {
-    // Buscar reuniões da API
-    const meetingsResponse = await fetch('/api/meetings');
-    const meetings = meetingsResponse.ok ? await meetingsResponse.json() : [];
+    // Buscar reuniões da API (removido - página não existe mais)
+    const meetings: any[] = [];
     
     // Buscar eventos da API com role do usuário
     const eventsResponse = await fetch(`/api/events?role=${userRole || 'interested'}`);
@@ -162,7 +161,6 @@ const fetchEvents = async (userRole?: string): Promise<CalendarEvent[]> => {
       meetingsCount: eventsFromMeetings.length,
       apiEventsCount: eventsFromApi.length,
       totalEvents: allEvents.length,
-      meetingsResponse: meetingsResponse.status,
       eventsResponse: eventsResponse.status,
       apiEvents: eventsApi.slice(0, 2), // Mostrar apenas os primeiros 2 eventos da API
       convertedEvents: eventsFromApi.slice(0, 2) // Mostrar apenas os primeiros 2 eventos convertidos

@@ -93,10 +93,23 @@ const Prayers = () => {
       
       if (response.ok) {
         const data = await response.json();
-        setPrayers(data);
+        // Mapear dados da API para o formato esperado pelo frontend
+        const mappedData = data.map((prayer: any) => ({
+          ...prayer,
+          userName: prayer.requester_name || 'Usuário',
+          userChurch: prayer.church || 'Igreja',
+          userId: prayer.user_id,
+          emotionalScore: 0, // Default value
+          isAnswered: prayer.is_answered || false,
+          isPrivate: prayer.is_private || false,
+          allowChurchMembers: prayer.allow_church_members || true,
+          createdAt: prayer.created_at,
+          answeredAt: prayer.answered_at
+        }));
+        setPrayers(mappedData);
         
         // Carregar intercessores automaticamente para todas as orações
-        data.forEach((prayer: PrayerRequest) => {
+        mappedData.forEach((prayer: PrayerRequest) => {
           if (!prayer.isAnswered) {
             loadIntercessors(prayer.id);
           }
@@ -278,7 +291,13 @@ const Prayers = () => {
       const response = await fetch(`/api/prayers/${prayerId}/intercessors`);
       if (response.ok) {
         const data = await response.json();
-        setIntercessors(prev => ({ ...prev, [prayerId]: data }));
+        // Mapear dados da API para o formato esperado pelo frontend
+        const mappedData = data.map((intercessor: any) => ({
+          ...intercessor,
+          intercessorName: intercessor.intercessor_name || 'Usuário',
+          intercessorProfilePhoto: intercessor.profile_photo || null
+        }));
+        setIntercessors(prev => ({ ...prev, [prayerId]: mappedData }));
       }
     } catch (error) {
       console.error('Erro ao carregar intercessores:', error);
@@ -307,14 +326,26 @@ const Prayers = () => {
     return filteredPrayers.filter(canViewPrayer);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return 'Data não disponível';
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return 'Data inválida';
+      }
+      
+      return date.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      console.error('Erro ao formatar data:', error, dateString);
+      return 'Data inválida';
+    }
   };
 
   if (isLoading) {
@@ -415,7 +446,7 @@ const Prayers = () => {
                             }}
                           />
                           <AvatarFallback className="bg-blue-100 text-blue-600 text-lg font-semibold">
-                            {prayer.userName.charAt(0).toUpperCase()}
+                            {prayer.userName?.charAt(0)?.toUpperCase() || 'U'}
                           </AvatarFallback>
                         </Avatar>
                       <div>
@@ -511,7 +542,7 @@ const Prayers = () => {
                               <Avatar className="w-5 h-5">
                                 <AvatarImage src={intercessor.intercessorProfilePhoto} />
                                 <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
-                                  {intercessor.intercessorName.charAt(0).toUpperCase()}
+                                  {intercessor.intercessorName?.charAt(0)?.toUpperCase() || 'U'}
                                 </AvatarFallback>
                               </Avatar>
                               <span className="text-xs text-blue-700">{intercessor.intercessorName}</span>

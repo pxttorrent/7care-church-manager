@@ -509,10 +509,10 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                   <p className="text-sm text-muted-foreground mt-1">{formatDateForDisplay(user.birth_date || user.birthDate)}</p>
                 </div>
                 <div>
-                  {renderEditableField('extraData.engajamento', 'Engajamento', extraData.engajamento)}
+                  {renderEditableField('engajamento', 'Engajamento', user.engajamento)}
                 </div>
                 <div>
-                  {renderEditableField('extraData.classificacao', 'Classificação', extraData.classificacao)}
+                  {renderEditableField('classificacao', 'Classificação', user.classificacao)}
                 </div>
                 <div>
                   <div className="flex items-center justify-between">
@@ -564,7 +564,7 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                   <label className="text-sm font-medium">Dizimista</label>
                   <div className="text-sm text-muted-foreground mt-1">
                     <Badge variant={user.is_donor || user.isDonor ? "default" : "secondary"}>
-                      {extraData.dizimistaType || (user.is_donor || user.isDonor ? 'Sim' : 'Não')}
+                      {user.dizimista_type || (user.is_donor || user.isDonor ? 'Sim' : 'Não')}
                     </Badge>
                   </div>
                 </div>
@@ -608,7 +608,7 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                   <label className="text-sm font-medium">Ofertante</label>
                   <div className="text-sm text-muted-foreground mt-1">
                     <Badge variant={user.isOffering ? "default" : "secondary"}>
-                      {extraData.ofertanteType || (user.isOffering ? 'Sim' : 'Não')}
+                      {user.ofertante_type || (user.isOffering ? 'Sim' : 'Não')}
                     </Badge>
                   </div>
                 </div>
@@ -886,7 +886,11 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                   <div className="flex items-center justify-between">
                     <label className="text-sm font-medium">CPF válido</label>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.cpfValido || 'Não informado'}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    <Badge variant={user.cpf_valido ? "default" : "secondary"}>
+                      {user.cpf_valido ? 'Sim' : 'Não'}
+                    </Badge>
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -904,7 +908,7 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <label className="text-sm font-medium">Nome da unidade</label>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.nomeUnidade || extraData.cidadeEstado || 'Não informado'}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{user.nome_unidade || extraData.cidadeEstado || 'Não informado'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Matriculado na ES</label>
@@ -917,8 +921,8 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                 <div>
                   <label className="text-sm font-medium">Tem lição</label>
                   <div className="text-sm text-muted-foreground mt-1">
-                    <Badge variant={user.hasLesson ? "default" : "secondary"}>
-                      {user.hasLesson ? 'Sim' : 'Não'}
+                    <Badge variant={user.tem_licao || user.hasLesson ? "default" : "secondary"}>
+                      {user.tem_licao || user.hasLesson ? 'Sim' : 'Não'}
                     </Badge>
                   </div>
                 </div>
@@ -928,23 +932,23 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                 </div>
                 <div>
                   <label className="text-sm font-medium">Comunhão</label>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.comunhao || 'Não informado'}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{user.comunhao ?? 'Não informado'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Missão</label>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.missao || 'Não informado'}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{user.missao ?? 'Não informado'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Estudo bíblico</label>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.estudoBiblico || 'Não informado'}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{user.estudo_biblico ?? 'Não informado'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Batizou alguém</label>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.batizouAlguem || 'Não informado'}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{user.batizou_alguem ? 'Sim' : 'Não'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Disc. pós batismal</label>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.discPosBatismal || 'Não informado'}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{user.disc_pos_batismal ?? 'Não informado'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Total presença no cartão</label>
@@ -964,7 +968,7 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                 </div>
                 <div>
                   <label className="text-sm font-medium">Total de presença</label>
-                  <p className="text-sm text-muted-foreground mt-1">{user.attendance || extraData.totalPresenca || (extraData.dizimos12m || 0)}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{user.total_presenca ?? user.attendance ?? 0}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Teve participação</label>
@@ -1002,7 +1006,11 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
                 </div>
                 <div>
                   <label className="text-sm font-medium">Campos vazios/inválidos</label>
-                  <p className="text-sm text-muted-foreground mt-1">{extraData.camposVazios || 'Não informado'}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    <Badge variant={user.campos_vazios ? "destructive" : "default"}>
+                      {user.campos_vazios ? 'Tem campos vazios' : 'Completo'}
+                    </Badge>
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Nome dos campos vazios no ACMS</label>

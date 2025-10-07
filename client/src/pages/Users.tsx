@@ -20,143 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
-const mockUsers = [
-  {
-    id: 1,
-    name: "Pastor João Silva",
-    email: "admin@7care.com",
-    role: "admin",
-    church: "Igreja Central",
-    status: "approved",
-    lastLogin: "Hoje, 14:30",
-    phone: "(11) 99999-9999",
-    cpf: "123.456.789-00",
-    birthDate: "1975-03-15",
-    civilStatus: "married",
-    occupation: "Pastor",
-    education: "Teologia",
-    address: "Rua das Flores, 123, Centro, São Paulo, SP",
-    churchCode: "IC001",
-    departments: ["Pastoral", "Administração"],
-    baptismDate: "1995-12-25",
-    previousReligion: "Adventista do 7º Dia",
-    biblicalInstructor: "Pastor Antônio",
-    isDonor: true,
-    isOffering: true,
-    points: 1500,
-    level: "Pastor",
-    attendance: 95,
-    observations: "Líder experiente e dedicado"
-  },
-  {
-    id: 2,
-    name: "Maria Santos",
-    email: "maria@7care.com",
-    role: "missionary",
-    church: "Igreja Central",
-    status: "approved",
-    lastLogin: "Ontem, 19:00",
-    phone: "(11) 88888-8888",
-    cpf: "234.567.890-11",
-    birthDate: "1985-07-22",
-    civilStatus: "single",
-    occupation: "Professora",
-    education: "Pedagogia",
-    address: "Av. Paulista, 456, Bela Vista, São Paulo, SP",
-    churchCode: "IC001",
-    departments: ["Escola Sabatina", "Deaconisas"],
-    baptismDate: "2010-06-15",
-    previousReligion: "Católica",
-    biblicalInstructor: "Irmã Joana",
-    isDonor: true,
-    isOffering: true,
-    points: 1200,
-    level: "Missionário",
-    attendance: 88,
-    observations: "Muito ativa na evangelização"
-  },
-  {
-    id: 3,
-    name: "Carlos Oliveira",
-    email: "carlos@email.com",
-    role: "member",
-    church: "Igreja Central",
-    status: "approved",
-    lastLogin: "2 dias atrás",
-    phone: "(11) 77777-7777",
-    cpf: "345.678.901-22",
-    birthDate: "1990-11-08",
-    civilStatus: "married",
-    occupation: "Engenheiro",
-    education: "Engenharia Civil",
-    address: "Rua Augusta, 789, Consolação, São Paulo, SP",
-    churchCode: "IC001",
-    departments: ["Jovens", "Música"],
-    baptismDate: "2015-04-18",
-    previousReligion: "Evangélica",
-    biblicalInstructor: "Pastor João",
-    isDonor: false,
-    isOffering: true,
-    points: 800,
-    level: "Membro Ativo",
-    attendance: 75,
-    observations: "Talentoso músico, toca piano"
-  },
-  {
-    id: 4,
-    name: "Ana Costa",
-    email: "ana@email.com",
-    role: "interested",
-    church: "Igreja Central",
-    status: "pending",
-    lastLogin: "Nunca",
-    phone: "(11) 66666-6666",
-    cpf: "456.789.012-33",
-    birthDate: "1988-02-14",
-    civilStatus: "divorced",
-    occupation: "Enfermeira",
-    education: "Enfermagem",
-    address: "Rua da Liberdade, 321, Liberdade, São Paulo, SP",
-    churchCode: "IC001",
-    departments: [],
-    baptismDate: null,
-    previousReligion: "Espírita",
-    biblicalInstructor: "Maria Santos",
-    isDonor: false,
-    isOffering: false,
-    points: 50,
-    level: "Interessado",
-    attendance: 12,
-    observations: "Iniciando estudos bíblicos, muito interessada"
-  },
-  {
-    id: 5,
-    name: "Pedro Almeida",
-    email: "pedro@email.com",
-    role: "member",
-    church: "Igreja Central",
-    status: "approved",
-    lastLogin: "1 semana atrás",
-    phone: "(11) 55555-5555",
-    cpf: "567.890.123-44",
-    birthDate: "1982-09-30",
-    civilStatus: "single",
-    occupation: "Designer",
-    education: "Design Gráfico",
-    address: "Rua Ibirapuera, 654, Vila Olímpia, São Paulo, SP",
-    churchCode: "IC001",
-    departments: ["Comunicação", "Arte"],
-    baptismDate: "2018-08-12",
-    previousReligion: "Agnóstico",
-    biblicalInstructor: "Carlos Oliveira",
-    isDonor: true,
-    isOffering: true,
-    points: 950,
-    level: "Membro",
-    attendance: 82,
-    observations: "Responsável pela arte visual da igreja"
-  }
-];
+// Dados mockados removidos - agora usando apenas dados reais da API
 
 export default function Users() {
   const { user } = useAuth();
@@ -191,11 +55,11 @@ export default function Users() {
 
   // Fetch users from API with points calculated
   const { data: usersData, isLoading, error } = useQuery({
-    queryKey: ['/api/users/with-points'],
+    queryKey: ['/api/users'],
     queryFn: async () => {
       try {
-        // Usar a rota correta que calcula pontos em tempo real
-        const response = await fetch('/api/users/with-points');
+        // Usar a rota /api/users que já retorna calculatedPoints corretamente
+        const response = await fetch('/api/users');
         if (!response.ok) {
           throw new Error('Falha ao carregar usuários');
         }
@@ -204,16 +68,6 @@ export default function Users() {
         return Array.isArray(data) ? data : [];
       } catch (error) {
         console.error('Erro ao carregar usuários:', error);
-        // Fallback para rota antiga se a nova falhar
-        try {
-          const fallbackResponse = await fetch('/api/users');
-          if (fallbackResponse.ok) {
-            const fallbackData = await fallbackResponse.json();
-            return Array.isArray(fallbackData) ? fallbackData : [];
-          }
-        } catch (fallbackError) {
-          console.error('Erro no fallback:', fallbackError);
-        }
         return [];
       }
     },

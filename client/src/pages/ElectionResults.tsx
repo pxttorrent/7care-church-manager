@@ -87,8 +87,8 @@ export default function ElectionResults() {
 
   const loadDashboard = async () => {
     try {
-      console.log('Loading dashboard data...');
-      const response = await fetch('/api/elections/dashboard', {
+      console.log('Loading dashboard data for configId:', configId);
+      const response = await fetch(`/api/elections/dashboard/${configId}`, {
         headers: {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
@@ -101,6 +101,14 @@ export default function ElectionResults() {
         const data = await response.json();
         console.log('Dashboard data:', data);
         setDashboardData(data);
+      } else if (response.status === 404) {
+        const errorData = await response.json();
+        toast({
+          title: "Nenhuma eleição ativa",
+          description: errorData.error || "Não há eleição ativa para esta configuração.",
+          variant: "destructive",
+        });
+        navigate('/election-dashboard');
       } else {
         throw new Error('Erro ao carregar dashboard');
       }

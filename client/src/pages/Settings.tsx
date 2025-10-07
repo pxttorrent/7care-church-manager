@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   Settings as SettingsIcon, 
   User, 
+  Users,
   Bell, 
   Shield, 
   Palette, 
@@ -40,7 +41,8 @@ import {
   Calendar,
   Filter,
   Cloud,
-  Cake
+  Cake,
+  Send
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -52,6 +54,7 @@ import { useSystemLogo } from '@/hooks/useSystemLogo';
 import { ImportExcelModal } from '@/components/calendar/ImportExcelModal';
 import { GoogleDriveImportModal } from '@/components/calendar/GoogleDriveImportModal';
 import { EventPermissionsModal } from '@/components/calendar/EventPermissionsModal';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 
@@ -118,6 +121,147 @@ export default function Settings() {
   const [settings, setSettings] = useState<SettingsData>(initialSettings);
   const [isLoading, setIsLoading] = useState(false);
   
+  // Push notifications hook
+  const { 
+    isSupported, 
+    isSubscribed, 
+    requestPermission, 
+    subscribe, 
+    unsubscribe 
+  } = usePushNotifications();
+
+  // Estado local para controlar o switch
+  const [isPushEnabled, setIsPushEnabled] = useState(false);
+
+  // Função para salvar subscription no backend
+  const saveSubscriptionToServer = async (subscription: PushSubscription) => {
+    try {
+      const response = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          subscription: subscription.toJSON(),
+          userId: user?.id
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save subscription');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error saving subscription:', error);
+      throw error;
+    }
+  };
+
+  // Função para remover subscription do backend
+  const removeSubscriptionFromServer = async () => {
+    try {
+      const response = await fetch('/api/push/unsubscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user?.id
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to remove subscription');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error removing subscription:', error);
+      throw error;
+    }
+  };
+
+  // Funções para gerenciar notificações personalizadas
+  const loadUsers = async () => {
+    try {
+      const response = await fetch('/api/users');
+      if (response.ok) {
+        const data = await response.json();
+        setUsersList(data.users || []);
+      }
+    } catch (error) {
+      console.error('Error loading users:', error);
+    }
+  };
+
+  const loadSubscriptions = async () => {
+    try {
+      const response = await fetch('/api/push/subscriptions');
+      if (response.ok) {
+        const data = await response.json();
+        setSubscriptionsList(data.subscriptions || []);
+      }
+    } catch (error) {
+      console.error('Error loading subscriptions:', error);
+    }
+  };
+
+  const sendNotification = async () => {
+    try {
+      if (!notificationTitle || !notificationMessage) {
+        toast({
+          title: "Campos obrigatórios",
+          description: "Título e mensagem são obrigatórios.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const response = await fetch('/api/push/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: notificationTitle,
+          message: notificationMessage,
+          type: notificationType,
+          userId: selectedUserId === "all" ? null : selectedUserId
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send notification');
+      }
+
+      const data = await response.json();
+      
+      toast({
+        title: "Notificação enviada",
+        description: `Enviada para ${data.sentTo} usuário(s).`,
+      });
+
+      // Limpar formulário
+      setNotificationTitle('');
+      setNotificationMessage('');
+      setNotificationType('general');
+      setSelectedUserId(null);
+      setShowNotificationModal(false);
+      
+      // Recarregar subscriptions
+      await loadSubscriptions();
+
+    } catch (error) {
+      console.error('Error sending notification:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível enviar a notificação.",
+        variant: "destructive"
+      });
+    }
+  };
+  
   // Import states
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -133,6 +277,15 @@ export default function Settings() {
   const [churchesList, setChurchesList] = useState<any[]>([]);
   const [defaultChurchId, setDefaultChurchId] = useState<number | null>(null);
   const [defaultChurchName, setDefaultChurchName] = useState<string>('');
+
+  // Push notifications management states
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [notificationTitle, setNotificationTitle] = useState('');
+  const [notificationMessage, setNotificationMessage] = useState('');
+  const [notificationType, setNotificationType] = useState('general');
+  const [selectedUserId, setSelectedUserId] = useState<number | string | null>(null);
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [subscriptionsList, setSubscriptionsList] = useState<any[]>([]);
   const [isSavingDefault, setIsSavingDefault] = useState(false);
 
   // Clear data dialog states
@@ -147,6 +300,9 @@ export default function Settings() {
   const [showImportExcelModal, setShowImportExcelModal] = useState(false);
   const [showGoogleDriveModal, setShowGoogleDriveModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [showUserDataImportModal, setShowUserDataImportModal] = useState(false);
+  const [importingUserData, setImportingUserData] = useState(false);
+  const [importStats, setImportStats] = useState({ total: 0, success: 0, errors: 0 });
   
   // Query client for cache invalidation
   const queryClient = useQueryClient();
@@ -276,6 +432,44 @@ export default function Settings() {
   useEffect(() => {
     console.log('🔧 Settings - Estado do layout atualizado:', mobileHeaderLayout);
   }, [mobileHeaderLayout]);
+
+  // Carregar dados iniciais para notificações
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      loadUsers();
+      loadSubscriptions();
+    }
+  }, [user?.role]);
+
+  // Verificar subscription do usuário atual ao carregar
+  useEffect(() => {
+    const checkUserSubscription = async () => {
+      if (user?.id) {
+        try {
+          const response = await fetch(`/api/push/subscriptions?userId=${user.id}`);
+          if (response.ok) {
+            const data = await response.json();
+            const userSubscription = data.subscriptions?.find((sub: any) => sub.user_id === user.id);
+            if (userSubscription && userSubscription.is_active) {
+              // Se o usuário tem subscription ativa, atualizar o estado local
+              setIsPushEnabled(true);
+              setSettings(prev => ({
+                ...prev,
+                notifications: {
+                  ...prev.notifications,
+                  pushEnabled: true
+                }
+              }));
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao verificar subscription do usuário:', error);
+        }
+      }
+    };
+
+    checkUserSubscription();
+  }, [user?.id]);
 
   // Mobile Header Layout functions
   const updateMobileHeaderLayout = (element: 'logo' | 'welcome' | 'actions', axis: 'offsetX' | 'offsetY', value: number) => {
@@ -1499,7 +1693,8 @@ export default function Settings() {
         </div>
 
         <Tabs defaultValue={defaultTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-9">
+          {/* Desktop Tabs */}
+          <TabsList className="hidden md:grid w-full grid-cols-9">
             <TabsTrigger value="notifications" className="text-xs">Notificações</TabsTrigger>
             {!isMemberOnlyNotifications && (
               <>
@@ -1522,6 +1717,33 @@ export default function Settings() {
             )}
             {user?.role === 'admin' && (
               <TabsTrigger value="data-management" className="text-xs">Gestão de Dados</TabsTrigger>
+            )}
+          </TabsList>
+
+          {/* Mobile Tabs - Scrollable */}
+          <TabsList className="md:hidden flex w-full overflow-x-auto scrollbar-hide">
+            <TabsTrigger value="notifications" className="text-xs flex-shrink-0 px-2">Notificações</TabsTrigger>
+            {!isMemberOnlyNotifications && (
+              <>
+                <TabsTrigger value="privacy" className="text-xs flex-shrink-0 px-2">Privacidade</TabsTrigger>
+                <TabsTrigger value="appearance" className="text-xs flex-shrink-0 px-2">Aparência</TabsTrigger>
+              </>
+            )}
+
+            {user?.role === 'admin' && (
+              <TabsTrigger value="calendar" className="text-xs flex-shrink-0 px-2">Calendário</TabsTrigger>
+            )}
+            {user?.role === 'admin' && (
+              <TabsTrigger value="points-config" className="text-xs flex-shrink-0 px-2">Base de Cálculo</TabsTrigger>
+            )}
+            {user?.role === 'admin' && (
+              <TabsTrigger value="system" className="text-xs flex-shrink-0 px-2">Sistema</TabsTrigger>
+            )}
+            {user?.role === 'admin' && (
+              <TabsTrigger value="church" className="text-xs flex-shrink-0 px-2">Igreja</TabsTrigger>
+            )}
+            {user?.role === 'admin' && (
+              <TabsTrigger value="data-management" className="text-xs flex-shrink-0 px-2">Gestão de Dados</TabsTrigger>
             )}
           </TabsList>
 
@@ -1559,9 +1781,67 @@ export default function Settings() {
                     <div className="text-xs text-muted-foreground">Notificações no dispositivo</div>
                   </div>
                   <Switch
-                    checked={settings.notifications.pushEnabled}
-                    onCheckedChange={(checked) => updateSetting('notifications', 'pushEnabled', checked)}
+                    checked={isPushEnabled}
+                    onCheckedChange={async (checked) => {
+                      console.log('🔄 Tentando alterar notificações push para:', checked);
+                      console.log('🔍 isSupported:', isSupported);
+                      
+                      try {
+                        if (checked) {
+                          // Ativar push notifications
+                          console.log('📱 Ativando push notifications...');
+                          
+                          if (!isSupported) {
+                            console.log('❌ Push notifications não suportadas');
+                            toast({
+                              title: "Não suportado",
+                              description: "Seu navegador não suporta notificações push.",
+                              variant: "destructive"
+                            });
+                            return;
+                          }
+
+                          console.log('🔑 Solicitando permissão...');
+                          const subscription = await subscribe();
+                          console.log('✅ Subscription criada:', subscription);
+                          
+                          console.log('💾 Salvando no servidor...');
+                          await saveSubscriptionToServer(subscription);
+                          console.log('✅ Subscription salva no servidor');
+                          
+                          setIsPushEnabled(true);
+                          updateSetting('notifications', 'pushEnabled', true);
+                          
+                          toast({
+                            title: "Notificações ativadas",
+                            description: "Você receberá notificações push no seu dispositivo.",
+                          });
+                        } else {
+                          // Desativar push notifications
+                          console.log('📱 Desativando push notifications...');
+                          
+                          await unsubscribe();
+                          await removeSubscriptionFromServer();
+                          
+                          setIsPushEnabled(false);
+                          updateSetting('notifications', 'pushEnabled', false);
+                          
+                          toast({
+                            title: "Notificações desativadas",
+                            description: "As notificações push foram desativadas.",
+                          });
+                        }
+                      } catch (error) {
+                        console.error('❌ Error toggling push notifications:', error);
+                        toast({
+                          title: "Erro",
+                          description: `Não foi possível alterar as configurações de notificação: ${error.message}`,
+                          variant: "destructive"
+                        });
+                      }
+                    }}
                     data-testid="switch-push-notifications"
+                    disabled={!isSupported}
                   />
                 </div>
                 
@@ -1734,6 +2014,220 @@ export default function Settings() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Mobile Header Layout Editor */}
+            {user?.role === 'admin' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <SettingsIcon className="h-5 w-5" />
+                    Layout do Mobile Header
+                  </CardTitle>
+                  <CardDescription>
+                    Ajuste as posições dos elementos no header móvel
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="p-4 bg-gray-50 rounded-lg border">
+                    <p className="text-sm text-gray-600 mb-4">
+                      Arraste e solte os elementos para ajustar suas posições no header móvel
+                    </p>
+                    
+                    {/* Preview do Mobile Header */}
+                    <div className="bg-white rounded-lg border p-4 mb-4">
+                      <div className="text-xs text-gray-500 mb-2 text-center">Preview do Header</div>
+                      <div className="bg-gradient-to-r from-white via-blue-50/30 to-purple-50/30 rounded-lg p-3 border">
+                        <div className="flex items-center gap-3">
+                          {/* Logo */}
+                          <div 
+                            className="relative cursor-move bg-blue-100 p-2 rounded border-2 border-dashed border-blue-300"
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('text/plain', 'logo');
+                            }}
+                            style={{
+                              transform: `translateX(${mobileHeaderLayout.logo.offsetX}px) translateY(${mobileHeaderLayout.logo.offsetY}px)`
+                            }}
+                          >
+                            <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center text-white text-xs font-bold">
+                              L
+                            </div>
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full text-white text-xs flex items-center justify-center">
+                              ↕
+                            </div>
+                          </div>
+
+                          {/* Boas-vindas */}
+                          <div 
+                            className="relative cursor-move bg-green-100 p-2 rounded border-2 border-dashed border-green-300"
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('text/plain', 'welcome');
+                            }}
+                            style={{
+                              transform: `translateX(${mobileHeaderLayout.welcome.offsetX}px) translateY(${mobileHeaderLayout.welcome.offsetY}px)`
+                            }}
+                          >
+                            <div className="text-xs text-green-700 font-medium whitespace-nowrap">
+                              Boa noite, Usuário!
+                            </div>
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-600 rounded-full text-white text-xs flex items-center justify-center">
+                              ↕
+                            </div>
+                          </div>
+
+                          {/* Botões de ação */}
+                          <div 
+                            className="relative cursor-move bg-purple-100 p-2 rounded border-2 border-dashed border-purple-300 ml-auto"
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('text/plain', 'actions');
+                            }}
+                            style={{
+                              transform: `translateX(${mobileHeaderLayout.actions.offsetX}px) translateY(${mobileHeaderLayout.actions.offsetY}px)`
+                            }}
+                          >
+                            <div className="flex gap-1">
+                              <div className="w-4 h-4 bg-purple-500 rounded text-white text-xs flex items-center justify-center">C</div>
+                              <div className="w-4 h-4 bg-purple-500 rounded text-white text-xs flex items-center justify-center">N</div>
+                              <div className="w-4 h-4 bg-purple-500 rounded text-white text-xs flex items-center justify-center">U</div>
+                            </div>
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-600 rounded-full text-white text-xs flex items-center justify-center">
+                              ↕
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Controles de posição */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Logo */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Logo</Label>
+                        <div className="space-y-2">
+                          <div>
+                            <Label className="text-xs">X: {mobileHeaderLayout.logo.offsetX}px</Label>
+                            <input
+                              type="range"
+                              min="-50"
+                              max="50"
+                              value={mobileHeaderLayout.logo.offsetX}
+                              onChange={(e) => updateMobileHeaderLayout('logo', 'offsetX', parseInt(e.target.value))}
+                              className="w-full"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Y: {mobileHeaderLayout.logo.offsetY}px</Label>
+                            <input
+                              type="range"
+                              min="-20"
+                              max="20"
+                              value={mobileHeaderLayout.logo.offsetY}
+                              onChange={(e) => updateMobileHeaderLayout('logo', 'offsetY', parseInt(e.target.value))}
+                              className="w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Boas-vindas */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Boas-vindas</Label>
+                        <div className="space-y-2">
+                          <div>
+                            <Label className="text-xs">X: {mobileHeaderLayout.welcome.offsetX}px</Label>
+                            <input
+                              type="range"
+                              min="-50"
+                              max="50"
+                              value={mobileHeaderLayout.welcome.offsetX}
+                              onChange={(e) => updateMobileHeaderLayout('welcome', 'offsetX', parseInt(e.target.value))}
+                              className="w-full"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Y: {mobileHeaderLayout.welcome.offsetY}px</Label>
+                            <input
+                              type="range"
+                              min="-20"
+                              max="20"
+                              value={mobileHeaderLayout.welcome.offsetY}
+                              onChange={(e) => updateMobileHeaderLayout('welcome', 'offsetY', parseInt(e.target.value))}
+                              className="w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Botões de ação */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Botões de Ação</Label>
+                        <div className="space-y-2">
+                          <div>
+                            <Label className="text-xs">X: {mobileHeaderLayout.actions.offsetX}px</Label>
+                            <input
+                              type="range"
+                              min="-50"
+                              max="50"
+                              value={mobileHeaderLayout.actions.offsetX}
+                              onChange={(e) => updateMobileHeaderLayout('actions', 'offsetX', parseInt(e.target.value))}
+                              className="w-full"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Y: {mobileHeaderLayout.actions.offsetY}px</Label>
+                            <input
+                              type="range"
+                              min="-20"
+                              max="20"
+                              value={mobileHeaderLayout.actions.offsetY}
+                              onChange={(e) => updateMobileHeaderLayout('actions', 'offsetY', parseInt(e.target.value))}
+                              className="w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Botões de ação */}
+                    <div className="flex items-center gap-2 mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={resetMobileHeaderLayout}
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Resetar Posições
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={saveMobileHeaderLayout}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Salvar Layout
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          console.log('🔧 Settings - Teste manual do evento');
+                          const testEvent = new CustomEvent('mobileHeaderLayoutUpdated', { 
+                            detail: { layout: mobileHeaderLayout } 
+                          });
+                          window.dispatchEvent(testEvent);
+                          console.log('🔧 Settings - Evento de teste disparado');
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        🧪 Testar Sincronização
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             </TabsContent>
           )}
 
@@ -1752,314 +2246,8 @@ export default function Settings() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Logo Management */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-semibold">Logo do Sistema</h3>
-                      <Badge variant="secondary">Admin</Badge>
-                    </div>
-                    
-                    {/* Current Logo Display */}
-                    <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border">
-                      <div className="relative">
-                        {currentLogo ? (
-                          <>
-                            <img 
-                              src={currentLogo} 
-                              alt="Logo atual do sistema" 
-                              className="w-16 h-16 object-contain"
-                              onError={(e) => {
-                                console.log('❌ Erro ao carregar logo atual:', currentLogo);
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
-                              <span className="text-xs text-white font-bold">✓</span>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
-                            <span className="text-xs text-gray-500">Sem logo</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          {currentLogo ? 'Logo Atual' : 'Sem Logo Definida'}
-                        </p>
-                        <p className="text-xs text-gray-600">
-                          {currentLogo 
-                            ? 'Esta é a logo que aparece em todo o sistema' 
-                            : 'Nenhuma logo foi configurada para o sistema'
-                          }
-                        </p>
-                        {currentLogo && (
-                          <p className="text-xs text-gray-500 mt-1">Caminho: {currentLogo}</p>
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            localStorage.removeItem('systemLogo');
-                            setCurrentLogo('');
-                          }}
-                          title="Remover logo atual"
-                        >
-                          <RefreshCw className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            refreshLogo();
-                            toast({
-                              title: "Logo atualizada!",
-                              description: "Cache limpo e logo recarregada.",
-                            });
-                          }}
-                          title="Recarregar logo (limpar cache)"
-                        >
-                          <RefreshCw className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => {
-                            clearLogoSystem();
-                            setCurrentLogo('');
-                            toast({
-                              title: "Sistema limpo!",
-                              description: "Todas as logos antigas foram removidas.",
-                            });
-                          }}
-                          title="Limpar completamente o sistema de logo"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Logo Display - Read Only */}
-                    <div className="space-y-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
-                      <div className="text-center">
-                        <div className="flex items-center justify-center gap-2 mb-2">
-                          <SettingsIcon className="h-5 w-5 text-gray-500" />
-                          <span className="text-sm font-medium text-gray-700">Logo Atual do Sistema</span>
-                        </div>
-                        <p className="text-xs text-gray-500">
-                          A logo está salva no banco de dados e é exibida automaticamente em todo o sistema.
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Mobile Header Layout Editor */}
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-semibold">Layout do Mobile Header</h3>
-                        <Badge variant="secondary">Admin</Badge>
-                      </div>
-                      
-                      <div className="p-4 bg-gray-50 rounded-lg border">
-                        <p className="text-sm text-gray-600 mb-4">
-                          Arraste e solte os elementos para ajustar suas posições no header móvel
-                        </p>
-                        
-                        {/* Preview do Mobile Header */}
-                        <div className="bg-white rounded-lg border p-4 mb-4">
-                          <div className="text-xs text-gray-500 mb-2 text-center">Preview do Header</div>
-                          <div className="bg-gradient-to-r from-white via-blue-50/30 to-purple-50/30 rounded-lg p-3 border">
-                            <div className="flex items-center gap-3">
-                              {/* Logo */}
-                              <div 
-                                className="relative cursor-move bg-blue-100 p-2 rounded border-2 border-dashed border-blue-300"
-                                draggable
-                                onDragStart={(e) => {
-                                  e.dataTransfer.setData('text/plain', 'logo');
-                                }}
-                                style={{
-                                  transform: `translateX(${mobileHeaderLayout.logo.offsetX}px) translateY(${mobileHeaderLayout.logo.offsetY}px)`
-                                }}
-                              >
-                                <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center text-white text-xs font-bold">
-                                  L
-                                </div>
-                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full text-white text-xs flex items-center justify-center">
-                                  ↕
-                                </div>
-                              </div>
-
-                              {/* Boas-vindas */}
-                              <div 
-                                className="relative cursor-move bg-green-100 p-2 rounded border-2 border-dashed border-green-300"
-                                draggable
-                                onDragStart={(e) => {
-                                  e.dataTransfer.setData('text/plain', 'welcome');
-                                }}
-                                style={{
-                                  transform: `translateX(${mobileHeaderLayout.welcome.offsetX}px) translateY(${mobileHeaderLayout.welcome.offsetY}px)`
-                                }}
-                              >
-                                <div className="text-xs text-green-700 font-medium whitespace-nowrap">
-                                  Boa noite, Usuário!
-                                </div>
-                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-600 rounded-full text-white text-xs flex items-center justify-center">
-                                  ↕
-                                </div>
-                              </div>
-
-                              {/* Botões de ação */}
-                              <div 
-                                className="relative cursor-move bg-purple-100 p-2 rounded border-2 border-dashed border-purple-300 ml-auto"
-                                draggable
-                                onDragStart={(e) => {
-                                  e.dataTransfer.setData('text/plain', 'actions');
-                                }}
-                                style={{
-                                  transform: `translateX(${mobileHeaderLayout.actions.offsetX}px) translateY(${mobileHeaderLayout.actions.offsetY}px)`
-                                }}
-                              >
-                                <div className="flex gap-1">
-                                  <div className="w-4 h-4 bg-purple-500 rounded text-white text-xs flex items-center justify-center">C</div>
-                                  <div className="w-4 h-4 bg-purple-500 rounded text-white text-xs flex items-center justify-center">N</div>
-                                  <div className="w-4 h-4 bg-purple-500 rounded text-white text-xs flex items-center justify-center">U</div>
-                                </div>
-                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-600 rounded-full text-white text-xs flex items-center justify-center">
-                                  ↕
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Controles de posição */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          {/* Logo */}
-                          <div className="space-y-2">
-                            <Label className="text-sm font-medium">Logo</Label>
-                            <div className="space-y-2">
-                              <div>
-                                <Label className="text-xs">X: {mobileHeaderLayout.logo.offsetX}px</Label>
-                                <input
-                                  type="range"
-                                  min="-50"
-                                  max="50"
-                                  value={mobileHeaderLayout.logo.offsetX}
-                                  onChange={(e) => updateMobileHeaderLayout('logo', 'offsetX', parseInt(e.target.value))}
-                                  className="w-full"
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs">Y: {mobileHeaderLayout.logo.offsetY}px</Label>
-                                <input
-                                  type="range"
-                                  min="-20"
-                                  max="20"
-                                  value={mobileHeaderLayout.logo.offsetY}
-                                  onChange={(e) => updateMobileHeaderLayout('logo', 'offsetY', parseInt(e.target.value))}
-                                  className="w-full"
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Boas-vindas */}
-                          <div className="space-y-2">
-                            <Label className="text-sm font-medium">Boas-vindas</Label>
-                            <div className="space-y-2">
-                              <div>
-                                <Label className="text-xs">X: {mobileHeaderLayout.welcome.offsetX}px</Label>
-                                <input
-                                  type="range"
-                                  min="-50"
-                                  max="50"
-                                  value={mobileHeaderLayout.welcome.offsetX}
-                                  onChange={(e) => updateMobileHeaderLayout('welcome', 'offsetX', parseInt(e.target.value))}
-                                  className="w-full"
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs">Y: {mobileHeaderLayout.welcome.offsetY}px</Label>
-                                <input
-                                  type="range"
-                                  min="-20"
-                                  max="20"
-                                  value={mobileHeaderLayout.welcome.offsetY}
-                                  onChange={(e) => updateMobileHeaderLayout('welcome', 'offsetY', parseInt(e.target.value))}
-                                  className="w-full"
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Botões de ação */}
-                          <div className="space-y-2">
-                            <Label className="text-sm font-medium">Botões de Ação</Label>
-                            <div className="space-y-2">
-                              <div>
-                                <Label className="text-xs">X: {mobileHeaderLayout.actions.offsetX}px</Label>
-                                <input
-                                  type="range"
-                                  min="-50"
-                                  max="50"
-                                  value={mobileHeaderLayout.actions.offsetX}
-                                  onChange={(e) => updateMobileHeaderLayout('actions', 'offsetX', parseInt(e.target.value))}
-                                  className="w-full"
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs">Y: {mobileHeaderLayout.actions.offsetY}px</Label>
-                                <input
-                                  type="range"
-                                  min="-20"
-                                  max="20"
-                                  value={mobileHeaderLayout.actions.offsetY}
-                                  onChange={(e) => updateMobileHeaderLayout('actions', 'offsetY', parseInt(e.target.value))}
-                                  className="w-full"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Botões de ação */}
-                        <div className="flex items-center gap-2 mt-4">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={resetMobileHeaderLayout}
-                          >
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Resetar Posições
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={saveMobileHeaderLayout}
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            <Save className="h-4 w-4 mr-2" />
-                            Salvar Layout
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              console.log('🔧 Settings - Teste manual do evento');
-                              const testEvent = new CustomEvent('mobileHeaderLayoutUpdated', { 
-                                detail: { layout: mobileHeaderLayout } 
-                              });
-                              window.dispatchEvent(testEvent);
-                              console.log('🔧 Settings - Evento de teste disparado');
-                            }}
-                            className="bg-blue-600 hover:bg-blue-700 text-white"
-                          >
-                            🧪 Testar Sincronização
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                    {/* Conteúdo de Sistema (sem layout do mobile header) */}
+                  {/* Notificações Push foram movidas para página própria de administração */}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -2283,8 +2471,22 @@ export default function Settings() {
                   {/* Ações de Importação */}
                   <div className="space-y-4">
                     <div>
-                      <h3 className="text-lg font-semibold mb-3">Importação de Eventos</h3>
+                      <h3 className="text-lg font-semibold mb-3">Importação de Dados</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <Button 
+                          onClick={() => setShowUserDataImportModal(true)} 
+                          variant="outline" 
+                          className="h-auto p-4 flex flex-col items-start gap-2 bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200 hover:border-blue-300"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-blue-600" />
+                            <span className="font-medium text-blue-900">Importar Dados de Usuários</span>
+                          </div>
+                          <span className="text-sm text-blue-700 text-left">
+                            Importar dados de pontuação do Power BI (.xlsx)
+                          </span>
+                        </Button>
+
                         <Button 
                           onClick={() => setShowImportExcelModal(true)} 
                           variant="outline" 
@@ -2292,7 +2494,7 @@ export default function Settings() {
                         >
                           <div className="flex items-center gap-2">
                             <Upload className="h-4 w-4" />
-                            <span className="font-medium">Importar Excel</span>
+                            <span className="font-medium">Importar Eventos</span>
                           </div>
                           <span className="text-sm text-muted-foreground text-left">
                             Importar eventos de um arquivo Excel (.xlsx)
@@ -2896,6 +3098,105 @@ export default function Settings() {
         isOpen={showPermissionsModal}
         onClose={() => setShowPermissionsModal(false)}
       />
+
+      {/* Modal de Envio de Notificações */}
+      <Dialog open={showNotificationModal} onOpenChange={setShowNotificationModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bell className="h-5 w-5" />
+              Enviar Notificação Push
+            </DialogTitle>
+            <DialogDescription>
+              Envie uma notificação personalizada para os usuários
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="notification-title">Título</Label>
+              <Input
+                id="notification-title"
+                placeholder="Digite o título da notificação"
+                value={notificationTitle}
+                onChange={(e) => setNotificationTitle(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notification-message">Mensagem</Label>
+              <textarea
+                id="notification-message"
+                className="w-full min-h-[100px] p-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Digite a mensagem da notificação"
+                value={notificationMessage}
+                onChange={(e) => setNotificationMessage(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notification-type">Tipo</Label>
+              <Select value={notificationType} onValueChange={setNotificationType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">Geral</SelectItem>
+                  <SelectItem value="announcement">Anúncio</SelectItem>
+                  <SelectItem value="reminder">Lembrete</SelectItem>
+                  <SelectItem value="urgent">Urgente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notification-user">Destinatário (opcional)</Label>
+              <Select 
+                value={selectedUserId?.toString() || ""} 
+                onValueChange={(value) => setSelectedUserId(value === "all" ? "all" : value ? parseInt(value) : null)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos os usuários" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os usuários</SelectItem>
+                  {usersList.map((user) => (
+                    <SelectItem key={user.id} value={user.id.toString()}>
+                      {user.name} ({user.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <div className="text-sm text-blue-800">
+                <strong>Preview:</strong>
+              </div>
+              <div className="text-sm text-blue-700 mt-1">
+                <div className="font-medium">{notificationTitle || "Título da notificação"}</div>
+                <div className="text-xs">{notificationMessage || "Mensagem da notificação"}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowNotificationModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={sendNotification}
+              disabled={!notificationTitle || !notificationMessage}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Enviar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </MobileLayout>
   );

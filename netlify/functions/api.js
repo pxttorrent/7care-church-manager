@@ -761,19 +761,21 @@ exports.handler = async (event, context) => {
         
         // Processar usuários com dados de visitas
         const processedUsers = users.map(user => {
+          // CORREÇÃO: Usar extra_data (do banco) que contém TODOS os dados do usuário
           let extraData = {};
-          if (user.extraData) {
+          const rawData = user.extra_data || user.extraData;
+          if (rawData) {
             try {
-              extraData = typeof user.extraData === 'string' 
-                ? JSON.parse(user.extraData) 
-                : user.extraData;
+              extraData = typeof rawData === 'string' 
+                ? JSON.parse(rawData) 
+                : rawData;
             } catch (e) {
               console.log(`⚠️ Erro ao parsear extraData do usuário ${user.name}:`, e.message);
               extraData = {};
             }
           }
           
-          // Adicionar dados de visitas se existirem
+          // ADICIONAR (não sobrescrever) dados de visitas se existirem
           const visitData = visitsMap.get(user.id);
           if (visitData) {
             extraData.visited = visitData.visited;
@@ -821,23 +823,12 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Função para calcular pontos do usuário (versão funcional otimizada)
+    // Função para calcular pontos do usuário (VERSÃO SIMPLIFICADA - USA COLUNAS DIRETAS)
     const calculateUserPoints = async (user) => {
       try {
         // Pular Super Admin
         if (user.email === 'admin@7care.com' || user.role === 'admin') {
           return 0;
-        }
-
-        // Parsear extraData se for string
-        let extraData = user.extraData || user.extra_data;
-        
-        if (typeof extraData === 'string') {
-          try {
-            extraData = JSON.parse(extraData);
-          } catch (error) {
-            extraData = {};
-          }
         }
 
         // Buscar configuração atual do banco de dados
@@ -850,172 +841,130 @@ exports.handler = async (event, context) => {
         `;
         
         if (configRow.length === 0) {
-          return 500; // Fallback se não houver configuração
+          return 0; // Se não há configuração, retornar 0
         }
         
-        const pointsConfig = configRow[0];
+        const config = configRow[0];
         let totalPoints = 0;
 
-        // 1. ENGAJAMENTO
-        if (extraData?.engajamento) {
-          const engajamento = extraData.engajamento.toLowerCase();
-          if (engajamento.includes('alto')) {
-            totalPoints += pointsConfig.engajamento.alto || 0;
-          } else if (engajamento.includes('médio') || engajamento.includes('medio')) {
-            totalPoints += pointsConfig.engajamento.medio || 0;
-          } else if (engajamento.includes('baixo')) {
-            totalPoints += pointsConfig.engajamento.baixo || 0;
-          }
+        // DEBUG TEMPORÁRIO
+        if (user.name && user.name.includes('Daniela')) {
+          console.log(`🔍 DEBUG - Calculando pontos para ${user.name}`);
+          console.log(`  engajamento: ${user.engajamento}`);
+          console.log(`  classificacao: ${user.classificacao}`);
+          console.log(`  tem_licao: ${user.tem_licao}`);
+          console.log(`  total_presenca: ${user.total_presenca}`);
         }
 
-        // 2. CLASSIFICAÇÃO
-        if (extraData?.classificacao) {
-          const classificacao = extraData.classificacao.toLowerCase();
-          if (classificacao.includes('frequente')) {
-            totalPoints += pointsConfig.classificacao.frequente || 0;
-          } else if (classificacao.includes('não frequente') || classificacao.includes('nao frequente')) {
-            totalPoints += pointsConfig.classificacao.naoFrequente || 0;
-          }
+        // 1. ENGAJAMENTO (usar coluna direta)
+        if (user.engajamento) {
+          const eng = user.engajamento.toLowerCase();
+          if (eng.includes('alto')) totalPoints += config.engajamento.alto || 0;
+          else if (eng.includes('médio') || eng.includes('medio')) totalPoints += config.engajamento.medio || 0;
+          else if (eng.includes('baixo')) totalPoints += config.engajamento.baixo || 0;
         }
 
-        // 3. DIZIMISTA
-        if (extraData?.dizimistaType) {
-          const dizimista = extraData.dizimistaType.toLowerCase();
-          if (dizimista.includes('recorrente')) {
-            totalPoints += pointsConfig.dizimista.recorrente || 0;
-          } else if (dizimista.includes('sazonal')) {
-            totalPoints += pointsConfig.dizimista.sazonal || 0;
-          } else if (dizimista.includes('pontual')) {
-            totalPoints += pointsConfig.dizimista.pontual || 0;
-          } else if (dizimista.includes('não dizimista') || dizimista.includes('nao dizimista')) {
-            totalPoints += pointsConfig.dizimista.naoDizimista || 0;
-          }
+        // 2. CLASSIFICAÇÃO (usar coluna direta)
+        if (user.classificacao) {
+          const classif = user.classificacao.toLowerCase();
+          if (classif.includes('frequente')) totalPoints += config.classificacao.frequente || 0;
+          else totalPoints += config.classificacao.naoFrequente || 0;
         }
 
-        // 4. OFERTANTE
-        if (extraData?.ofertanteType) {
-          const ofertante = extraData.ofertanteType.toLowerCase();
-          if (ofertante.includes('recorrente')) {
-            totalPoints += pointsConfig.ofertante.recorrente || 0;
-          } else if (ofertante.includes('sazonal')) {
-            totalPoints += pointsConfig.ofertante.sazonal || 0;
-          } else if (ofertante.includes('pontual')) {
-            totalPoints += pointsConfig.ofertante.pontual || 0;
-          } else if (ofertante.includes('não ofertante') || ofertante.includes('nao ofertante')) {
-            totalPoints += pointsConfig.ofertante.naoOfertante || 0;
-          }
+        // 3. DIZIMISTA (usar coluna direta)
+        if (user.dizimista_type) {
+          const diz = user.dizimista_type.toLowerCase();
+          if (diz.includes('recorrente')) totalPoints += config.dizimista.recorrente || 0;
+          else if (diz.includes('sazonal')) totalPoints += config.dizimista.sazonal || 0;
+          else if (diz.includes('pontual')) totalPoints += config.dizimista.pontual || 0;
+          else totalPoints += config.dizimista.naoDizimista || 0;
         }
 
-        // 5. TEMPO DE BATISMO
-        if (extraData?.tempoBatismoAnos && typeof extraData.tempoBatismoAnos === 'number') {
-          const tempo = extraData.tempoBatismoAnos;
-          if (tempo >= 30) {
-            totalPoints += pointsConfig.tempobatismo.maisVinte || 0;
-          } else if (tempo >= 20) {
-            totalPoints += pointsConfig.tempobatismo.vinteAnos || 0;
-          } else if (tempo >= 10) {
-            totalPoints += pointsConfig.tempobatismo.dezAnos || 0;
-          } else if (tempo >= 5) {
-            totalPoints += pointsConfig.tempobatismo.cincoAnos || 0;
-          } else if (tempo >= 2) {
-            totalPoints += pointsConfig.tempobatismo.doisAnos || 0;
-          }
+        // 4. OFERTANTE (usar coluna direta)
+        if (user.ofertante_type) {
+          const ofer = user.ofertante_type.toLowerCase();
+          if (ofer.includes('recorrente')) totalPoints += config.ofertante.recorrente || 0;
+          else if (ofer.includes('sazonal')) totalPoints += config.ofertante.sazonal || 0;
+          else if (ofer.includes('pontual')) totalPoints += config.ofertante.pontual || 0;
+          else totalPoints += config.ofertante.naoOfertante || 0;
         }
 
-        // 6. CARGOS
-        if (extraData?.departamentosCargos) {
-          const numCargos = extraData.departamentosCargos.split(';').length;
-          if (numCargos >= 3) {
-            totalPoints += pointsConfig.cargos.tresOuMais || 0;
-          } else if (numCargos === 2) {
-            totalPoints += pointsConfig.cargos.doisCargos || 0;
-          } else if (numCargos === 1) {
-            totalPoints += pointsConfig.cargos.umCargo || 0;
-          }
+        // 5. TEMPO DE BATISMO (usar coluna direta)
+        if (user.tempo_batismo_anos) {
+          const tempo = user.tempo_batismo_anos;
+          if (tempo >= 30) totalPoints += config.tempobatismo.maisVinte || 0;
+          else if (tempo >= 20) totalPoints += config.tempobatismo.vinteAnos || 0;
+          else if (tempo >= 10) totalPoints += config.tempobatismo.dezAnos || 0;
+          else if (tempo >= 5) totalPoints += config.tempobatismo.cincoAnos || 0;
+          else if (tempo >= 2) totalPoints += config.tempobatismo.doisAnos || 0;
         }
 
-        // 7. NOME DA UNIDADE
-        if (extraData?.nomeUnidade && extraData.nomeUnidade.trim()) {
-          totalPoints += pointsConfig.nomeunidade.comUnidade || 0;
+        // 6. CARGOS (usar coluna direta)
+        if (user.departamentos_cargos) {
+          const numCargos = user.departamentos_cargos.split(';').filter(c => c.trim()).length;
+          if (numCargos >= 3) totalPoints += config.cargos.tresOuMais || 0;
+          else if (numCargos === 2) totalPoints += config.cargos.doisCargos || 0;
+          else if (numCargos === 1) totalPoints += config.cargos.umCargo || 0;
         }
 
-        // 8. TEM LIÇÃO
-        if (extraData?.temLicao) {
-          totalPoints += pointsConfig.temlicao.comLicao || 0;
+        // 7. NOME DA UNIDADE (usar coluna direta)
+        if (user.nome_unidade && user.nome_unidade.trim()) {
+          totalPoints += config.nomeunidade.comUnidade || 0;
         }
 
-        // 9. TOTAL DE PRESENÇA
-        if (extraData?.totalPresenca !== undefined && extraData.totalPresenca !== null) {
-          const presenca = extraData.totalPresenca;
-          if (presenca >= 8) {
-            totalPoints += pointsConfig.totalpresenca.oitoATreze || 0;
-          } else if (presenca >= 4) {
-            totalPoints += pointsConfig.totalpresenca.quatroASete || 0;
-          } else {
-            totalPoints += pointsConfig.totalpresenca.zeroATres || 0;
-          }
+        // 8. TEM LIÇÃO (usar coluna direta)
+        if (user.tem_licao === true) {
+          totalPoints += config.temlicao.comLicao || 0;
         }
 
-        // 10. ESCOLA SABATINA - PONTUAÇÃO DINÂMICA
-        if (extraData?.comunhao && extraData.comunhao > 0) {
-          totalPoints += extraData.comunhao * (pointsConfig.escolasabatina.comunhao || 0);
+        // 9. TOTAL DE PRESENÇA (usar coluna direta)
+        if (user.total_presenca !== undefined && user.total_presenca !== null) {
+          const presenca = user.total_presenca;
+          if (presenca >= 8) totalPoints += config.totalpresenca.oitoATreze || 0;
+          else if (presenca >= 4) totalPoints += config.totalpresenca.quatroASete || 0;
+          else totalPoints += config.totalpresenca.zeroATres || 0;
         }
 
-        if (extraData?.missao && extraData.missao > 0) {
-          totalPoints += extraData.missao * (pointsConfig.escolasabatina.missao || 0);
+        // 10. ESCOLA SABATINA - Comunhão (usar coluna direta)
+        if (user.comunhao && user.comunhao > 0) {
+          totalPoints += user.comunhao * (config.escolasabatina.comunhao || 0);
         }
 
-        if (extraData?.estudoBiblico && extraData.estudoBiblico > 0) {
-          totalPoints += extraData.estudoBiblico * (pointsConfig.escolasabatina.estudoBiblico || 0);
+        // 11. ESCOLA SABATINA - Missão (usar coluna direta)
+        if (user.missao && user.missao > 0) {
+          totalPoints += user.missao * (config.escolasabatina.missao || 0);
         }
 
-        if (extraData?.batizouAlguem === 'Sim' || extraData?.batizouAlguem === true || extraData?.batizouAlguem === 'true') {
-          totalPoints += pointsConfig.escolasabatina.batizouAlguem || 0;
+        // 12. ESCOLA SABATINA - Estudo Bíblico (usar coluna direta)
+        if (user.estudo_biblico && user.estudo_biblico > 0) {
+          totalPoints += user.estudo_biblico * (config.escolasabatina.estudoBiblico || 0);
         }
 
-        if (extraData?.discPosBatismal && extraData.discPosBatismal > 0) {
-          totalPoints += extraData.discPosBatismal * (pointsConfig.escolasabatina.discipuladoPosBatismo || 0);
+        // 13. BATIZOU ALGUÉM (usar coluna direta)
+        if (user.batizou_alguem === true) {
+          totalPoints += config.escolasabatina.batizouAlguem || 0;
         }
 
-        // 11. CPF VÁLIDO
-        if (extraData?.cpfValido === 'Sim' || extraData?.cpfValido === true) {
-          totalPoints += pointsConfig.cpfvalido.valido || 0;
+        // 14. DISCIPULADO PÓS-BATISMO (usar coluna direta)
+        if (user.disc_pos_batismal && user.disc_pos_batismal > 0) {
+          totalPoints += user.disc_pos_batismal * (config.escolasabatina.discipuladoPosBatismo || 0);
         }
 
-        // 12. CAMPOS VAZIOS ACMS
-        if (extraData?.camposVazios === 0 || extraData?.camposVazios === '0' || extraData?.camposVazios === false || !extraData?.camposVazios) {
-          totalPoints += pointsConfig.camposvaziosacms.completos || 0;
+        // 15. CPF VÁLIDO (usar coluna direta)
+        if (user.cpf_valido === true) {
+          totalPoints += config.cpfvalido.valido || 0;
         }
 
-        const finalPoints = Math.round(totalPoints);
-        
-        // Se não conseguiu calcular pontos baseado nos dados, usar fallback baseado no role
-        if (finalPoints === 0) {
-          if (user.role && user.role.includes('missionary')) {
-            return 800;
-          } else if (user.role === 'member') {
-            return 500;
-          } else if (user.role === 'interested') {
-            return 200;
-          } else {
-            return 100;
-          }
+        // 16. SEM CAMPOS VAZIOS (usar coluna direta)
+        if (user.campos_vazios === false) {
+          totalPoints += config.camposvaziosacms.completos || 0;
         }
-        
-        return finalPoints;
+
+        return Math.round(totalPoints);
 
       } catch (error) {
         console.error('❌ Erro na função calculateUserPoints:', error);
-        // Fallback em caso de erro
-        if (user.role && user.role.includes('missionary')) {
-          return 800;
-        } else if (user.role === 'member') {
-          return 500;
-        } else if (user.role === 'interested') {
-          return 200;
-        } else {
-          return 100;
-        }
+        return 0;
       }
     };
 
@@ -1065,19 +1014,21 @@ exports.handler = async (event, context) => {
         
         // Processar usuários com dados de visitas e calcular pontos
         const processedUsers = await Promise.all(users.map(async (user) => {
+          // CORREÇÃO: Usar extra_data (do banco) que contém TODOS os dados do usuário
           let extraData = {};
-          if (user.extraData) {
+          const rawData = user.extra_data || user.extraData;
+          if (rawData) {
             try {
-              extraData = typeof user.extraData === 'string' 
-                ? JSON.parse(user.extraData) 
-                : user.extraData;
+              extraData = typeof rawData === 'string' 
+                ? JSON.parse(rawData) 
+                : rawData;
             } catch (e) {
               console.log(`⚠️ Erro ao parsear extraData do usuário ${user.name}:`, e.message);
               extraData = {};
             }
           }
           
-          // Adicionar dados de visitas se existirem
+          // ADICIONAR (não sobrescrever) dados de visitas se existirem
           const visitData = visitsMap.get(user.id);
           if (visitData) {
             extraData.visited = visitData.visited;
@@ -1148,16 +1099,17 @@ exports.handler = async (event, context) => {
         // Processar extraData para garantir que visitas sejam exibidas corretamente
         const user = users[0];
         let extraData = {};
-        if (user.extraData) {
-          if (typeof user.extraData === 'string') {
+        const rawData = user.extra_data || user.extraData;
+        if (rawData) {
+          if (typeof rawData === 'string') {
             try {
-              extraData = JSON.parse(user.extraData);
+              extraData = JSON.parse(rawData);
             } catch (e) {
               console.log(`⚠️ Erro ao parsear extraData do usuário ${user.name}:`, e.message);
               extraData = {};
             }
-          } else if (typeof user.extraData === 'object') {
-            extraData = user.extraData;
+          } else if (typeof rawData === 'object') {
+            extraData = rawData;
           }
         }
         
@@ -7663,7 +7615,14 @@ exports.handler = async (event, context) => {
                   }
                 }
                 
-                // Atualizar usuário existente
+                // Extrair campos para colunas diretas do extraData
+                const extraData = userData.extraData || {};
+                const temLicao = extraData.temLicao === true || extraData.temLicao === 'Sim';
+                const batizouAlguem = extraData.batizouAlguem === 'Sim' || extraData.batizouAlguem === true;
+                const cpfValido = extraData.cpfValido === 'Sim' || extraData.cpfValido === true;
+                const camposVazios = !(extraData.camposVazios === 0 || extraData.camposVazios === false || extraData.camposVazios === '0');
+                
+                // Atualizar usuário existente (incluindo novas colunas)
                 await sql`
                   UPDATE users SET 
                     name = ${userData.name},
@@ -7680,6 +7639,22 @@ exports.handler = async (event, context) => {
                     is_tither = ${userData.isTither || false},
                     extra_data = ${userData.extraData ? JSON.stringify(userData.extraData) : null},
                     observations = ${userData.observations || null},
+                    engajamento = ${extraData.engajamento || null},
+                    classificacao = ${extraData.classificacao || null},
+                    dizimista_type = ${extraData.dizimistaType || null},
+                    ofertante_type = ${extraData.ofertanteType || null},
+                    tempo_batismo_anos = ${extraData.tempoBatismoAnos || null},
+                    departamentos_cargos = ${extraData.departamentosCargos || null},
+                    nome_unidade = ${extraData.nomeUnidade || null},
+                    tem_licao = ${temLicao},
+                    total_presenca = ${extraData.totalPresenca || 0},
+                    comunhao = ${extraData.comunhao || 0},
+                    missao = ${extraData.missao || 0},
+                    estudo_biblico = ${extraData.estudoBiblico || 0},
+                    batizou_alguem = ${batizouAlguem},
+                    disc_pos_batismal = ${extraData.discPosBatismal || 0},
+                    cpf_valido = ${cpfValido},
+                    campos_vazios = ${camposVazios},
                     updated_at = NOW()
                   WHERE email = ${userData.email}
                 `;
@@ -7743,13 +7718,25 @@ exports.handler = async (event, context) => {
               const passwordTime = Date.now() - passwordStartTime;
               console.log(`⏱️ Hash da senha para ${userData.email}: ${passwordTime}ms`);
               
+              // Extrair campos para colunas diretas do extraData
+              const extraData = userData.extraData || {};
+              const temLicao = extraData.temLicao === true || extraData.temLicao === 'Sim';
+              const batizouAlguem = extraData.batizouAlguem === 'Sim' || extraData.batizouAlguem === true;
+              const cpfValido = extraData.cpfValido === 'Sim' || extraData.cpfValido === true;
+              const camposVazios = !(extraData.camposVazios === 0 || extraData.camposVazios === false || extraData.camposVazios === '0');
+              
               const insertStartTime = Date.now();
               await sql`
                 INSERT INTO users (
                   name, email, password, role, church, church_code, 
                   address, birth_date, baptism_date, civil_status, occupation, 
                   education, is_donor, is_tither, extra_data, observations, 
-                  is_approved, status, created_at, updated_at
+                  is_approved, status,
+                  engajamento, classificacao, dizimista_type, ofertante_type,
+                  tempo_batismo_anos, departamentos_cargos, nome_unidade, tem_licao,
+                  total_presenca, comunhao, missao, estudo_biblico,
+                  batizou_alguem, disc_pos_batismal, cpf_valido, campos_vazios,
+                  created_at, updated_at
                 ) VALUES (
                   ${userData.name},
                   ${userData.email},
@@ -7769,6 +7756,22 @@ exports.handler = async (event, context) => {
                   ${userData.observations || null},
                   ${userData.isApproved || false},
                   ${userData.status || 'pending'},
+                  ${extraData.engajamento || null},
+                  ${extraData.classificacao || null},
+                  ${extraData.dizimistaType || null},
+                  ${extraData.ofertanteType || null},
+                  ${extraData.tempoBatismoAnos || null},
+                  ${extraData.departamentosCargos || null},
+                  ${extraData.nomeUnidade || null},
+                  ${temLicao},
+                  ${extraData.totalPresenca || 0},
+                  ${extraData.comunhao || 0},
+                  ${extraData.missao || 0},
+                  ${extraData.estudoBiblico || 0},
+                  ${batizouAlguem},
+                  ${extraData.discPosBatismal || 0},
+                  ${cpfValido},
+                  ${camposVazios},
                   NOW(),
                   NOW()
                 )
@@ -9326,6 +9329,232 @@ exports.handler = async (event, context) => {
           statusCode: 500,
           headers,
           body: JSON.stringify({ error: 'Erro ao salvar configuração de pontos' })
+        };
+      }
+    }
+
+    // ROTA DE DEBUG - Testar cálculo de pontos para um usuário específico
+    if (path === '/api/system/debug-points' && method === 'GET') {
+      try {
+        const userName = new URL(`https://example.com${event.path}`).searchParams.get('name') || 'Daniela';
+        console.log(`🔍 DEBUG: Buscando usuário com nome contendo "${userName}"...`);
+        
+        // Buscar usuário
+        const users = await sql`
+          SELECT * FROM users 
+          WHERE name ILIKE ${`%${userName}%`} 
+          AND role != 'admin'
+          LIMIT 1
+        `;
+        
+        if (users.length === 0) {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ error: 'Usuário não encontrado' })
+          };
+        }
+        
+        const user = users[0];
+        console.log(`✅ Usuário encontrado: ${user.name} (ID: ${user.id})`);
+        
+        // Buscar configuração
+        const configRow = await sql`
+          SELECT * FROM points_configuration LIMIT 1
+        `;
+        
+        const config = configRow[0];
+        
+        // Calcular pontos manualmente passo a passo
+        const debug = {
+          user: {
+            id: user.id,
+            name: user.name,
+            currentPoints: user.points
+          },
+          columns: {
+            engajamento: user.engajamento,
+            classificacao: user.classificacao,
+            dizimista_type: user.dizimista_type,
+            ofertante_type: user.ofertante_type,
+            tempo_batismo_anos: user.tempo_batismo_anos,
+            departamentos_cargos: user.departamentos_cargos,
+            nome_unidade: user.nome_unidade,
+            tem_licao: user.tem_licao,
+            total_presenca: user.total_presenca,
+            comunhao: user.comunhao,
+            missao: user.missao,
+            estudo_biblico: user.estudo_biblico,
+            batizou_alguem: user.batizou_alguem,
+            disc_pos_batismal: user.disc_pos_batismal,
+            cpf_valido: user.cpf_valido,
+            campos_vazios: user.campos_vazios
+          },
+          calculation: [],
+          total: 0
+        };
+        
+        let total = 0;
+        
+        // 1. Engajamento
+        if (user.engajamento) {
+          const eng = user.engajamento.toLowerCase();
+          let points = 0;
+          if (eng.includes('alto')) points = config.engajamento.alto || 0;
+          else if (eng.includes('médio') || eng.includes('medio')) points = config.engajamento.medio || 0;
+          else if (eng.includes('baixo')) points = config.engajamento.baixo || 0;
+          total += points;
+          debug.calculation.push({ field: 'Engajamento', value: user.engajamento, points, total });
+        }
+        
+        // 2. Classificação
+        if (user.classificacao) {
+          const classif = user.classificacao.toLowerCase();
+          let points = 0;
+          if (classif.includes('frequente')) points = config.classificacao.frequente || 0;
+          else points = config.classificacao.naoFrequente || 0;
+          total += points;
+          debug.calculation.push({ field: 'Classificação', value: user.classificacao, points, total });
+        }
+        
+        // 3. Dizimista
+        if (user.dizimista_type) {
+          const diz = user.dizimista_type.toLowerCase();
+          let points = 0;
+          if (diz.includes('recorrente')) points = config.dizimista.recorrente || 0;
+          else if (diz.includes('sazonal')) points = config.dizimista.sazonal || 0;
+          else if (diz.includes('pontual')) points = config.dizimista.pontual || 0;
+          total += points;
+          debug.calculation.push({ field: 'Dizimista', value: user.dizimista_type, points, total });
+        }
+        
+        // 4. Ofertante
+        if (user.ofertante_type) {
+          const ofer = user.ofertante_type.toLowerCase();
+          let points = 0;
+          if (ofer.includes('recorrente')) points = config.ofertante.recorrente || 0;
+          else if (ofer.includes('sazonal')) points = config.ofertante.sazonal || 0;
+          else if (ofer.includes('pontual')) points = config.ofertante.pontual || 0;
+          total += points;
+          debug.calculation.push({ field: 'Ofertante', value: user.ofertante_type, points, total });
+        }
+        
+        // 5. Tempo de Batismo
+        if (user.tempo_batismo_anos) {
+          let points = 0;
+          if (user.tempo_batismo_anos >= 30) points = config.tempobatismo.maisVinte || 0;
+          else if (user.tempo_batismo_anos >= 20) points = config.tempobatismo.vinteAnos || 0;
+          else if (user.tempo_batismo_anos >= 10) points = config.tempobatismo.dezAnos || 0;
+          else if (user.tempo_batismo_anos >= 5) points = config.tempobatismo.cincoAnos || 0;
+          else if (user.tempo_batismo_anos >= 2) points = config.tempobatismo.doisAnos || 0;
+          total += points;
+          debug.calculation.push({ field: 'Tempo Batismo', value: `${user.tempo_batismo_anos} anos`, points, total });
+        }
+        
+        // 6. Cargos
+        if (user.departamentos_cargos) {
+          const numCargos = user.departamentos_cargos.split(';').filter(c => c.trim()).length;
+          let points = 0;
+          if (numCargos >= 3) points = config.cargos.tresOuMais || 0;
+          else if (numCargos === 2) points = config.cargos.doisCargos || 0;
+          else if (numCargos === 1) points = config.cargos.umCargo || 0;
+          total += points;
+          debug.calculation.push({ field: 'Cargos', value: `${numCargos} cargos`, points, total });
+        }
+        
+        // 7. Nome Unidade
+        if (user.nome_unidade && user.nome_unidade.trim()) {
+          const points = config.nomeunidade.comUnidade || 0;
+          total += points;
+          debug.calculation.push({ field: 'Nome Unidade', value: user.nome_unidade, points, total });
+        }
+        
+        // 8. Tem Lição
+        if (user.tem_licao === true) {
+          const points = config.temlicao.comLicao || 0;
+          total += points;
+          debug.calculation.push({ field: 'Tem Lição', value: 'Sim', points, total });
+        }
+        
+        // 9. Total Presença
+        if (user.total_presenca !== undefined && user.total_presenca !== null) {
+          let points = 0;
+          if (user.total_presenca >= 8) points = config.totalpresenca.oitoATreze || 0;
+          else if (user.total_presenca >= 4) points = config.totalpresenca.quatroASete || 0;
+          else points = config.totalpresenca.zeroATres || 0;
+          total += points;
+          debug.calculation.push({ field: 'Total Presença', value: user.total_presenca, points, total });
+        }
+        
+        // 10. Comunhão
+        if (user.comunhao && user.comunhao > 0) {
+          const points = user.comunhao * (config.escolasabatina.comunhao || 0);
+          total += points;
+          debug.calculation.push({ field: 'Comunhão', value: `${user.comunhao}x`, points, total });
+        }
+        
+        // 11. Missão
+        if (user.missao && user.missao > 0) {
+          const points = user.missao * (config.escolasabatina.missao || 0);
+          total += points;
+          debug.calculation.push({ field: 'Missão', value: `${user.missao}x`, points, total });
+        }
+        
+        // 12. Estudo Bíblico
+        if (user.estudo_biblico && user.estudo_biblico > 0) {
+          const points = user.estudo_biblico * (config.escolasabatina.estudoBiblico || 0);
+          total += points;
+          debug.calculation.push({ field: 'Estudo Bíblico', value: `${user.estudo_biblico}x`, points, total });
+        }
+        
+        // 13. Batizou Alguém
+        if (user.batizou_alguem === true) {
+          const points = config.escolasabatina.batizouAlguem || 0;
+          total += points;
+          debug.calculation.push({ field: 'Batizou Alguém', value: 'Sim', points, total });
+        }
+        
+        // 14. Discipulado Pós-Batismo
+        if (user.disc_pos_batismal && user.disc_pos_batismal > 0) {
+          const points = user.disc_pos_batismal * (config.escolasabatina.discipuladoPosBatismo || 0);
+          total += points;
+          debug.calculation.push({ field: 'Discipulado Pós-Batismo', value: `${user.disc_pos_batismal}x`, points, total });
+        }
+        
+        // 15. CPF Válido
+        if (user.cpf_valido === true) {
+          const points = config.cpfvalido.valido || 0;
+          total += points;
+          debug.calculation.push({ field: 'CPF Válido', value: 'Sim', points, total });
+        }
+        
+        // 16. Sem Campos Vazios
+        if (user.campos_vazios === false) {
+          const points = config.camposvaziosacms.completos || 0;
+          total += points;
+          debug.calculation.push({ field: 'Sem Campos Vazios', value: 'Sim', points, total });
+        }
+        
+        debug.total = Math.round(total);
+        debug.difference = debug.total - user.points;
+        
+        // Calcular usando a função real
+        const calculatedPoints = await calculateUserPoints(user);
+        debug.functionResult = calculatedPoints;
+        debug.functionDifference = calculatedPoints - user.points;
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(debug, null, 2)
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro no debug:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: error.message, stack: error.stack })
         };
       }
     }

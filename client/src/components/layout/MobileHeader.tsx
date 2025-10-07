@@ -121,7 +121,7 @@ export const MobileHeader = () => {
               <img 
                 src={systemLogo} 
                 alt="7care" 
-                className="w-20 h-20 drop-shadow-sm object-contain"
+                className="w-16 h-16 drop-shadow-sm object-contain"
                 onError={(e) => {
                   // Remove a logo em caso de erro
                   e.currentTarget.style.display = 'none';

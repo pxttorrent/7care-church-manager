@@ -1,0 +1,66 @@
+{
+  "name": "7care",
+  "short_name": "7care",
+  "description": "Sistema de gestão para igrejas - 7care",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false,
+  "scope": "/",
+  "lang": "pt-BR",
+  "categories": ["productivity", "business"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "Acessar o painel principal",
+      "url": "/dashboard",
+      "icons": [
+        {
+          "src": "/pwa-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Tarefas",
+      "short_name": "Tarefas",
+      "description": "Gerenciar tarefas",
+      "url": "/tasks",
+      "icons": [
+        {
+          "src": "/pwa-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Usuários",
+      "short_name": "Usuários",
+      "description": "Gerenciar usuários",
+      "url": "/users",
+      "icons": [
+        {
+          "src": "/pwa-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

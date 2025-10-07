@@ -1,8 +1,8 @@
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
 
-// Configuração do Neon Database - string de conexão atualizada
-const connectionString = 'postgresql://neondb_owner:npg_enihr4YBSDm8@ep-still-glade-ac5u1r48-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+// Configuração do Neon Database - usa variável de ambiente ou fallback
+const connectionString = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_enihr4YBSDm8@ep-still-glade-ac5u1r48-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
 
 // Criar conexão com Neon - versão mais simples
 export const sql = neon(connectionString);

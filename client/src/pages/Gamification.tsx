@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Trophy, 
   Mountain, 
@@ -27,6 +28,7 @@ export default function Gamification() {
   const { user } = useAuth();
   const { data, isLoading, error, refetch } = useUserPoints();
   const [activeTab, setActiveTab] = useState('my-progress');
+  const [isIconModalOpen, setIsIconModalOpen] = useState(false);
   
   
 
@@ -104,7 +106,12 @@ export default function Gamification() {
               <CardContent className="space-y-4">
                 <div className="text-center">
                   <div className="text-6xl mb-4">
-                    <MountIcon iconType={getLevelIcon(total)} className="h-24 w-24 mx-auto" />
+                    <div 
+                      className="cursor-pointer hover:scale-105 transition-transform duration-200"
+                      onClick={() => setIsIconModalOpen(true)}
+                    >
+                      <MountIcon iconType={getLevelIcon(total)} className="h-72 w-72 mx-auto" />
+                    </div>
                   </div>
                   <div className={getLevelColor(total) + " text-2xl font-bold mb-2"}>
                     {getMountName(total)}
@@ -157,6 +164,94 @@ export default function Gamification() {
 
         </Tabs>
       </div>
+
+      {/* Modal de expansão do ícone */}
+      <Dialog open={isIconModalOpen} onOpenChange={setIsIconModalOpen}>
+        <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto bg-gradient-to-br from-amber-50 to-yellow-100 border-amber-200">
+          <DialogHeader className="pb-6">
+            <DialogTitle className="text-center text-3xl font-bold text-amber-800">
+              {getMountName(total)} - Detalhes da Conquista
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col lg:flex-row items-center lg:items-start space-y-8 lg:space-y-0 lg:space-x-12 p-8">
+            {/* Ícone */}
+            <div className="flex-shrink-0">
+              <div className="w-80 h-80 lg:w-96 lg:h-96 flex items-center justify-center bg-white rounded-2xl shadow-lg p-8">
+                <MountIcon iconType={getLevelIcon(total)} className="w-full h-full" />
+              </div>
+            </div>
+            
+            {/* Informações */}
+            <div className="flex-1 text-center lg:text-left space-y-6">
+              <div className="space-y-3">
+                <div className={getLevelColor(total) + " text-4xl font-bold"}>
+                  {getMountName(total)}
+                </div>
+                <div className="text-2xl text-amber-700 font-medium">
+                  {currentLevel.name}
+                </div>
+              </div>
+              
+              {/* Descrição bíblica */}
+              <div className="bg-white/70 rounded-xl p-6 shadow-md">
+                <h3 className="text-xl font-bold text-amber-800 mb-3">
+                  Significado Bíblico
+                </h3>
+                <p className="text-amber-900 leading-relaxed text-lg">
+                  {currentLevel.description}
+                </p>
+              </div>
+              
+              {/* Estatísticas */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white/70 rounded-lg p-4 shadow-md">
+                  <div className="text-sm font-medium text-amber-700 mb-1">
+                    Pontos Atuais
+                  </div>
+                  <div className="text-2xl font-bold text-amber-800">
+                    {total}
+                  </div>
+                </div>
+                
+                <div className="bg-white/70 rounded-lg p-4 shadow-md">
+                  <div className="text-sm font-medium text-amber-700 mb-1">
+                    Próximo Nível
+                  </div>
+                  <div className="text-lg font-semibold text-amber-800">
+                    {getNextLevel(total)?.name || 'Máximo Alcançado'}
+                  </div>
+                </div>
+                
+                {getNextLevel(total) && (
+                  <div className="bg-white/70 rounded-lg p-4 shadow-md">
+                    <div className="text-sm font-medium text-amber-700 mb-1">
+                      Pontos Restantes
+                    </div>
+                    <div className="text-2xl font-bold text-amber-800">
+                      {getPointsToNextLevel(total)}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Benefícios */}
+              <div className="bg-white/70 rounded-xl p-6 shadow-md">
+                <h3 className="text-xl font-bold text-amber-800 mb-4">
+                  Conquistas Desbloqueadas
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {currentLevel.benefits.map((benefit, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-amber-600 rounded-full flex-shrink-0"></div>
+                      <span className="text-amber-900 font-medium">{benefit}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </MobileLayout>
   );
 } 

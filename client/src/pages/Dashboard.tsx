@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState } from 'react';
-import { Calendar, Users, MessageSquare, Video, BarChart3, Clock, Heart, Plus, TrendingUp, UserCheck, Sparkles } from 'lucide-react';
+import { Calendar, Users, MessageSquare, Video, CheckSquare, Clock, Heart, Plus, TrendingUp, UserCheck, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -366,32 +366,6 @@ const Dashboard = React.memo(() => {
 
 
 
-  // Memoize quick actions to prevent unnecessary re-renders
-  const quickActions = useMemo(() => ({
-    admin: [
-      { title: "Gerenciar Usuários", icon: Users, action: () => navigate('/users'), color: "from-blue-500 to-blue-600", bgColor: "bg-gradient-to-br from-blue-500 to-blue-600" },
-      { title: "Ver Relatórios", icon: BarChart3, action: () => navigate('/reports'), color: "from-green-500 to-green-600", bgColor: "bg-gradient-to-br from-green-500 to-green-600" },
-      { title: "Configurações", icon: MessageSquare, action: () => navigate('/settings'), color: "from-purple-500 to-purple-600", bgColor: "bg-gradient-to-br from-purple-500 to-purple-600" },
-      { title: "Check-in Espiritual", icon: Heart, action: () => setShowCheckIn(true), color: "from-pink-500 to-pink-600", bgColor: "bg-gradient-to-br from-pink-500 to-pink-600" }
-    ],
-    missionary: [
-      { title: "Meus Interessados", icon: Heart, action: () => navigate('/my-interested'), color: "from-red-500 to-red-600", bgColor: "bg-gradient-to-br from-red-500 to-red-600" },
-      { title: "Nova Reunião", icon: Plus, action: () => navigate('/meetings'), color: "from-blue-500 to-blue-600", bgColor: "bg-gradient-to-br from-blue-500 to-blue-600" },
-      { title: "Enviar Mensagem", icon: MessageSquare, action: () => navigate('/messages'), color: "from-green-500 to-green-600", bgColor: "bg-gradient-to-br from-green-500 to-green-600" },
-      { title: "Check-in Espiritual", icon: TrendingUp, action: () => setShowCheckIn(true), color: "from-pink-500 to-pink-600", bgColor: "bg-gradient-to-br from-pink-500 to-pink-600" }
-    ],
-    member: [
-      { title: "Ver Agenda", icon: Calendar, action: () => navigate('/calendar'), color: "from-blue-500 to-blue-600", bgColor: "bg-gradient-to-br from-blue-500 to-blue-600" },
-      { title: "Chat", icon: MessageSquare, action: () => navigate('/chat'), color: "from-green-500 to-green-600", bgColor: "bg-gradient-to-br from-green-500 to-green-600" },
-      { title: "Videochamadas", icon: Video, action: () => navigate('/video-calls'), color: "from-purple-500 to-purple-600", bgColor: "bg-gradient-to-br from-purple-500 to-purple-600" },
-      { title: "Check-in Espiritual", icon: Heart, action: () => setShowCheckIn(true), color: "from-pink-500 to-pink-600", bgColor: "bg-gradient-to-br from-pink-500 to-pink-600" }
-    ],
-    interested: [
-      { title: "Próximos Estudos", icon: Calendar, action: () => navigate('/calendar'), color: "from-blue-500 to-blue-600", bgColor: "bg-gradient-to-br from-blue-500 to-blue-600" },
-      { title: "Agendar Reunião", icon: Clock, action: () => navigate('/meetings'), color: "from-green-500 to-green-600", bgColor: "bg-gradient-to-br from-green-500 to-green-600" },
-      { title: "Check-in Espiritual", icon: Heart, action: () => setShowCheckIn(true), color: "from-pink-500 to-pink-600", bgColor: "bg-gradient-to-br from-pink-500 to-pink-600" }
-    ]
-  }), [navigate]);
 
 
 
@@ -568,113 +542,143 @@ const Dashboard = React.memo(() => {
   };
 
   const renderAdminDashboard = () => (
-    <div className="space-y-8">
+    <div className="space-y-4 lg:space-y-8">
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-blue-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-            <CardTitle className="text-sm font-semibold text-gray-700">Total de Usuários</CardTitle>
-            <div className="p-2 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
-              <Users className="h-4 w-4" />
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-6">
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-blue-500 to-blue-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 to-blue-800/30 opacity-100 group-hover:from-blue-600/30 group-hover:to-blue-800/40 transition-all duration-300"></div>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-400/30 to-blue-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 lg:pb-2 relative z-10">
+            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Total de Usuários</CardTitle>
+            <div className="p-1 lg:p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
+              <Users className="h-3 w-3 lg:h-4 lg:w-4" />
             </div>
           </CardHeader>
-          <CardContent className="relative z-10">
-            <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+          <CardContent className="relative z-10 p-3 lg:p-6">
+            <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
               {isLoading ? '...' : stats.totalUsers}
             </div>
-            <p className="text-xs text-gray-600 mt-1">{stats.approvedUsers} usuários aprovados</p>
+            <p className="text-xs lg:text-sm text-white/80 mt-1">{stats.approvedUsers} usuários aprovados</p>
+            <Button 
+              onClick={() => navigate('/users')}
+              className="mt-2 lg:mt-3 h-7 lg:h-9 px-3 lg:px-4 text-xs lg:text-sm bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white shadow-md hover:shadow-lg transition-all duration-200 border-0"
+            >
+              <Users className="h-2 w-2 lg:h-3 lg:w-3 mr-1" />
+              <span className="hidden sm:inline">Gerenciar Usuários</span>
+              <span className="sm:hidden">Usuários</span>
+            </Button>
           </CardContent>
         </Card>
         
-        <Card className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 to-red-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-            <CardTitle className="text-sm font-semibold text-gray-700">Interessados</CardTitle>
-            <div className="p-2 rounded-full bg-gradient-to-br from-red-500 to-red-600 text-white shadow-lg">
-              <Heart className="h-4 w-4" />
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-red-500 to-red-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-red-600/20 to-red-800/30 opacity-100 group-hover:from-red-600/30 group-hover:to-red-800/40 transition-all duration-300"></div>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-red-400/30 to-red-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 lg:pb-2 relative z-10">
+            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Interessados</CardTitle>
+            <div className="p-1 lg:p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
+              <Heart className="h-3 w-3 lg:h-4 lg:w-4" />
             </div>
           </CardHeader>
-          <CardContent className="relative z-10">
-            <div className="text-3xl font-bold bg-gradient-to-r from-red-600 to-red-800 bg-clip-text text-transparent">
+          <CardContent className="relative z-10 p-3 lg:p-6">
+            <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
               {isLoading ? '...' : stats.totalInterested}
             </div>
-            <p className="text-xs text-gray-600 mt-1">Pessoas em processo de interesse</p>
+            <p className="text-xs lg:text-sm text-white/80 mt-1">Pessoas em processo de interesse</p>
           </CardContent>
         </Card>
 
-        <Card className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-orange-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-            <CardTitle className="text-sm font-semibold text-gray-700">Aprovações Pendentes</CardTitle>
-            <div className="p-2 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg">
-              <UserCheck className="h-4 w-4" />
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-orange-500 to-orange-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-orange-600/20 to-orange-800/30 opacity-100 group-hover:from-orange-600/30 group-hover:to-orange-800/40 transition-all duration-300"></div>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-orange-400/30 to-orange-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 lg:pb-2 relative z-10">
+            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Tarefas Pendentes</CardTitle>
+            <div className="p-1 lg:p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
+              <CheckSquare className="h-3 w-3 lg:h-4 lg:w-4" />
             </div>
           </CardHeader>
-          <CardContent className="relative z-10">
-            <div className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-orange-800 bg-clip-text text-transparent">
+          <CardContent className="relative z-10 p-3 lg:p-6">
+            <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
               {isLoading ? '...' : stats.pendingApprovals}
             </div>
-            <p className="text-xs text-gray-600 mt-1">Aguardando aprovação</p>
+            <p className="text-xs lg:text-sm text-white/80 mt-1">Tarefas para fazer</p>
+            <Button 
+              onClick={() => navigate('/tasks')}
+              className="mt-2 lg:mt-3 h-7 lg:h-9 px-3 lg:px-4 text-xs lg:text-sm bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white shadow-md hover:shadow-lg transition-all duration-200 border-0"
+            >
+              <CheckSquare className="h-2 w-2 lg:h-3 lg:w-3 mr-1" />
+              <span className="hidden sm:inline">Gerenciar Tarefas</span>
+              <span className="sm:hidden">Tarefas</span>
+            </Button>
           </CardContent>
         </Card>
 
         {/* Card de Membros */}
-        <Card className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-green-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-            <CardTitle className="text-sm font-semibold text-gray-700">Membros</CardTitle>
-            <div className="p-2 rounded-full bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg">
-              <Users className="h-4 w-4" />
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-green-500 to-green-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-green-600/20 to-green-800/30 opacity-100 group-hover:from-green-600/30 group-hover:to-green-800/40 transition-all duration-300"></div>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-400/30 to-green-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 lg:pb-2 relative z-10">
+            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Membros</CardTitle>
+            <div className="p-1 lg:p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
+              <Users className="h-3 w-3 lg:h-4 lg:w-4" />
             </div>
           </CardHeader>
-          <CardContent className="relative z-10">
-            <div className="text-3xl font-bold bg-gradient-to-r from-green-600 to-green-800 bg-clip-text text-transparent">
+          <CardContent className="relative z-10 p-3 lg:p-6">
+            <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
               {isLoading ? '...' : stats.totalMembers}
             </div>
-            <p className="text-xs text-gray-600 mt-1">Membros ativos da igreja</p>
+            <p className="text-xs lg:text-sm text-white/80 mt-1">Membros ativos da igreja</p>
           </CardContent>
         </Card>
 
         {/* Card de Missionários */}
-        <Card className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-            <CardTitle className="text-sm font-semibold text-gray-700">Missionários</CardTitle>
-            <div className="p-2 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-lg">
-              <Heart className="h-4 w-4" />
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-purple-500 to-purple-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-purple-800/30 opacity-100 group-hover:from-purple-600/30 group-hover:to-purple-800/40 transition-all duration-300"></div>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-400/30 to-purple-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 lg:pb-2 relative z-10">
+            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Missionários</CardTitle>
+            <div className="p-1 lg:p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
+              <Heart className="h-3 w-3 lg:h-4 lg:w-4" />
             </div>
           </CardHeader>
-          <CardContent className="relative z-10">
-            <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
+          <CardContent className="relative z-10 p-3 lg:p-6">
+            <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
               {isLoading ? '...' : stats.totalMissionaries}
             </div>
-            <p className="text-xs text-gray-600 mt-1">Discipuladores ativos</p>
+            <p className="text-xs lg:text-sm text-white/80 mt-1">Discipuladores ativos</p>
           </CardContent>
         </Card>
 
 
 
-        {/* Card de Check-ins Emocionais */}
-        <Card className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-pink-500/5 to-pink-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-            <CardTitle className="text-sm font-semibold text-gray-700">Check-ins Emocionais</CardTitle>
-            <div className="p-2 rounded-full bg-gradient-to-br from-pink-500 to-pink-600 text-white shadow-lg">
-              <Heart className="h-4 w-4" />
+        {/* Card de Check-ins Espirituais */}
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-pink-500 to-pink-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-pink-600/20 to-pink-800/30 opacity-100 group-hover:from-pink-600/30 group-hover:to-pink-800/40 transition-all duration-300"></div>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-pink-400/30 to-pink-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 lg:pb-2 relative z-10">
+            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Check-ins Espirituais</CardTitle>
+            <div className="p-1 lg:p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
+              <span className="text-sm lg:text-base filter brightness-0 invert">🙏</span>
             </div>
           </CardHeader>
-          <CardContent className="relative z-10">
-            <div className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-pink-800 bg-clip-text text-transparent">
+          <CardContent className="relative z-10 p-3 lg:p-6">
+            <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
               {spiritualCheckInsLoading ? '...' : (spiritualCheckIns?.length || 0)}
             </div>
-                          <p className="text-xs text-gray-600 mt-1">Últimos check-ins espirituais dos membros</p>
+            <p className="text-xs lg:text-sm text-white/80 mt-1">Últimos check-ins espirituais dos membros</p>
+            <Button 
+              onClick={() => setShowCheckIn(true)}
+              className="mt-2 lg:mt-3 h-7 lg:h-9 px-3 lg:px-4 text-xs lg:text-sm bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white shadow-md hover:shadow-lg transition-all duration-200 border-0"
+            >
+              <span className="mr-1 filter brightness-0 invert">🙏</span>
+              <span className="hidden sm:inline">Fazer meu check-in</span>
+              <span className="sm:hidden">Check-in</span>
+            </Button>
           </CardContent>
         </Card>
       </div>
 
       {/* Special Components Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-8">
         {/* Visitômetro */}
         <div className="group">
           <Visitometer
@@ -831,11 +835,12 @@ const Dashboard = React.memo(() => {
             </div>
           </Card>
 
-          <Card className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-            <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-green-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <Card className="group relative overflow-hidden bg-gradient-to-br from-emerald-500 to-emerald-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/20 to-emerald-800/30 opacity-100 group-hover:from-emerald-600/30 group-hover:to-emerald-800/40 transition-all duration-300"></div>
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-emerald-400/30 to-emerald-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-              <CardTitle className="text-sm font-semibold text-gray-700">Total de Eventos</CardTitle>
-              <div className="p-2 rounded-full bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg">
+              <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Total de Eventos</CardTitle>
+              <div className="p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
                 <BarChart3 className="h-4 w-4" />
               </div>
             </CardHeader>
@@ -843,8 +848,8 @@ const Dashboard = React.memo(() => {
               <div className="space-y-3">
                 {/* Eventos deste mês */}
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Eventos deste mês:</span>
-                  <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+                  <span className="text-sm lg:text-base text-white/80">Eventos deste mês:</span>
+                  <span className="text-2xl lg:text-3xl font-bold text-white drop-shadow-lg">
                     {userEventsLoading ? '...' : eventsThisMonthCount}
                   </span>
                 </div>
@@ -1023,11 +1028,12 @@ const Dashboard = React.memo(() => {
   const renderInterestedDashboard = () => (
     <div className="space-y-8">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-blue-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-cyan-500 to-cyan-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/20 to-cyan-800/30 opacity-100 group-hover:from-cyan-600/30 group-hover:to-cyan-800/40 transition-all duration-300"></div>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-cyan-400/30 to-cyan-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-            <CardTitle className="text-sm font-semibold text-gray-700">Eventos Disponíveis</CardTitle>
-            <div className="p-2 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
+            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Eventos Disponíveis</CardTitle>
+            <div className="p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
               <Calendar className="h-4 w-4" />
             </div>
           </CardHeader>
@@ -1035,9 +1041,9 @@ const Dashboard = React.memo(() => {
             <div className="space-y-3">
               {/* Total de eventos visíveis para o perfil */}
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Disponíveis para você:</span>
+                <span className="text-sm lg:text-base text-white/80">Disponíveis para você:</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+                  <span className="text-2xl lg:text-3xl font-bold text-white drop-shadow-lg">
                     {userEventsLoading ? '...' : userEvents?.length || 0}
                   </span>
                   <div className="w-2 h-2 bg-blue-500 rounded-full" title="Eventos visíveis"></div>
@@ -1046,8 +1052,8 @@ const Dashboard = React.memo(() => {
               
               {/* Eventos desta semana */}
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Eventos desta semana:</span>
-                <span className="text-2xl font-bold bg-gradient-to-r from-green-600 to-green-800 bg-clip-text text-transparent">
+                <span className="text-sm lg:text-base text-gray-600">Eventos desta semana:</span>
+                <span className="text-2xl lg:text-3xl font-bold bg-gradient-to-r from-green-600 to-green-800 bg-clip-text text-transparent">
                   {isLoading ? '...' : userEvents?.length || 0}
                 </span>
               </div>
@@ -1071,60 +1077,26 @@ const Dashboard = React.memo(() => {
           </CardContent>
         </Card>
 
-        <Card className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-indigo-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-indigo-500 to-indigo-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-indigo-800/30 opacity-100 group-hover:from-indigo-600/30 group-hover:to-indigo-800/40 transition-all duration-300"></div>
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-400/30 to-indigo-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-            <CardTitle className="text-sm font-semibold text-gray-700">Total Usuários</CardTitle>
-            <div className="p-2 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-lg">
+            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Total Usuários</CardTitle>
+            <div className="p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
               <Users className="h-4 w-4" />
             </div>
           </CardHeader>
           <CardContent className="relative z-10">
-            <div className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-indigo-800 bg-clip-text text-transparent">
+            <div className="text-3xl lg:text-4xl font-bold text-white drop-shadow-lg">
               {isLoading ? '...' : stats.totalUsers}
             </div>
-            <p className="text-xs text-gray-600 mt-1">Na comunidade</p>
+            <p className="text-xs lg:text-sm text-white/80 mt-1">Na comunidade</p>
           </CardContent>
         </Card>
       </div>
     </div>
   );
 
-  const renderQuickActions = () => {
-    // Usar as mesmas ações do member para missionary e member
-    const roleForActions = (user?.role.includes('missionary') || user?.role.includes('member')) ? 'member' : user?.role;
-    const actions = quickActions[roleForActions as keyof typeof quickActions] || [];
-    
-    return (
-      <Card className="relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300">
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
-        <CardHeader className="relative z-10">
-          <CardTitle className="flex items-center gap-2 text-gray-800">
-            <Sparkles className="h-5 w-5 text-indigo-600" />
-            Ações Rápidas
-          </CardTitle>
-          <CardDescription className="text-gray-600">Acesso rápido às funcionalidades principais</CardDescription>
-        </CardHeader>
-        <CardContent className="relative z-10">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            {actions.map((action, index) => (
-              <Button
-                key={index}
-                onClick={action.action}
-                className={`h-auto p-6 flex flex-col items-center gap-3 ${action.bgColor} hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl border-0 text-white font-medium`}
-                data-testid={`quick-action-${action.title.toLowerCase().replace(/\s+/g, '-')}`}
-              >
-                <div className="p-3 rounded-full bg-white/20 backdrop-blur-sm">
-                  <action.icon className="h-6 w-6" />
-                </div>
-                <span className="text-sm font-semibold text-center">{action.title}</span>
-              </Button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
 
   if (!user) {
     return (
@@ -1145,10 +1117,8 @@ const Dashboard = React.memo(() => {
         <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 via-transparent to-blue-400/5"></div>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.15),transparent_50%)]"></div>
         
-        <div className="relative space-y-8 p-6 max-w-7xl mx-auto">
+        <div className="relative space-y-4 lg:space-y-8 p-3 lg:p-6 max-w-7xl mx-auto">
           
-          {/* Quick Actions - Movido para o topo */}
-          {renderQuickActions()}
           
           {/* Role-specific Dashboard */}
           {user.role === 'admin' && (

@@ -125,11 +125,11 @@ export const Login = () => {
           <div className="flex justify-center">
             <div className="w-40 h-40 bg-background backdrop-blur-sm rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(59,130,246,0.3)]">
               {systemLogo && (
-                <img 
-                  src={systemLogo} 
-                  alt="Logo" 
-                  className="w-32 h-32 object-contain"
-                />
+              <img 
+                src={systemLogo} 
+                alt="Logo" 
+                className="w-24 h-24 object-contain"
+              />
               )}
             </div>
           </div>

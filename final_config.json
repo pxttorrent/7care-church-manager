@@ -1,0 +1,79 @@
+{
+  "basicPoints": 25,
+  "attendancePoints": 25,
+  "eventPoints": 50,
+  "donationPoints": 75,
+  "engajamento": {
+    "baixo": 25,
+    "medio": 50,
+    "alto": 75
+  },
+  "classificacao": {
+    "frequente": 75,
+    "naoFrequente": 25
+  },
+  "dizimista": {
+    "naoDizimista": 0,
+    "pontual": 50,
+    "sazonal": 75,
+    "recorrente": 100
+  },
+  "ofertante": {
+    "naoOfertante": 0,
+    "pontual": 50,
+    "sazonal": 75,
+    "recorrente": 100
+  },
+  "tempoBatismo": {
+    "doisAnos": 50,
+    "cincoAnos": 75,
+    "dezAnos": 100,
+    "vinteAnos": 150,
+    "maisVinte": 200
+  },
+  "cargos": {
+    "umCargo": 50,
+    "doisCargos": 100,
+    "tresOuMais": 150
+  },
+  "nomeUnidade": {
+    "comUnidade": 25,
+    "semUnidade": 0
+  },
+  "temLicao": {
+    "comLicao": 50
+  },
+  "pontuacaoDinamica": {
+    "multiplicador": 25
+  },
+  "totalPresenca": {
+    "zeroATres": 25,
+    "quatroASete": 50,
+    "oitoATreze": 100
+  },
+  "presenca": {
+    "multiplicador": 5
+  },
+  "escolaSabatina": {
+    "comunhao": 50,
+    "missao": 75,
+    "estudoBiblico": 100,
+    "batizouAlguem": 200,
+    "discipuladoPosBatismo": 50
+  },
+  "batizouAlguem": {
+    "sim": 200,
+    "nao": 0
+  },
+  "discipuladoPosBatismo": {
+    "multiplicador": 50
+  },
+  "cpfValido": {
+    "valido": 25,
+    "invalido": 0
+  },
+  "camposVaziosACMS": {
+    "completos": 50,
+    "incompletos": 0
+  }
+}

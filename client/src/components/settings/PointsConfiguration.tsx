@@ -22,10 +22,11 @@ import {
   Save,
   RefreshCw,
   AlertTriangle,
-  Calculator
+  Calculator,
+  Loader2,
+  Zap
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { usePointsConfig } from '@/hooks/usePointsConfig';
 import { useQueryClient } from '@tanstack/react-query';
 
 interface PointsConfig {
@@ -93,124 +94,280 @@ interface PointsConfig {
 
 const defaultConfig: PointsConfig = {
   engajamento: {
-    baixo: 10,
-    medio: 25,
-    alto: 50,
+    baixo: 200,
+    medio: 400,
+    alto: 600,
   },
   classificacao: {
-    frequente: 75,
-    naoFrequente: 25
+    frequente: 300,
+    naoFrequente: 150
   },
   dizimista: {
     naoDizimista: 0,
-    pontual: 25,
-    sazonal: 50,
-    recorrente: 100
+    pontual: 100,
+    sazonal: 200,
+    recorrente: 300
   },
   ofertante: {
     naoOfertante: 0,
-    pontual: 25,
-    sazonal: 50,
-    recorrente: 100
+    pontual: 60,
+    sazonal: 120,
+    recorrente: 180
   },
   tempoBatismo: {
-    doisAnos: 25,
-    cincoAnos: 50,
-    dezAnos: 100,
-    vinteAnos: 150,
-    maisVinte: 200
+    doisAnos: 100,
+    cincoAnos: 200,
+    dezAnos: 400,
+    vinteAnos: 600,
+    maisVinte: 800
   },
   cargos: {
-    umCargo: 50,
-    doisCargos: 100,
-    tresOuMais: 150
+    umCargo: 200,
+    doisCargos: 400,
+    tresOuMais: 600
   },
   nomeUnidade: {
-    comUnidade: 25
+    comUnidade: 100
   },
   temLicao: {
-    comLicao: 50
+    comLicao: 120
   },
   pontuacaoDinamica: {
-    multiplicador: 5
+    multiplicador: 25
   },
   totalPresenca: {
-    zeroATres: 25,
-    quatroASete: 50,
-    oitoATreze: 100
+    zeroATres: 0,
+    quatroASete: 200,
+    oitoATreze: 400
   },
   escolaSabatina: {
-    comunhao: 50,
-    missao: 75,
-    estudoBiblico: 100,
-    batizouAlguem: 200,
-    discipuladoPosBatismo: 25
+    comunhao: 40,
+    missao: 60,
+    estudoBiblico: 20,
+    batizouAlguem: 400,
+    discipuladoPosBatismo: 80
   },
   cpfValido: {
-    valido: 50
+    valido: 100
   },
   camposVaziosACMS: {
-    semCamposVazios: 100
+    semCamposVazios: 200
   }
 };
 
 export const PointsConfiguration = () => {
-  const { config, isLoading, saveConfig, resetConfig, updateConfig, getTotalMaxPoints, getConfigSummary, getCurrentParameterAverage, getCurrentUserAverage } = usePointsConfig();
+  const [config, setConfig] = useState<PointsConfig>(defaultConfig);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
 
-  // Ensure config is always defined
-  if (!config) {
+  // Carregar configurações do backend
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        setIsInitialLoading(true);
+        const response = await fetch('/api/system/points-config');
+        if (response.ok) {
+          const backendConfig = await response.json();
+          setConfig(backendConfig);
+        } else {
+          console.log('Usando configuração padrão');
+          setConfig(defaultConfig);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar configurações:', error);
+        setConfig(defaultConfig);
+      } finally {
+        setIsInitialLoading(false);
+      }
+    };
+
+    loadConfig();
+  }, []);
+
+  const handleSave = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/system/points-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erro ao salvar no servidor');
+      }
+      
+      const result = await response.json();
+      
+      if (result.updatedUsers > 0) {
+        toast({
+          title: "✅ Configurações salvas!",
+          description: `${result.updatedUsers} usuários tiveram seus pontos recalculados automaticamente.`,
+        });
+      } else {
+        toast({
+          title: "✅ Configurações salvas!",
+          description: "As configurações foram salvas com sucesso.",
+        });
+      }
+      
+      // Invalidar cache das queries relacionadas aos usuários
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      
+    } catch (error) {
+      console.error('Erro ao salvar configurações:', error);
+      toast({
+        title: "❌ Erro ao salvar",
+        description: "Não foi possível salvar as configurações.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCalculatePoints = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/system/recalculate-points', {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erro ao recalcular pontos');
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "✅ Pontos recalculados!",
+          description: `${result.updatedCount || 0} usuários tiveram seus pontos atualizados.`,
+        });
+      } else {
+        throw new Error(result.message || 'Erro ao recalcular pontos');
+      }
+      
+      // Invalidar cache das queries relacionadas aos usuários
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      
+    } catch (error) {
+      console.error('Erro ao recalcular pontos:', error);
+      toast({
+        title: "❌ Erro ao recalcular",
+        description: "Não foi possível recalcular os pontos dos usuários.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/system/points-config/reset', {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erro ao resetar no servidor');
+      }
+      
+      const result = await response.json();
+      
+      // Recarregar configurações do backend
+      const configResponse = await fetch('/api/system/points-config');
+      if (configResponse.ok) {
+        const backendConfig = await configResponse.json();
+        setConfig(backendConfig);
+      } else {
+        setConfig(defaultConfig);
+      }
+      
+      if (result.updatedUsers > 0) {
+        toast({
+          title: "✅ Configurações resetadas!",
+          description: `${result.updatedUsers} usuários tiveram seus pontos recalculados automaticamente.`,
+        });
+      } else {
+        toast({
+          title: "✅ Configurações resetadas!",
+          description: "As configurações foram resetadas com sucesso.",
+        });
+      }
+      
+      // Invalidar cache das queries relacionadas aos usuários
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      
+    } catch (error) {
+      console.error('Erro ao resetar configurações:', error);
+      toast({
+        title: "❌ Erro ao resetar",
+        description: "Não foi possível resetar as configurações.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateConfig = (section: keyof PointsConfig, field: string, value: number) => {
+    setConfig(prev => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value
+      }
+    }));
+  };
+
+  const getTotalMaxPoints = () => {
+    return (
+      (config.engajamento?.alto || 0) +
+      (config.classificacao?.frequente || 0) +
+      (config.dizimista?.recorrente || 0) +
+      (config.ofertante?.recorrente || 0) +
+      (config.tempoBatismo?.maisVinte || 0) +
+      (config.cargos?.tresOuMais || 0) +
+      (config.nomeUnidade?.comUnidade || 0) +
+      (config.temLicao?.comLicao || 0) +
+      (config.totalPresenca?.oitoATreze || 0) +
+      (config.escolaSabatina?.comunhao || 0) +
+      (config.escolaSabatina?.missao || 0) +
+      (config.escolaSabatina?.estudoBiblico || 0) +
+      (config.escolaSabatina?.batizouAlguem || 0) +
+      (config.escolaSabatina?.discipuladoPosBatismo || 0) +
+      (config.cpfValido?.valido || 0) +
+      (config.camposVaziosACMS?.semCamposVazios || 0)
+    );
+  };
+
+  const getConfigSummary = () => {
+    return {
+      categoriesCount: Object.keys(config).length,
+      criteriaCount: Object.values(config).reduce((total, section) => {
+        return total + Object.keys(section).length;
+      }, 0)
+    };
+  };
+
+  // Loading state
+  if (isInitialLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
           <p className="text-muted-foreground">Carregando configurações...</p>
         </div>
       </div>
     );
   }
-
-  const handleSave = async () => {
-    await saveConfig(config);
-  };
-
-  const handleReset = () => {
-    resetConfig();
-  };
-
-  const handleCalculatePoints = async () => {
-    try {
-      toast({
-        title: "🔄 Calculando pontos...",
-        description: "Recalculando pontuação para todos os usuários com a configuração correta. Isso pode levar alguns minutos.",
-      });
-      
-      const response = await fetch('/api/system/calculate-points-clean', { method: 'POST' });
-      const result = await response.json();
-      
-      if (result.success) {
-        // Invalidar cache das queries relacionadas aos usuários
-        queryClient.invalidateQueries({ queryKey: ['/api/users/with-points'] });
-        queryClient.invalidateQueries({ queryKey: ['users'] });
-        queryClient.invalidateQueries({ queryKey: ['missionary-profiles'] });
-        
-        toast({
-          title: "✅ Pontuação Calculada Corretamente",
-          description: `${result.updatedCount} usuários foram atualizados com sucesso! Total de pontos: ${result.totalCalculatedPoints}`,
-        });
-      } else {
-        throw new Error(result.error || 'Erro desconhecido');
-      }
-    } catch (error) {
-      toast({
-        title: "❌ Erro",
-        description: "Falha ao calcular pontuação. Tente novamente.",
-        variant: "destructive",
-      });
-    }
-  };
 
 
   const renderSection = (
@@ -278,17 +435,27 @@ export const PointsConfiguration = () => {
           <Button
             variant="outline"
             onClick={handleReset}
+            disabled={isLoading}
             className="flex items-center gap-2"
           >
-            <RefreshCw className="h-4 w-4" />
-            Resetar
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {isLoading ? 'Resetando...' : 'Resetar'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleCalculatePoints}
+            disabled={isLoading}
+            className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+          >
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            {isLoading ? 'Calculando...' : 'Calcular Pontos'}
           </Button>
           <Button
             onClick={handleSave}
             disabled={isLoading}
             className="flex items-center gap-2"
           >
-            <Save className="h-4 w-4" />
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {isLoading ? 'Salvando e recalculando...' : 'Salvar'}
           </Button>
         </div>
@@ -300,39 +467,12 @@ export const PointsConfiguration = () => {
           <div className="flex items-center gap-2 text-orange-800">
             <AlertTriangle className="h-4 w-4" />
             <span className="text-sm font-medium">
-              Atenção: Alterações afetam a base de cálculo de pontuação de todos os usuários. Os pontos serão recalculados automaticamente após salvar.
+              Atenção: Alterações afetam a base de cálculo de pontuação de todos os usuários. Use "Calcular Pontos" para recalcular manualmente ou "Salvar" para salvar e recalcular automaticamente.
             </span>
           </div>
         </CardContent>
       </Card>
 
-      {/* Calculate Points Button */}
-      <Card className="border-blue-200 bg-blue-50">
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Calculator className="h-5 w-5 text-blue-600" />
-              <div>
-                <h3 className="text-sm font-medium text-blue-900">
-                  Calcular Pontos de Cada Usuário
-                </h3>
-                <p className="text-xs text-blue-700">
-                  Recalcula a pontuação de todos os usuários com base na configuração atual
-                </p>
-              </div>
-            </div>
-            <Button
-              onClick={handleCalculatePoints}
-              variant="outline"
-              size="sm"
-              className="border-blue-600 text-blue-600 hover:bg-blue-100"
-            >
-              <Calculator className="h-4 w-4 mr-2" />
-              Calcular Pontos
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Configuration Sections */}
       <div className="space-y-6">

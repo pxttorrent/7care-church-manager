@@ -2,7 +2,6 @@ import {
   LayoutDashboard, 
   Calendar, 
   Users, 
-  MessageSquare, 
   Video, 
   BarChart3, 
   Settings, 
@@ -10,7 +9,8 @@ import {
   MessageCircle,
   Clock,
   FileText,
-  Heart
+  Heart,
+  Bell
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
@@ -45,18 +45,6 @@ const navigationItems = [
     roles: ['admin', 'missionary', 'member', 'interested'] as UserRole[]
   },
   {
-    title: 'Agendamentos',
-    url: '/meetings',
-    icon: Clock,
-    roles: ['admin', 'missionary', 'member', 'interested'] as UserRole[]
-  },
-  {
-    title: 'Videochamadas',
-    url: '/video-calls',
-    icon: Video,
-    roles: ['admin', 'missionary', 'member'] as UserRole[]
-  },
-  {
     title: 'Usuários',
     url: '/users',
     icon: Users,
@@ -73,12 +61,6 @@ const navigationItems = [
     url: '/my-interested',
     icon: Heart,
     roles: ['missionary', 'member'] as UserRole[]
-  },
-  {
-    title: 'Mensagens',
-    url: '/messages',
-    icon: MessageSquare,
-    roles: ['admin', 'missionary'] as UserRole[]
   },
   {
     title: 'Chat',
@@ -102,6 +84,20 @@ const navigationItems = [
     title: 'Configurações',
     url: '/settings',
     icon: Settings,
+    roles: ['admin'] as UserRole[]
+  }
+  ,
+  {
+    title: 'Aparência',
+    url: '/appearance',
+    icon: Settings,
+    roles: ['admin'] as UserRole[]
+  }
+  ,
+  {
+    title: 'Notificações Push',
+    url: '/push',
+    icon: Bell,
     roles: ['admin'] as UserRole[]
   }
 ];
@@ -136,7 +132,7 @@ export function AppSidebar() {
                           <img 
                             src={systemLogo} 
                             alt="7care" 
-                            className="w-8 h-8 object-contain"
+                            className="w-10 h-10 object-contain"
                           />
                         )}
 

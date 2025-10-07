@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useQueryClient } from '@tanstack/react-query';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { CalendarEvent, EVENT_TYPES, EventType } from '@/types/calendar';
+import { notificationService } from '@/lib/notificationService';
 
 export default function Calendar() {
   const { toast } = useToast();
@@ -113,6 +114,17 @@ export default function Calendar() {
         if (response.ok) {
           // Invalidar cache e recarregar eventos
           queryClient.invalidateQueries({ queryKey: ['events'] });
+          
+          // Enviar notificação push para todos os usuários
+          try {
+            await notificationService.notifyEventCreated(
+              eventData.title || 'Novo Evento',
+              eventData.startDate || new Date().toISOString().split('T')[0]
+            );
+          } catch (error) {
+            console.error('Erro ao enviar notificação de novo evento:', error);
+          }
+          
           toast({
             title: "Evento criado",
             description: "O novo evento foi criado com sucesso.",

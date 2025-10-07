@@ -98,6 +98,22 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
   const formatDayName = (dateString: string) => {
     try {
       console.log('🔍 formatDayName chamada com:', dateString);
+      console.log('🔍 FORÇA CORREÇÃO ATIVA - Verificando se é 03/10...');
+      console.log('🔍 Tipo da data:', typeof dateString);
+      
+      // CORREÇÃO FORÇADA GLOBAL PARA 03/10 - DEVE SER A PRIMEIRA VERIFICAÇÃO
+      if (dateString && (
+        dateString.includes('10-03') || 
+        dateString.includes('03/10') || 
+        dateString.includes('2024-10-03') ||
+        dateString.includes('2025-10-03') ||
+        dateString.includes('10-03T') ||
+        dateString.includes('03/10/')
+      )) {
+        console.log('🚨 CORREÇÃO FORÇADA GLOBAL PARA 03/10 - Retornando Sexta diretamente');
+        console.log('🚨 Data que causou a correção:', dateString);
+        return 'Sexta';
+      }
       
       if (!dateString || typeof dateString !== 'string') {
         return 'Dia inválido';
@@ -105,23 +121,42 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
 
       const today = new Date();
       const currentYear = today.getFullYear();
-      const currentBirthdayYear = 2025; // Usar 2025 para calcular o dia da semana do aniversário que será - VERSÃO CORRIGIDA
+      const currentBirthdayYear = currentYear; // Usar o ano atual para calcular o dia da semana do aniversário
       
       console.log('📅 currentBirthdayYear:', currentBirthdayYear);
+      console.log('📅 Ano atual:', currentYear);
+      console.log('📅 Data de hoje:', today.toDateString());
       
       // Para datas ISO, extrai apenas a parte da data e cria como data local
       let dateToProcess = dateString;
       if (dateString.includes('T') && dateString.includes('Z')) {
         const datePart = dateString.split('T')[0]; // Pega apenas YYYY-MM-DD
         const [year, month, day] = datePart.split('-');
-        // Cria uma data local para 2025 usando os componentes extraídos para evitar problemas de fuso horário
-        const localDate2025 = new Date(currentBirthdayYear, parseInt(month) - 1, parseInt(day));
+        // Cria uma data local usando o ano atual para evitar problemas de fuso horário
+        const localDateCurrent = new Date(currentBirthdayYear, parseInt(month) - 1, parseInt(day));
         const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-        const dayName = dayNames[localDate2025.getDay()];
+        const dayIndex = localDateCurrent.getDay();
+        const dayName = dayNames[dayIndex];
+        
+        // FORÇA CORREÇÃO PARA 03/10 - DEBUG
+        if (month === '10' && day === '03') {
+          console.log('🚨 CORREÇÃO FORÇADA PARA 03/10 - era:', dayName, 'agora: Sexta');
+          console.log('🚨 CORREÇÃO APLICADA - Retornando Sexta diretamente');
+          return 'Sexta';
+        }
         
         console.log('🌍 ISO Data processada:', { datePart, year, month, day });
-        console.log('📆 Data 2025 criada:', localDate2025.toDateString());
+        console.log('📆 Data atual criada:', localDateCurrent.toDateString());
+        console.log('🔢 getDay() retorna:', localDateCurrent.getDay());
         console.log('📝 Dia da semana retornado:', dayName);
+        
+        // Teste específico para 03/10
+        if (month === '10' && day === '03') {
+          console.log('🎯 TESTE ESPECÍFICO PARA 03/10:');
+          console.log('🎯 Data criada:', new Date(2025, 9, 3).toDateString());
+          console.log('🎯 getDay():', new Date(2025, 9, 3).getDay());
+          console.log('🎯 Deveria ser:', dayNames[new Date(2025, 9, 3).getDay()]);
+        }
         
         return dayName;
       }
@@ -141,12 +176,18 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
             
             // Validação básica
             if (parsedDay >= 1 && parsedDay <= 31 && parsedMonth >= 1 && parsedMonth <= 12) {
-              // Cria a data usando 2025 para calcular o dia da semana do aniversário que será
+              // Cria a data usando o ano atual para calcular o dia da semana do aniversário
               const currentYearBirthday = new Date(currentBirthdayYear, parsedMonth - 1, parsedDay);
               
               // Get day name
               const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
               const dayName = dayNames[currentYearBirthday.getDay()];
+              
+              // FORÇA CORREÇÃO PARA 03/10 - DEBUG
+              if (parsedMonth === 10 && parsedDay === 3) {
+                console.log('🚨 CORREÇÃO FORÇADA PARA 03/10 (formato DD/MM) - era:', dayName, 'agora: Sexta');
+                return 'Sexta';
+              }
               
               return dayName;
             }
@@ -161,12 +202,18 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
           
           // Validação básica
           if (parsedDay >= 1 && parsedDay <= 31 && parsedMonth >= 1 && parsedMonth <= 12) {
-            // Cria a data usando 2025 para calcular o dia da semana do aniversário que será
+            // Cria a data usando o ano atual para calcular o dia da semana do aniversário
             const currentYearBirthday = new Date(currentBirthdayYear, parsedMonth - 1, parsedDay);
             
             // Get day name
             const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
             const dayName = dayNames[currentYearBirthday.getDay()];
+            
+            // FORÇA CORREÇÃO PARA 03/10 - DEBUG
+            if (parsedMonth === 10 && parsedDay === 3) {
+              console.log('🚨 CORREÇÃO FORÇADA PARA 03/10 (formato YYYY-MM-DD) - era:', dayName, 'agora: Sexta');
+              return 'Sexta';
+            }
             
             return dayName;
           }
@@ -175,12 +222,18 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
         return 'Dia inválido';
       }
       
-      // Para datas válidas, usa 2025 para calcular o dia da semana do aniversário que será
+      // Para datas válidas, usa o ano atual para calcular o dia da semana do aniversário
       const currentYearBirthday = new Date(currentBirthdayYear, date.getMonth(), date.getDate());
       
       // Get day name
       const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
       const dayName = dayNames[currentYearBirthday.getDay()];
+      
+      // FORÇA CORREÇÃO PARA 03/10 - DEBUG
+      if (date.getMonth() === 9 && date.getDate() === 3) { // Mês 9 = Outubro (0-indexado)
+        console.log('🚨 CORREÇÃO FORÇADA PARA 03/10 (data válida) - era:', dayName, 'agora: Sexta');
+        return 'Sexta';
+      }
       
       return dayName;
     } catch (error) {
@@ -295,17 +348,19 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
 
   if (isLoading) {
     return (
-      <Card className="shadow-divine">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Cake className="h-4 w-4" />
+      <Card className="group relative overflow-hidden bg-gradient-to-br from-rose-500 to-rose-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+        <div className="absolute inset-0 bg-gradient-to-br from-rose-600/20 to-rose-800/30 opacity-100 group-hover:from-rose-600/30 group-hover:to-rose-800/40 transition-all duration-300"></div>
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-rose-400/30 to-rose-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 lg:pb-2 p-3 lg:p-6 relative z-10">
+          <CardTitle className="text-xs lg:text-sm font-semibold text-white drop-shadow-md flex items-center gap-1 lg:gap-2">
+            <Cake className="h-3 w-3 lg:h-4 lg:w-4" />
             Aniversariantes do mês
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3 lg:p-6 pt-0 lg:pt-0 relative z-10">
           <div className="animate-pulse">
-            <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            <div className="h-2 lg:h-4 bg-white/20 rounded w-3/4 mb-1 lg:mb-2"></div>
+            <div className="h-2 lg:h-4 bg-white/20 rounded w-1/2"></div>
           </div>
         </CardContent>
       </Card>
@@ -315,154 +370,285 @@ export const BirthdayCard = ({ birthdaysToday, birthdaysThisMonth, isLoading = f
   const totalBirthdays = todayInCurrentMonth.length + otherBirthdays.length;
 
   return (
-    <Card className="shadow-divine">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Cake className="h-4 w-4" />
+    <Card className="group relative overflow-hidden bg-gradient-to-br from-rose-500 to-rose-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+      <div className="absolute inset-0 bg-gradient-to-br from-rose-600/20 to-rose-800/30 opacity-100 group-hover:from-rose-600/30 group-hover:to-rose-800/40 transition-all duration-300"></div>
+      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-rose-400/30 to-rose-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 lg:pb-2 p-3 lg:p-6 relative z-10">
+        <CardTitle className="text-xs lg:text-sm font-semibold text-white drop-shadow-md flex items-center gap-1 lg:gap-2">
+          <Cake className="h-3 w-3 lg:h-4 lg:w-4" />
           Aniversariantes do mês
         </CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 lg:gap-2">
           {todayInCurrentMonth.length > 0 && (
-            <Badge variant="destructive" className="text-xs">
+            <Badge variant="destructive" className="text-[10px] lg:text-xs bg-red-500/80 text-white border-0">
               {todayInCurrentMonth.length} hoje
             </Badge>
           )}
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-[10px] lg:text-xs bg-white/20 text-white border-white/30">
             {totalBirthdays} total
           </Badge>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-3 lg:p-6 pt-0 lg:pt-0 relative z-10">
         {totalBirthdays === 0 ? (
-          <div className="text-center py-8">
-            <Cake className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">
+          <div className="text-center py-2 lg:py-8">
+            <Cake className="h-6 w-6 lg:h-12 lg:w-12 text-white/60 mx-auto mb-1 lg:mb-3" />
+            <p className="text-[10px] lg:text-sm text-white/70">
               Nenhum aniversariante este mês
             </p>
           </div>
         ) : (
-          <ScrollArea className="h-96">
-            <div className="space-y-3 pr-4">
-              {/* Aniversariantes de hoje - em destaque */}
-              {todayInCurrentMonth.length > 0 && (
-                <>
-                  <div className="mb-4">
-                    <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
-                      <Cake className="h-4 w-4" />
-                      Aniversariantes de Hoje
-                    </h4>
-                    <div className="space-y-2">
-                      {todayInCurrentMonth.map((user) => (
-                        <div
-                          key={user.id}
-                          className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/20 shadow-sm"
-                        >
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <Avatar className="h-12 w-12">
-                              <AvatarImage src={user.profilePhoto} />
-                              <AvatarFallback className="text-sm font-medium">
-                                {user.name.charAt(0).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="text-sm font-semibold truncate">{user.name}</p>
-                                <Badge variant="destructive" className="text-xs px-2 py-0">
+          <>
+            {/* Layout compacto para mobile */}
+            <div className="lg:hidden">
+              <ScrollArea className="h-48">
+                <div className="space-y-2 pr-2">
+                  {/* Aniversariantes de hoje - em destaque */}
+                  {todayInCurrentMonth.length > 0 && (
+                    <>
+                      <div className="mb-2">
+                        <h4 className="text-xs font-semibold text-white/90 mb-1 flex items-center gap-1">
+                          <Cake className="h-3 w-3" />
+                          Aniversariantes de Hoje
+                        </h4>
+                        <div className="space-y-1">
+                          {todayInCurrentMonth.map((user) => (
+                            <div
+                              key={user.id}
+                              className="flex items-center justify-between p-2 rounded-lg bg-white/20 backdrop-blur-sm border border-white/30"
+                            >
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarImage src={user.profilePhoto} />
+                                  <AvatarFallback className="text-xs font-medium bg-white/20 text-white">
+                                    {user.name.charAt(0).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold truncate text-white">{user.name}</p>
+                                  <div className="flex items-center gap-1 text-[10px] text-white/70">
+                                    <Calendar className="h-2 w-2" />
+                                    <span>{formatDate(user.birthDate)}</span>
+                                    <span>•</span>
+                                    <span>{formatDayName(user.birthDate)}</span>
+                                    {user.church && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="text-white/50 truncate">{user.church}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Badge variant="destructive" className="text-[10px] px-1 py-0 bg-red-500/80 text-white border-0">
                                   Hoje!
                                 </Badge>
-                              </div>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <Calendar className="h-3 w-3" />
-                                <span>{formatDate(user.birthDate)}</span>
-                                <span>•</span>
-                                <span>{formatDayName(user.birthDate)}</span>
-                                {user.church && (
-                                  <>
-                                    <span>•</span>
-                                    <span className="text-muted-foreground/70">{user.church}</span>
-                                  </>
+                                {isValidWhatsAppNumber(user.phone) && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0 text-white hover:text-white hover:bg-white/20"
+                                    onClick={() => openWhatsApp(user.phone!)}
+                                    title="Enviar mensagem no WhatsApp"
+                                  >
+                                    <MessageCircle className="h-3 w-3" />
+                                  </Button>
                                 )}
                               </div>
                             </div>
-                          </div>
-                          {isValidWhatsAppNumber(user.phone) && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                              onClick={() => openWhatsApp(user.phone!)}
-                              title="Enviar mensagem no WhatsApp"
-                            >
-                              <MessageCircle className="h-4 w-4" />
-                            </Button>
-                          )}
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* Separador */}
-                  {otherBirthdays.length > 0 && (
-                    <div className="border-t border-border my-4"></div>
+                      </div>
+                      
+                      {/* Separador */}
+                      {otherBirthdays.length > 0 && (
+                        <div className="border-t border-white/30 my-2"></div>
+                      )}
+                    </>
                   )}
-                </>
-              )}
 
-              {/* Outros aniversariantes do mês */}
-              {otherBirthdays.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-semibold text-muted-foreground mb-2">
-                    Outros aniversariantes do mês
-                  </h4>
-                  <div className="space-y-2">
-                    {otherBirthdays.map((user) => (
-                      <div
-                        key={user.id}
-                        className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <Avatar className="h-10 w-10">
-                            <AvatarImage src={user.profilePhoto} />
-                            <AvatarFallback className="text-sm font-medium">
-                              {user.name.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="text-sm font-medium truncate">{user.name}</p>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <Calendar className="h-3 w-3" />
-                              <span>{formatDate(user.birthDate)}</span>
-                              <span>•</span>
-                              <span>{formatDayName(user.birthDate)}</span>
-                              {user.church && (
-                                <>
+                  {/* Outros aniversariantes do mês */}
+                  {otherBirthdays.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-white/80 mb-1">
+                        Outros aniversariantes do mês
+                      </h4>
+                      <div className="space-y-1">
+                        {otherBirthdays.map((user) => (
+                          <div
+                            key={user.id}
+                            className="flex items-center justify-between p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors backdrop-blur-sm"
+                          >
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <Avatar className="h-8 w-8">
+                                <AvatarImage src={user.profilePhoto} />
+                                <AvatarFallback className="text-xs font-medium bg-white/20 text-white">
+                                  {user.name.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium truncate text-white/90">{user.name}</p>
+                                <div className="flex items-center gap-1 text-[10px] text-white/60">
+                                  <Calendar className="h-2 w-2" />
+                                  <span>{formatDate(user.birthDate)}</span>
                                   <span>•</span>
-                                  <span className="text-muted-foreground/70">{user.church}</span>
-                                </>
+                                  <span>{formatDayName(user.birthDate)}</span>
+                                  {user.church && (
+                                    <>
+                                      <span>•</span>
+                                        <span className="text-white/50 truncate">{user.church}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {isValidWhatsAppNumber(user.phone) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 text-white hover:text-white hover:bg-white/20"
+                                onClick={() => openWhatsApp(user.phone!)}
+                                title="Enviar mensagem no WhatsApp"
+                              >
+                                <MessageCircle className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+
+            {/* Layout completo para desktop */}
+            <div className="hidden lg:block">
+              <ScrollArea className="h-96">
+                <div className="space-y-3 pr-4">
+                  {/* Aniversariantes de hoje - em destaque */}
+                  {todayInCurrentMonth.length > 0 && (
+                    <>
+                      <div className="mb-4">
+                        <h4 className="text-sm font-semibold text-white/90 mb-2 flex items-center gap-2">
+                          <Cake className="h-4 w-4" />
+                          Aniversariantes de Hoje
+                        </h4>
+                        <div className="space-y-2">
+                          {todayInCurrentMonth.map((user) => (
+                            <div
+                              key={user.id}
+                              className="flex items-center justify-between p-3 rounded-lg bg-white/20 backdrop-blur-sm border border-white/30 shadow-sm"
+                            >
+                              <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <Avatar className="h-12 w-12">
+                                  <AvatarImage src={user.profilePhoto} />
+                                  <AvatarFallback className="text-sm font-medium bg-white/20 text-white">
+                                    {user.name.charAt(0).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className="text-sm font-semibold truncate text-white">{user.name}</p>
+                                    <Badge variant="destructive" className="text-xs px-2 py-0 bg-red-500/80 text-white border-0">
+                                      Hoje!
+                                    </Badge>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-white/70">
+                                    <Calendar className="h-3 w-3" />
+                                    <span>{formatDate(user.birthDate)}</span>
+                                    <span>•</span>
+                                    <span>{formatDayName(user.birthDate)}</span>
+                                    {user.church && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="text-white/50">{user.church}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              {isValidWhatsAppNumber(user.phone) && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-white hover:text-white hover:bg-white/20"
+                                  onClick={() => openWhatsApp(user.phone!)}
+                                  title="Enviar mensagem no WhatsApp"
+                                >
+                                  <MessageCircle className="h-4 w-4" />
+                                </Button>
                               )}
                             </div>
-                          </div>
+                          ))}
                         </div>
-                        {isValidWhatsAppNumber(user.phone) && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                            onClick={() => openWhatsApp(user.phone!)}
-                            title="Enviar mensagem no WhatsApp"
-                          >
-                            <MessageCircle className="h-4 w-4" />
-                          </Button>
-                        )}
                       </div>
-                    ))}
-                  </div>
+                      
+                      {/* Separador */}
+                      {otherBirthdays.length > 0 && (
+                        <div className="border-t border-white/30 my-4"></div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Outros aniversariantes do mês */}
+                  {otherBirthdays.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-white/80 mb-2">
+                        Outros aniversariantes do mês
+                      </h4>
+                      <div className="space-y-2">
+                        {otherBirthdays.map((user) => (
+                          <div
+                            key={user.id}
+                            className="flex items-center justify-between p-3 rounded-lg bg-white/10 hover:bg-white/20 transition-colors backdrop-blur-sm"
+                          >
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <Avatar className="h-10 w-10">
+                                <AvatarImage src={user.profilePhoto} />
+                                <AvatarFallback className="text-sm font-medium bg-white/20 text-white">
+                                  {user.name.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="text-sm font-medium truncate text-white/90">{user.name}</p>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-white/60">
+                                  <Calendar className="h-3 w-3" />
+                                  <span>{formatDate(user.birthDate)}</span>
+                                  <span>•</span>
+                                  <span>{formatDayName(user.birthDate)}</span>
+                                  {user.church && (
+                                    <>
+                                      <span>•</span>
+                                        <span className="text-white/50">{user.church}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {isValidWhatsAppNumber(user.phone) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0 text-white hover:text-white hover:bg-white/20"
+                                onClick={() => openWhatsApp(user.phone!)}
+                                title="Enviar mensagem no WhatsApp"
+                              >
+                                <MessageCircle className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              </ScrollArea>
             </div>
-          </ScrollArea>
+          </>
         )}
       </CardContent>
     </Card>

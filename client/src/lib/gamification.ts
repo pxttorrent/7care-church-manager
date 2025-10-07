@@ -7,6 +7,7 @@ export interface GamificationLevel {
   color: string;
   benefits: string[];
   icon: string;
+  description: string;
 }
 
 export const GAMIFICATION_LEVELS: GamificationLevel[] = [
@@ -22,7 +23,8 @@ export const GAMIFICATION_LEVELS: GamificationLevel[] = [
       "Notificações de eventos",
       "Visualização do calendário"
     ],
-    icon: "valley"
+    icon: "valley",
+    description: "O início da jornada espiritual, onde Jesus foi batizado por João Batista. Aqui você inicia sua caminhada de fé e crescimento."
   },
   {
     id: 1,
@@ -36,7 +38,8 @@ export const GAMIFICATION_LEVELS: GamificationLevel[] = [
       "Inscrição em atividades",
       "Acesso a estudos bíblicos"
     ],
-    icon: "mountain-1"
+    icon: "mountain-1",
+    description: "Onde Moisés recebeu os Dez Mandamentos de Deus. Aqui você recebe as bases da lei divina e começa a entender os princípios fundamentais da fé."
   },
   {
     id: 2,
@@ -50,7 +53,8 @@ export const GAMIFICATION_LEVELS: GamificationLevel[] = [
       "Acesso a relatórios",
       "Participação em eventos especiais"
     ],
-    icon: "mountain-2"
+    icon: "mountain-2",
+    description: "Onde Moisés viu a Terra Prometida antes de sua morte. Aqui você ganha visão espiritual e começa a enxergar os propósitos maiores de Deus."
   },
   {
     id: 3,
@@ -64,7 +68,8 @@ export const GAMIFICATION_LEVELS: GamificationLevel[] = [
       "Mentoria de novos membros",
       "Acesso a recursos avançados"
     ],
-    icon: "mountain-3"
+    icon: "mountain-3",
+    description: "Onde Abraão ofereceu Isaque em sacrifício e onde o Templo foi construído. Aqui você aprende sobre sacrifício, obediência e adoração verdadeira."
   },
   {
     id: 4,
@@ -78,7 +83,8 @@ export const GAMIFICATION_LEVELS: GamificationLevel[] = [
       "Treinamento de outros membros",
       "Acesso prioritário a eventos"
     ],
-    icon: "mountain-4"
+    icon: "mountain-4",
+    description: "Onde Elias desafiou os profetas de Baal e provou o poder do Deus verdadeiro. Aqui você desenvolve coragem e confiança na vitória divina."
   },
   {
     id: 5,
@@ -92,7 +98,8 @@ export const GAMIFICATION_LEVELS: GamificationLevel[] = [
       "Representação da igreja",
       "Acesso a recursos exclusivos"
     ],
-    icon: "mountain-5"
+    icon: "mountain-5",
+    description: "O monte mais alto de Israel, onde Jesus foi transfigurado. Aqui você experimenta transformação espiritual e revelação da glória divina."
   },
   {
     id: 6,
@@ -106,7 +113,8 @@ export const GAMIFICATION_LEVELS: GamificationLevel[] = [
       "Aconselhamento pastoral",
       "Status VIP completo"
     ],
-    icon: "mountain-6"
+    icon: "mountain-6",
+    description: "A cidade de Davi e centro espiritual de Jerusalém. Aqui você se torna um líder espiritual, guiando outros na caminhada de fé."
   },
   {
     id: 7,
@@ -120,7 +128,8 @@ export const GAMIFICATION_LEVELS: GamificationLevel[] = [
       "Acesso a todas as funcionalidades",
       "Reconhecimento especial"
     ],
-    icon: "mountain-7"
+    icon: "mountain-7",
+    description: "Onde Jesus orou antes da crucificação e de onde ascendeu aos céus. Aqui você alcança maturidade espiritual e preparação para o ministério."
   },
   {
     id: 8,
@@ -135,7 +144,8 @@ export const GAMIFICATION_LEVELS: GamificationLevel[] = [
       "Badges exclusivos",
       "A terra prometida alcançada 🌟"
     ],
-    icon: "mountain-8"
+    icon: "mountain-8",
+    description: "A Terra Prometida, destino final da jornada do povo de Israel. Aqui você alcança a plenitude espiritual e se torna um exemplo de fé para outros."
   }
 ];
 
@@ -192,4 +202,9 @@ export function getLevelColor(points: number): string {
 export function getLevelIcon(points: number): string {
   const level = getLevelByPoints(points);
   return level.icon;
+}
+
+export function getLevelDescription(points: number): string {
+  const level = getLevelByPoints(points);
+  return level.description;
 } 

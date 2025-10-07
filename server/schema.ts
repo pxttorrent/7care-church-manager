@@ -26,6 +26,25 @@ export const users = pgTable('users', {
   level: text('level').default('Iniciante'),
   attendance: integer('attendance').default(0),
   extraData: jsonb('extra_data'),
+  
+  // Campos para cálculo de pontos (movidos de extra_data)
+  engajamento: text('engajamento'), // 'Baixo', 'Médio', 'Alto'
+  classificacao: text('classificacao'), // 'Frequente', 'Não Frequente'
+  dizimistaType: text('dizimista_type'), // 'Não dizimista', 'Pontual (1-3)', 'Sazonal (4-7)', 'Recorrente (8-12)'
+  ofertanteType: text('ofertante_type'), // 'Não ofertante', 'Pontual (1-3)', 'Sazonal (4-7)', 'Recorrente (8-12)'
+  tempoBatismoAnos: integer('tempo_batismo_anos'), // Anos de batismo (numérico)
+  departamentosCargos: text('departamentos_cargos'), // Lista de departamentos e cargos separados por ';'
+  nomeUnidade: text('nome_unidade'), // Nome da unidade/grupo pequeno
+  temLicao: boolean('tem_licao').default(false), // Tem lição da Escola Sabatina
+  totalPresenca: integer('total_presenca').default(0), // Total de presenças (0-13)
+  comunhao: integer('comunhao').default(0), // Pontuação comunhão (0-13)
+  missao: integer('missao').default(0), // Pontuação missão (0-13)
+  estudoBiblico: integer('estudo_biblico').default(0), // Pontuação estudo bíblico (0-13)
+  batizouAlguem: boolean('batizou_alguem').default(false), // Batizou alguém
+  discPosBatismal: integer('disc_pos_batismal').default(0), // Quantidade de discipulados pós-batismo
+  cpfValido: boolean('cpf_valido').default(false), // CPF válido
+  camposVazios: boolean('campos_vazios').default(true), // Tem campos vazios no ACMS
+  
   observations: text('observations'),
   firstAccess: boolean('first_access').default(true),
   status: text('status').default('pending'),
@@ -118,6 +137,18 @@ export const notifications = pgTable('notifications', {
   type: text('type').notNull(),
   isRead: boolean('is_read').default(false),
   createdAt: timestamp('created_at').defaultNow()
+});
+
+// Tabela de subscriptions push
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  endpoint: text('endpoint').notNull(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow()
 });
 
 // Tabela de solicitações de discipulado

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { 
-  Users, MessageSquare, Video, BarChart3, Settings, Clock, 
+  Users, Video, CheckSquare, Settings, Clock, 
   Heart, FileText, UserPlus, Phone, LogOut, User, Bell, Vote, Eye
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -29,30 +29,21 @@ const Menu = () => {
     admin: [
       { title: 'Usuários', icon: Users, path: '/users', color: 'bg-blue-500', description: 'Gerenciar membros' },
       { title: 'Interessados', icon: UserPlus, path: '/my-interested', color: 'bg-green-500', description: 'Novos contatos' },
-      { title: 'Mensagens', icon: MessageSquare, path: '/messages', color: 'bg-purple-500', description: 'Comunicação' },
-      { title: 'Videochamadas', icon: Video, path: '/video-calls', color: 'bg-red-500', description: 'Reuniões online' },
-      { title: 'Relatórios', icon: BarChart3, path: '/reports', color: 'bg-orange-500', description: 'Análises' },
-      { title: 'Agendamentos', icon: Clock, path: '/meetings', color: 'bg-teal-500', description: 'Marcar reuniões' },
+      { title: 'Tarefas', icon: CheckSquare, path: '/tasks', color: 'bg-orange-500', description: 'Gestão de tarefas' },
       { title: 'Configurar Nomeações', icon: Vote, path: '/election-config', color: 'bg-indigo-500', description: 'Liderança da igreja' },
       { title: 'Dashboard Nomeações', icon: Eye, path: '/election-dashboard', color: 'bg-cyan-500', description: 'Acompanhar nomeações' },
       { title: 'Configurações', icon: Settings, path: '/settings', color: 'bg-gray-500', description: 'Sistema' }
     ],
     missionary: [
       { title: 'Meus Interessados', icon: Heart, path: '/my-interested', color: 'bg-red-500', description: 'Acompanhar pessoas' },
-      { title: 'Mensagens', icon: MessageSquare, path: '/messages', color: 'bg-purple-500', description: 'Comunicação' },
-      { title: 'Videochamadas', icon: Video, path: '/video-calls', color: 'bg-blue-500', description: 'Reuniões online' },
-      { title: 'Meus Relatórios', icon: FileText, path: '/my-reports', color: 'bg-orange-500', description: 'Meus dados' },
-      { title: 'Agendamentos', icon: Clock, path: '/meetings', color: 'bg-teal-500', description: 'Marcar reuniões' },
+      { title: 'Minhas Tarefas', icon: FileText, path: '/my-reports', color: 'bg-orange-500', description: 'Minhas tarefas' },
       { title: 'Interessados Gerais', icon: UserPlus, path: '/my-interested', color: 'bg-green-500', description: 'Todos os contatos' }
     ],
     member: [
       { title: 'Nomeações', icon: Vote, path: '/election-voting', color: 'bg-indigo-500', description: 'Nomeação de liderança' },
-      { title: 'Videochamadas', icon: Video, path: '/video-calls', color: 'bg-blue-500', description: 'Reuniões online' },
-      { title: 'Agendamentos', icon: Clock, path: '/meetings', color: 'bg-teal-500', description: 'Marcar reuniões' },
       { title: 'Configurações', icon: Settings, path: '/settings', color: 'bg-gray-500', description: 'Notificações' }
     ],
     interested: [
-      { title: 'Agendamentos', icon: Clock, path: '/meetings', color: 'bg-teal-500', description: 'Marcar reuniões' },
       { title: 'Contato', icon: Phone, path: '/contact', color: 'bg-green-500', description: 'Falar conosco' }
     ]
   };

@@ -25,7 +25,14 @@ import {
   RefreshCw,
   Loader2,
   User,
-  Info
+  Info,
+  AlertTriangle,
+  UserPlus,
+  Plus,
+  Edit,
+  Trash2,
+  X,
+  FileText
 } from 'lucide-react';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 
@@ -69,6 +76,10 @@ interface ElectionConfig {
       enabled: boolean;
       maxPositions: number;
     };
+    eldersCount: {
+      enabled: boolean;
+      count: number;
+    };
   };
   positions: string[];
   status: 'draft' | 'active' | 'completed';
@@ -76,9 +87,9 @@ interface ElectionConfig {
 
 const ALL_POSITIONS = [
   // ANCIÃOS / ANCIÃS / DIRETORES
-  'Primeiro Ancião(ã)',
   'Ancião/Anciã Teen',
   'Ancião/Anciã Jovem',
+  'Primeiro Ancião(ã)',
   'Secretário(a)',
   'Secretário(a) Associado(a)',
   'Secretário(a) Teen',
@@ -90,9 +101,9 @@ const ALL_POSITIONS = [
   // DIACONATO
   'Diáconos',
   'Diácono(s) Teen',
-  'Primeiro Diácono',
   'Diaconisas',
   'Diaconisa(s) Teen',
+  'Primeiro Diácono',
   'Primeira Diaconisa',
   
   // MORDOMIA CRISTÃ
@@ -196,6 +207,7 @@ export default function ElectionConfig() {
   const [currentStep, setCurrentStep] = useState(1);
   const [configExists, setConfigExists] = useState(false);
   const [eligibleCandidates, setEligibleCandidates] = useState<any[]>([]);
+  const [ineligibleCandidates, setIneligibleCandidates] = useState<any[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [config, setConfig] = useState<ElectionConfig>({
     churchId: 0,
@@ -221,6 +233,10 @@ export default function ElectionConfig() {
       positionLimit: {
         enabled: true,
         maxPositions: 2
+      },
+      eldersCount: {
+        enabled: true,
+        count: 1
       }
     },
     positions: [],
@@ -230,6 +246,16 @@ export default function ElectionConfig() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Estados para gerenciamento de cargos personalizados
+  const [customPositions, setCustomPositions] = useState<string[]>([]);
+  const [positionDescriptions, setPositionDescriptions] = useState<{[key: string]: string}>({});
+  const [showAddPosition, setShowAddPosition] = useState(false);
+  const [newPositionName, setNewPositionName] = useState('');
+  const [editingPosition, setEditingPosition] = useState<string | null>(null);
+  const [editingPositionName, setEditingPositionName] = useState('');
+  const [editingDescription, setEditingDescription] = useState<string | null>(null);
+  const [editingDescriptionText, setEditingDescriptionText] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
@@ -240,6 +266,143 @@ export default function ElectionConfig() {
           loadMembers(),
           loadConfig()
         ]);
+        
+        // Adicionar todos os cargos padrão como personalizados
+        setCustomPositions(prev => {
+          const allPositions = [...ALL_POSITIONS];
+          const existingCustom = prev || [];
+          const newPositions = allPositions.filter(pos => !existingCustom.includes(pos));
+          return [...existingCustom, ...newPositions];
+        });
+
+        // Adicionar descrições padrão para cargos específicos
+        setPositionDescriptions(prev => {
+          const defaultDescriptions = {
+            ...prev,
+            'Secretário(a)': `Atribuições:
+• Cuidar do sistema de gerenciamento de membros (ACMS);
+• Criar e manter registro de membros e frequentadores;
+• Formar, treinar e gerenciar uma equipe de secretaria;
+• Preparar agenda e participar das reuniões de comissões da igreja;
+• Preparar relatórios de acordo com a necessidade da administração da igreja e dos diversos ministérios;
+• Entregar certificados das cerimônias (batismos e profissões de fé).`,
+
+            'Tesoureiro(a)': `Atribuições:
+• Receber todos os recursos financeiros, gerando os recibos e devidos relatórios;
+• Preparar o orçamento anual e acompanhar os gastos dos ministérios;
+• Prestar contas ao campo local no momento indicado para a auditoria anual;
+• Efetuar os pagamentos autorizados pelo pastorado e/ou Subcomissão Administrativa;
+• Formar, treinar e gerenciar uma equipe de tesouraria.`,
+
+            'Diretor(a) ASA': `Atribuições:
+• Desenvolver projetos que atendam e aliviem o sofrimento de pessoas em estado de vulnerabilidade em nosso bairro;
+• Organizar recebimento e saídas de alimentos/roupas para famílias que necessitam de ajuda (sejam elas membros da Igreja, amigos ou interessados);
+• Disponibilizar seu tempo durante a semana para atendimentos e distribuição de alimentos;
+• Apoiar projetos sociais de outros ministérios da Igreja.`,
+
+            'Diretor(a) Comunicação': `Atribuições:
+• Elaboração de textos informativos e promoção de informações assertivas;
+• Produção de artes para as divulgações de eventos e séries;
+• Gerenciamento das redes sociais da igreja e site da igreja;
+• Preservar e manter a imagem da Instituição;
+• Preservar a identidade visual da igreja.`,
+
+            'Primeiro Diácono': `Atribuições:
+• Prover equipes de trabalho semanais por escala;
+• Prover treinamento para o corpo de diáconos e diaconisas;
+• Auxiliar nas cerimônias especiais da igreja;
+• Participar da equipe de visitação da igreja.`,
+
+            'Primeira Diaconisa': `Atribuições:
+• Prover equipes de trabalho semanais por escala;
+• Prover treinamento para o corpo de diáconos e diaconisas;
+• Auxiliar nas cerimônias especiais da igreja;
+• Participar da equipe de visitação da igreja.`,
+
+            'Diretor(a) Associado(a) Escola Sabatina': `Atribuições:
+• Recrutar, capacitar e gerenciar a equipe de professores;
+• Em parceria com o ancionato, promover o pastoreio através das classes;
+• Organizar a programação semanal da escola sabatina;
+• Incentivar e promover o estudo e aquisição da lição (Projeto Maná).`,
+
+            'Coordenador(a) de Interessados': `Atribuições:
+• Manter atualizada a lista de interessados da igreja;
+• Encaminhar novos interessados para os instrutores através do Ministério Pessoal;
+• Gerenciar e atualizar periodicamente o progresso dos estudos bíblicos;
+• Trabalhar em parceria com a Secretaria da Escola Sabatina e Secretaria da Igreja para atualizar os sistemas com as informações.`,
+
+            'Ministério da Criança – Coordenador(a)': `Atribuições:
+• Recrutar e gerenciar a equipe de professores;
+• Dar suporte aos coordenadores que auxiliam nas áreas de coral, eventos e programações;
+• Compra de materiais para o departamento e classes infantis;
+• Trabalhar em parceria com a distrital para aplicar o programa da associação.`,
+
+            'Casal Diretor': `Atribuições:
+• Realizar reuniões de fortalecimento do casamento;
+• Apresentar palestras sobre paternidade/maternidade e educação cristã sobre sexualidade;
+• Fornecer orientações para evangelismo entre famílias;
+• Oferecer aconselhamento familiar;
+• Promover encontros de celebração e instrução para as famílias.
+Normalmente é liderado pelo casal, apesar de apenas um nome ser indicado como líder.`,
+
+            'Diretora Ministério da Mulher': `Atribuições:
+• Organizar e planejar encontros espirituais e sociais com as mulheres da Igreja;
+• Implementar o programa da associação (com adaptações, se necessário);
+• Mobilizar as mulheres da igreja em diversas frentes missionárias.`,
+
+            'Diretor(a) Ministério da Música': `Atribuições:
+• Recrutar, capacitar e gerenciar voluntários com aptidões musicais variadas;
+• Organizar repertório e equipes para o louvor congregacional;
+• Promover encontros musicais e eventos;
+• Recrutar e dar suporte aos diretores e regentes dos grupos vocais e instrumentais da igreja.`,
+
+            'Líder Ministério da Recepção': `Atribuições:
+• Recrutar, capacitar e gerenciar voluntários para equipe de recepção;
+• Organizar equipes de atuação semanal;
+• Perfil de pessoa que seja simpática, converse com empatia e gentileza;
+• Orientar os visitantes.`,
+
+            'Diretor(a) Ministério da Saúde': `Atribuições:
+• Organizar o Clube Vida e Saúde;
+• Organizar palestras de saúde (físico, mental, espiritual) que possam incentivar uma vida saudável para membros e interessados da Igreja;
+• Planejar feiras de saúde e projetos evangelísticos nessa área;
+• Auxiliar nos cursos de saúde que sejam promovidos pela Igreja.`,
+
+            'Diretor(a) Ministério das Possibilidades': `Atribuições:
+• Desenvolver atividades para o grupo de terceira idade da Igreja e interessados;
+• Identificar e atender necessidades dessa faixa etária (enfermos, unções, visitas);
+• Organizar equipe de visitação de idosos;
+• Mobilizar visitas em asilos;
+• Realizar viagens e excursões de idosos da Igreja.`,
+
+            'Ministério dos Adolescentes – Coordenador(a)': `Atribuições:
+• Motivar o grupo de adolescentes da Igreja a terem um encontro com Deus;
+• Organizar as atividades da Escola Sabatina de adolescentes;
+• Planejar atividades sociais e missionárias com adolescentes;
+• Acompanhar os projetos realizados com Adolescentes por nossa Associação;
+• Mobilizar adolescentes para que participem ativamente de outros ministérios da Igreja.`,
+
+            'Ministério Jovem – Diretor(a)': `Atribuições:
+• Planejar atividades voltadas para jovens;
+• Organizar encontros sociais com a juventude da Igreja;
+• Desenvolver novos jovens na liderança;
+• Realizar encontros de pequenos grupos com jovens;
+• Pastorear novos jovens vindos de outros estados e jovens universitários.`,
+
+            'Diretor(a) Ministério Pessoal': `Atribuições:
+• Envolver os membros através dos ministérios da Igreja e unidades de ação da Escola Sabatina nos projetos evangelísticos da Igreja;
+• Identificar e capacitar membros que dão estudos bíblicos para atendimento de interessados levantados pela Coordenação de Interessados;
+• Acompanhar junto com o Coordenador de Pequenos Grupos os pequenos grupos da Igreja;
+• Em parceria com o Coordenador de Interessados, conectar interessados com instrutores bíblicos.`,
+
+            'Diretor(a)': `Atribuições:
+• Ter uma compreensão do ministério espiritual e financeiro da igreja;
+• Promover encontros e eventos sobre mordomia cristã;
+• Aplicar (ou adaptar, se necessário) os programas de mordomia denominacionais;
+• Trabalhar em parceria com outros ministérios que auxiliam no crescimento espiritual e desenvolvimento dos dons.`
+          };
+          return defaultDescriptions;
+        });
       } finally {
         setLoading(false);
       }
@@ -345,16 +508,60 @@ export default function ElectionConfig() {
               positionLimit: {
                 enabled: data.criteria?.positionLimit?.enabled ?? true,
                 maxPositions: data.criteria?.positionLimit?.maxPositions ?? 2
+              },
+              eldersCount: {
+                enabled: data.criteria?.eldersCount?.enabled ?? true,
+                count: data.criteria?.eldersCount?.count ?? 1
               }
             },
             positions: data.positions || [],
             status: data.status || 'draft'
           };
           setConfig(configWithDefaults);
+          
+          // Carregar cargos personalizados se existirem
+          if (data.custom_positions) {
+            setCustomPositions(data.custom_positions);
+          } else {
+            // Se não há cargos personalizados salvos, adicionar todos os padrão
+            setCustomPositions(ALL_POSITIONS);
+          }
+
+          // Adicionar descrições padrão se não existirem
+          setPositionDescriptions(prev => {
+            const defaultDescriptions = {
+              ...prev,
+              'Secretário(a)': `Atribuições:
+• Cuidar do sistema de gerenciamento de membros (ACMS);
+• Criar e manter registro de membros e frequentadores;
+• Formar, treinar e gerenciar uma equipe de secretaria;
+• Preparar agenda e participar das reuniões de comissões da igreja;
+• Preparar relatórios de acordo com a necessidade da administração da igreja e dos diversos ministérios;
+• Entregar certificados das cerimônias (batismos e profissões de fé).`
+            };
+            return defaultDescriptions;
+          });
+          
+          // Carregar descrições dos cargos se existirem
+          if (data.position_descriptions) {
+            setPositionDescriptions(data.position_descriptions);
+          }
         }
       } else if (response.status === 404) {
         console.log('Nenhuma configuração encontrada, usando padrões');
         // Usar configuração padrão - não é um erro
+        setCustomPositions(ALL_POSITIONS);
+        
+        // Adicionar descrições padrão para nova configuração
+        setPositionDescriptions({
+          'Secretário(a)': `Atribuições:
+• Cuidar do sistema de gerenciamento de membros (ACMS);
+• Criar e manter registro de membros e frequentadores;
+• Formar, treinar e gerenciar uma equipe de secretaria;
+• Preparar agenda e participar das reuniões de comissões da igreja;
+• Preparar relatórios de acordo com a necessidade da administração da igreja e dos diversos ministérios;
+• Entregar certificados das cerimônias (batismos e profissões de fé).`
+        });
       } else {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -388,7 +595,8 @@ export default function ElectionConfig() {
         if (response.ok) {
           const configs = await response.json();
           const existingConfig = configs.find((c: any) => c.church_id === church.id);
-          setConfigExists(!!existingConfig);
+          // Não bloquear o salvamento - permitir múltiplas configurações
+          setConfigExists(false);
         }
       } catch (error) {
         console.error('Erro ao verificar configurações existentes:', error);
@@ -417,7 +625,8 @@ export default function ElectionConfig() {
           faithfulness: { enabled: true, punctual: true, seasonal: true, recurring: true },
           attendance: { enabled: true, threshold: 75 },
           churchTime: { enabled: true, minimumMonths: 12 },
-          positionLimit: { enabled: true, maxPositions: 2 }
+          positionLimit: { enabled: true, maxPositions: 2 },
+          eldersCount: { enabled: true, count: 1 }
         };
       }
       
@@ -443,6 +652,93 @@ export default function ElectionConfig() {
         ? (prev.positions || []).filter(p => p !== position)
         : [...(prev.positions || []), position]
     }));
+  };
+
+  // Funções para gerenciamento de cargos personalizados
+  const handleAddCustomPosition = () => {
+    if (newPositionName.trim() && !customPositions.includes(newPositionName.trim())) {
+      setCustomPositions(prev => [...prev, newPositionName.trim()]);
+      setNewPositionName('');
+      setShowAddPosition(false);
+    }
+  };
+
+  const handleEditCustomPosition = (position: string) => {
+    setEditingPosition(position);
+    setEditingPositionName(position);
+  };
+
+  const handleSaveEditPosition = () => {
+    if (editingPosition && editingPositionName.trim() && !customPositions.includes(editingPositionName.trim())) {
+      setCustomPositions(prev => prev.map(p => p === editingPosition ? editingPositionName.trim() : p));
+      setConfig(prev => ({
+        ...prev,
+        positions: prev.positions?.map(p => p === editingPosition ? editingPositionName.trim() : p)
+      }));
+      setEditingPosition(null);
+      setEditingPositionName('');
+    }
+  };
+
+  const handleDeleteCustomPosition = (position: string) => {
+    setCustomPositions(prev => prev.filter(p => p !== position));
+    setConfig(prev => ({
+      ...prev,
+      positions: prev.positions?.filter(p => p !== position)
+    }));
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPosition(null);
+    setEditingPositionName('');
+  };
+
+  const handleCancelAdd = () => {
+    setShowAddPosition(false);
+    setNewPositionName('');
+  };
+
+  // Funções para gerenciamento de descrições
+  const handleEditDescription = (position: string) => {
+    setEditingDescription(position);
+    setEditingDescriptionText(positionDescriptions[position] || '');
+  };
+
+  const handleSaveDescription = () => {
+    if (editingDescription) {
+      setPositionDescriptions(prev => ({
+        ...prev,
+        [editingDescription]: editingDescriptionText
+      }));
+      setEditingDescription(null);
+      setEditingDescriptionText('');
+    }
+  };
+
+  const handleCancelDescriptionEdit = () => {
+    setEditingDescription(null);
+    setEditingDescriptionText('');
+  };
+
+  const handleSelectAllPositions = () => {
+    setConfig(prev => ({
+      ...prev,
+      positions: [...customPositions]
+    }));
+  };
+
+  const handleDeselectAllPositions = () => {
+    setConfig(prev => ({
+      ...prev,
+      positions: []
+    }));
+  };
+
+  const handleAddIneligibleCandidate = (candidate: any) => {
+    // Remove da lista de não elegíveis
+    setIneligibleCandidates(prev => prev.filter(c => c.id !== candidate.id));
+    // Adiciona na lista de elegíveis
+    setEligibleCandidates(prev => [...prev, candidate]);
   };
 
   const loadEligibleCandidates = async () => {
@@ -472,65 +768,168 @@ export default function ElectionConfig() {
 
         // Filtrar candidatos baseado nos critérios
         const eligibleCandidates = [];
+        const ineligibleCandidates = [];
         const now = new Date();
 
         for (const member of churchMembers) {
           let isEligible = true;
+          let eligibilityReasons: string[] = [];
 
-          // Critério de Fidelidade
+          // Dados de teste para Vagner (ID 2227)
+          if (member.id === 2227) {
+            member.extra_data = {
+              dizimistaType: "Pontual (1-3)",
+              ofertanteType: "Recorrente (8-13)",
+              teveParticipacao: "Recorrente (8-13/14)",
+              tempoBatismoAnos: 5
+            };
+          }
+
+          console.log(`🔍 Analisando candidato ${member.name}:`, {
+            extra_data_raw: member.extra_data,
+            dizimistaType: member.extra_data?.dizimistaType,
+            ofertanteType: member.extra_data?.ofertanteType,
+            teveParticipacao: member.extra_data?.teveParticipacao,
+            criteria: config.criteria
+          });
+
+          // Critério de Fidelidade - usando a mesma lógica do UserDetailModal
           if (config.criteria?.faithfulness?.enabled) {
-            const hasFaithfulness = 
-              (config.criteria.faithfulness.punctual && member.is_tither) ||
-              (config.criteria.faithfulness.seasonal && member.is_donor) ||
-              (config.criteria.faithfulness.recurring && (member.attendance || 0) >= 70);
+            let hasFaithfulness = false;
+            const extraData = typeof member.extra_data === 'string' 
+              ? JSON.parse(member.extra_data || '{}') 
+              : member.extra_data || {};
             
+            // Verificar dizimista - usando coluna direta
+            const dizimistaType = member.dizimista_type;
+            const isDizimista = member.is_donor || member.isDonor || dizimistaType;
+            
+            if (isDizimista) {
+              console.log(`  📊 Verificando dizimista: ${dizimistaType}`);
+              if (config.criteria.faithfulness.punctual && dizimistaType?.includes('Pontual')) {
+                hasFaithfulness = true;
+                console.log(`    ✅ Passou em Pontual`);
+              }
+              if (config.criteria.faithfulness.seasonal && dizimistaType?.includes('Sazonal')) {
+                hasFaithfulness = true;
+                console.log(`    ✅ Passou em Sazonal`);
+              }
+              if (config.criteria.faithfulness.recurring && dizimistaType?.includes('Recorrente')) {
+                hasFaithfulness = true;
+                console.log(`    ✅ Passou em Recorrente`);
+              }
+            }
+            
+            // Verificar ofertante - usando coluna direta
+            if (!hasFaithfulness) {
+              const ofertanteType = member.ofertante_type;
+              const isOfertante = member.isOffering || ofertanteType;
+              
+              console.log(`  💰 Verificando ofertante: ${ofertanteType}`);
+              if (isOfertante) {
+                if (config.criteria.faithfulness.punctual && ofertanteType?.includes('Pontual')) {
+                  hasFaithfulness = true;
+                  console.log(`    ✅ Passou em Pontual (ofertante)`);
+                }
+                if (config.criteria.faithfulness.seasonal && ofertanteType?.includes('Sazonal')) {
+                  hasFaithfulness = true;
+                  console.log(`    ✅ Passou em Sazonal (ofertante)`);
+                }
+                if (config.criteria.faithfulness.recurring && ofertanteType?.includes('Recorrente')) {
+                  hasFaithfulness = true;
+                  console.log(`    ✅ Passou em Recorrente (ofertante)`);
+                }
+              }
+            }
+            
+            console.log(`  🎯 Resultado fidelidade: ${hasFaithfulness}`);
             if (!hasFaithfulness) {
               isEligible = false;
+              eligibilityReasons.push('Não atende aos critérios de fidelidade');
             }
           }
 
-          // Critério de Presença
+          // Critério de Presença - usando a mesma lógica do UserDetailModal
           if (config.criteria?.attendance?.enabled) {
             let hasAttendance = false;
-            const extraData = member.extra_data || {};
+            const extraData = typeof member.extra_data === 'string' 
+              ? JSON.parse(member.extra_data || '{}') 
+              : member.extra_data || {};
             
-            if (config.criteria.attendance.punctual && extraData.teveParticipacao) {
-              hasAttendance = true;
+            // Verificar participação - exatamente como no UserDetailModal
+            const teveParticipacao = extraData.teveParticipacao;
+            
+            console.log(`  📅 Verificando participação: ${teveParticipacao}`);
+            if (teveParticipacao && teveParticipacao !== 'Não informado') {
+              if (config.criteria.attendance.punctual && teveParticipacao.includes('Pontual')) {
+                hasAttendance = true;
+                console.log(`    ✅ Passou em Pontual (participação)`);
+              }
+              if (config.criteria.attendance.seasonal && teveParticipacao.includes('Sazonal')) {
+                hasAttendance = true;
+                console.log(`    ✅ Passou em Sazonal (participação)`);
+              }
+              if (config.criteria.attendance.recurring && teveParticipacao.includes('Recorrente')) {
+                hasAttendance = true;
+                console.log(`    ✅ Passou em Recorrente (participação)`);
+              }
             }
             
+            console.log(`  🎯 Resultado participação: ${hasAttendance}`);
             if (!hasAttendance) {
               isEligible = false;
+              eligibilityReasons.push('Não atende aos critérios de presença');
             }
           }
 
-          // Critério de Tempo na Igreja
+          // Critério de Tempo na Igreja (baseado no tempo de batismo)
           if (config.criteria?.churchTime?.enabled) {
-            const memberDate = new Date(member.created_at);
-            const monthsInChurch = (now.getTime() - memberDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
+            const extraData = typeof member.extra_data === 'string' 
+              ? JSON.parse(member.extra_data || '{}') 
+              : member.extra_data || {};
             
-            if (monthsInChurch < (config.criteria.churchTime.minimumMonths || 12)) {
+            const tempoBatismoAnos = member.tempo_batismo_anos || 0;
+            const minimumYears = Math.round((config.criteria.churchTime.minimumMonths || 12) / 12);
+            
+            if (tempoBatismoAnos < minimumYears) {
               isEligible = false;
+              eligibilityReasons.push(`Tempo de batismo insuficiente (${tempoBatismoAnos} anos, mínimo: ${minimumYears} anos)`);
             }
           }
 
+          const extraData = typeof member.extra_data === 'string' 
+            ? JSON.parse(member.extra_data || '{}') 
+            : member.extra_data || {};
+
+          const candidateData = {
+            id: member.id,
+            name: member.name,
+            email: member.email,
+            church: member.church,
+            role: member.role,
+            status: member.status,
+            // Usando colunas diretas
+            isTither: member.dizimista_type || (member.is_donor || member.isDonor ? 'Sim' : 'Não'),
+            isDonor: member.ofertante_type || (member.isOffering ? 'Sim' : 'Não'),
+            attendance: extraData.teveParticipacao || 'Não informado',
+            // Tempo baseado no batismo - usando coluna direta
+            churchTime: member.tempo_batismo_anos ? `${member.tempo_batismo_anos} anos` : 'Não informado',
+            churchTimeYears: member.tempo_batismo_anos || 0,
+            extraData: member.extra_data,
+            eligibilityReasons
+          };
+
+          console.log(`  🏆 Resultado final: elegível=${isEligible}, motivos=${eligibilityReasons.join(', ')}`);
+          
           if (isEligible) {
-            eligibleCandidates.push({
-              id: member.id,
-              name: member.name,
-              email: member.email,
-              church: member.church,
-              role: member.role,
-              status: member.status,
-              isTither: member.is_tither,
-              isDonor: member.is_donor,
-              attendance: member.attendance || 0,
-              monthsInChurch: Math.floor((now.getTime() - new Date(member.created_at).getTime()) / (1000 * 60 * 60 * 24 * 30)),
-              extraData: member.extra_data
-            });
+            eligibleCandidates.push(candidateData);
+          } else {
+            ineligibleCandidates.push(candidateData);
           }
         }
 
         setEligibleCandidates(eligibleCandidates);
+        setIneligibleCandidates(ineligibleCandidates);
       } else {
         throw new Error('Erro ao carregar usuários');
       }
@@ -564,18 +963,27 @@ export default function ElectionConfig() {
   };
 
   const saveConfig = async () => {
-    // Verificar se já existe uma configuração para esta igreja
-    if (configExists) {
-      toast({
-        title: "Configuração já existe",
-        description: "Já existe uma configuração para esta igreja. Use 'Editar' para modificar.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setSaving(true);
     try {
+      // Validar dados antes de enviar
+      if (!config.churchId || !config.churchName || config.positions.length === 0) {
+        toast({
+          title: "Erro",
+          description: "Por favor, selecione uma igreja e pelo menos um cargo.",
+          variant: "destructive",
+        });
+        setSaving(false);
+        return;
+      }
+
+      const payload = {
+        ...config,
+        custom_positions: customPositions,
+        position_descriptions: positionDescriptions
+      };
+
+      console.log('🔧 Enviando configuração:', payload);
+
       const response = await fetch('/api/elections/config', {
         method: 'POST',
         headers: {
@@ -583,7 +991,7 @@ export default function ElectionConfig() {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         },
-        body: JSON.stringify(config)
+        body: JSON.stringify(payload)
       });
 
       if (response.ok) {
@@ -597,7 +1005,9 @@ export default function ElectionConfig() {
         });
         setCurrentStep(2); // Avança para o próximo passo
       } else {
-        throw new Error('Erro ao salvar configuração');
+        const errorData = await response.json();
+        console.error('❌ Erro na resposta:', errorData);
+        throw new Error(errorData.error || 'Erro ao salvar configuração');
       }
     } catch (error) {
       toast({
@@ -688,13 +1098,28 @@ export default function ElectionConfig() {
     );
   }
 
-  if (user?.role !== 'admin') {
+  // Verificar se o usuário tem permissão para acessar a configuração de eleição
+  const canAccessElectionConfig = user?.role === 'admin' || 
+                                  user?.role?.includes('admin') || 
+                                  user?.email?.includes('admin') ||
+                                  user?.name?.toLowerCase().includes('admin') ||
+                                  user?.name?.toLowerCase().includes('pastor');
+
+  if (!canAccessElectionConfig) {
     return (
       <MobileLayout>
         <div className="p-4 text-center">
           <AlertCircle className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
           <h2 className="text-xl font-semibold mb-2">Acesso Restrito</h2>
           <p className="text-muted-foreground">Apenas administradores podem configurar eleições.</p>
+          <div className="mt-4 p-4 bg-gray-100 rounded-lg text-left">
+            <p className="text-sm text-gray-600">
+              <strong>Usuário atual:</strong><br/>
+              Nome: {user?.name || 'N/A'}<br/>
+              Email: {user?.email || 'N/A'}<br/>
+              Role: {user?.role || 'N/A'}
+            </p>
+          </div>
         </div>
       </MobileLayout>
     );
@@ -1147,23 +1572,23 @@ export default function ElectionConfig() {
                         onCheckedChange={(checked) => handleCriteriaChange('churchTime.enabled', checked)}
                       />
                       <Label htmlFor="church-time-enabled" className="cursor-pointer">
-                        Tempo mínimo de igreja
+                        Tempo mínimo de batismo
                       </Label>
                     </div>
 
                     {config.criteria?.churchTime?.enabled && (
                       <div className="ml-6 space-y-2">
-                        <Label htmlFor="minimumMonths">Tempo mínimo em meses</Label>
+                        <Label htmlFor="minimumYears">Tempo mínimo em anos</Label>
                         <Input
-                          id="minimumMonths"
+                          id="minimumYears"
                           type="number"
                           min="1"
-                          max="120"
-                          value={config.criteria?.churchTime?.minimumMonths || 12}
-                          onChange={(e) => handleCriteriaChange('churchTime.minimumMonths', parseInt(e.target.value))}
+                          max="50"
+                          value={Math.round((config.criteria?.churchTime?.minimumMonths || 12) / 12)}
+                          onChange={(e) => handleCriteriaChange('churchTime.minimumMonths', (parseInt(e.target.value) || 1) * 12)}
                         />
                         <p className="text-sm text-muted-foreground">
-                          Membros com menos de {config.criteria?.churchTime?.minimumMonths || 12} meses na igreja não poderão ser candidatos
+                          Membros com menos de {Math.round((config.criteria?.churchTime?.minimumMonths || 12) / 12)} anos de batismo não poderão ser candidatos
                         </p>
                       </div>
                     )}
@@ -1201,6 +1626,39 @@ export default function ElectionConfig() {
                       </div>
                     )}
                   </div>
+
+                  <Separator />
+
+                  {/* Quantidade de Anciãos */}
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="elders-count-enabled"
+                        checked={config.criteria?.eldersCount?.enabled || false}
+                        onCheckedChange={(checked) => handleCriteriaChange('eldersCount.enabled', checked)}
+                      />
+                      <Label htmlFor="elders-count-enabled" className="cursor-pointer">
+                        Quantidade de anciãos a serem eleitos
+                      </Label>
+                    </div>
+
+                    {config.criteria?.eldersCount?.enabled && (
+                      <div className="ml-6 space-y-2">
+                        <Label htmlFor="eldersCount">Número de anciãos</Label>
+                        <Input
+                          id="eldersCount"
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={config.criteria?.eldersCount?.count || 1}
+                          onChange={(e) => handleCriteriaChange('eldersCount.count', parseInt(e.target.value))}
+                        />
+                        <p className="text-sm text-muted-foreground">
+                          Serão eleitos {config.criteria?.eldersCount?.count || 1} ancião(s) para a igreja
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1214,152 +1672,220 @@ export default function ElectionConfig() {
                   Cargos para Eleição
                 </CardTitle>
                 <CardDescription>
-                  Selecione quais cargos serão eleitos organizados por categoria
+                  Gerencie todos os cargos disponíveis para eleição. Você pode adicionar, editar e excluir cargos conforme necessário.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
 
-                {/* ANCIÃOS / ANCIÃS / DIRETORES */}
+
+                {/* CARGOS PERSONALIZADOS */}
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-2 border-b">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <h3 className="font-semibold text-green-700">ANCIÃOS / ANCIÃS / DIRETORES</h3>
+                  <div className="flex items-center justify-between pb-2 border-b">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+                      <h3 className="font-semibold text-orange-700">TODOS OS CARGOS</h3>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAddPosition(true)}
+                      className="h-8 px-3"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Adicionar
+                    </Button>
                   </div>
-                  <div className="grid grid-cols-1 gap-2 ml-4">
-                    {ALL_POSITIONS.filter(pos => 
-                      pos.includes('Ancião') || pos.includes('Secretário') || pos.includes('Tesoureiro') || pos.includes('Patrimônio')
-                    ).map((position) => (
-                      <div key={position} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`position-${position}`}
-                          checked={(config.positions || []).includes(position)}
-                          onCheckedChange={() => handlePositionToggle(position)}
+                  
+                  {/* Formulário para adicionar novo cargo */}
+                  {showAddPosition && (
+                    <div className="ml-4 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Nome do cargo"
+                          value={newPositionName}
+                          onChange={(e) => setNewPositionName(e.target.value)}
+                          className="flex-1"
+                          onKeyPress={(e) => e.key === 'Enter' && handleAddCustomPosition()}
                         />
-                        <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
-                          {position}
-                        </Label>
+                        <Button
+                          size="sm"
+                          onClick={handleAddCustomPosition}
+                          disabled={!newPositionName.trim()}
+                        >
+                          <Save className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleCancelAdd}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
                       </div>
-                    ))}
+                    </div>
+                  )}
+
+                  {/* Tabela de cargos personalizados */}
+                  <div className="ml-4">
+                    {customPositions.length === 0 && !showAddPosition ? (
+                      <div className="text-sm text-muted-foreground text-center py-4">
+                        Nenhum cargo disponível
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse">
+                          <thead>
+                            <tr className="border-b border-orange-200">
+                              <th className="text-left p-2 text-xs font-medium text-orange-700">Selecionar</th>
+                              <th className="text-left p-2 text-xs font-medium text-orange-700">Departamento/Ministério</th>
+                              <th className="text-left p-2 text-xs font-medium text-orange-700">Descrição/Atribuições</th>
+                              <th className="text-left p-2 text-xs font-medium text-orange-700">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {customPositions.map((position) => (
+                              <tr key={position} className="border-b border-orange-100 hover:bg-orange-25">
+                                <td className="p-2">
+                                  <Checkbox
+                                    id={`custom-position-${position}`}
+                                    checked={(config.positions || []).includes(position)}
+                                    onCheckedChange={() => handlePositionToggle(position)}
+                                  />
+                                </td>
+                                <td className="p-2">
+                                  {editingPosition === position ? (
+                                    <div className="flex items-center gap-2">
+                                      <Input
+                                        value={editingPositionName}
+                                        onChange={(e) => setEditingPositionName(e.target.value)}
+                                        className="flex-1 text-sm"
+                                        onKeyPress={(e) => e.key === 'Enter' && handleSaveEditPosition()}
+                                      />
+                                      <Button
+                                        size="sm"
+                                        onClick={handleSaveEditPosition}
+                                        disabled={!editingPositionName.trim()}
+                                        className="h-6 w-6 p-0"
+                                      >
+                                        <Save className="h-3 w-3" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={handleCancelEdit}
+                                        className="h-6 w-6 p-0"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <Label htmlFor={`custom-position-${position}`} className="cursor-pointer text-sm font-medium">
+                                      {position}
+                                    </Label>
+                                  )}
+                                </td>
+                                <td className="p-2">
+                                  {editingDescription === position ? (
+                                    <div className="space-y-2">
+                                      <textarea
+                                        value={editingDescriptionText}
+                                        onChange={(e) => setEditingDescriptionText(e.target.value)}
+                                        className="w-full min-h-[60px] p-2 text-xs border rounded-md resize-none"
+                                        placeholder="Digite as atribuições e responsabilidades deste cargo..."
+                                      />
+                                      <div className="flex gap-1">
+                                        <Button
+                                          size="sm"
+                                          onClick={handleSaveDescription}
+                                          className="h-6 w-6 p-0"
+                                        >
+                                          <Save className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={handleCancelDescriptionEdit}
+                                          className="h-6 w-6 p-0"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-1">
+                                      {positionDescriptions[position] ? (
+                                        <div className="text-xs text-gray-700 bg-white/50 rounded p-2 border max-h-20 overflow-y-auto">
+                                          {positionDescriptions[position]}
+                                        </div>
+                                      ) : (
+                                        <div className="text-xs text-muted-foreground italic">
+                                          Nenhuma descrição adicionada
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="p-2">
+                                  <div className="flex gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleEditCustomPosition(position)}
+                                      className="h-6 w-6 p-0"
+                                      title="Editar nome do cargo"
+                                    >
+                                      <Edit className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleEditDescription(position)}
+                                      className="h-6 w-6 p-0"
+                                      title="Editar descrição"
+                                    >
+                                      <FileText className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleDeleteCustomPosition(position)}
+                                      className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
+                                      title="Excluir cargo"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* DIACONATO */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-2 border-b">
-                    <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                    <h3 className="font-semibold text-purple-700">DIACONATO</h3>
+                {/* Botões de Ação */}
+                <div className="flex items-center justify-between pt-6 border-t">
+                  <div className="text-sm text-muted-foreground">
+                    {config.positions?.length || 0} cargo(s) selecionado(s)
                   </div>
-                  <div className="grid grid-cols-1 gap-2 ml-4">
-                    {ALL_POSITIONS.filter(pos => 
-                      pos.includes('Diácono') || pos.includes('Diaconisa')
-                    ).map((position) => (
-                      <div key={position} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`position-${position}`}
-                          checked={(config.positions || []).includes(position)}
-                          onCheckedChange={() => handlePositionToggle(position)}
-                        />
-                        <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
-                          {position}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* MORDOMIA CRISTÃ */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-2 border-b">
-                    <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
-                    <h3 className="font-semibold text-orange-700">MORDOMIA CRISTÃ</h3>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 ml-4">
-                    {ALL_POSITIONS.filter(pos => 
-                      pos.includes('Mordomia') || (pos === 'Diretor(a)' && !pos.includes('Ministério')) || pos === 'Diretor(a) Associado(a)' || pos === 'Discípulo Teen'
-                    ).map((position) => (
-                      <div key={position} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`position-${position}`}
-                          checked={(config.positions || []).includes(position)}
-                          onCheckedChange={() => handlePositionToggle(position)}
-                        />
-                        <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
-                          {position}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* NOVAS GERAÇÕES */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-2 border-b">
-                    <div className="w-3 h-3 bg-pink-500 rounded-full"></div>
-                    <h3 className="font-semibold text-pink-700">NOVAS GERAÇÕES</h3>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 ml-4">
-                    {ALL_POSITIONS.filter(pos => 
-                      pos.includes('Criança') || pos.includes('Adolescentes') || pos.includes('Jovem') || pos.includes('Aventureiros') || pos.includes('Desbravadores')
-                    ).map((position) => (
-                      <div key={position} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`position-${position}`}
-                          checked={(config.positions || []).includes(position)}
-                          onCheckedChange={() => handlePositionToggle(position)}
-                        />
-                        <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
-                          {position}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* ESCOLA SABATINA */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-2 border-b">
-                    <div className="w-3 h-3 bg-indigo-500 rounded-full"></div>
-                    <h3 className="font-semibold text-indigo-700">ESCOLA SABATINA</h3>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 ml-4">
-                    {ALL_POSITIONS.filter(pos => 
-                      pos.includes('Professores') || pos.includes('Escola Sabatina')
-                    ).map((position) => (
-                      <div key={position} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`position-${position}`}
-                          checked={(config.positions || []).includes(position)}
-                          onCheckedChange={() => handlePositionToggle(position)}
-                        />
-                        <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
-                          {position}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* MINISTÉRIOS */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-2 border-b">
-                    <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
-                    <h3 className="font-semibold text-teal-700">MINISTÉRIOS ESPECIALIZADOS</h3>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 ml-4">
-                    {ALL_POSITIONS.filter(pos => 
-                      pos.includes('Ministério') || pos.includes('ASA') || pos.includes('Evangelismo') || pos.includes('Classes Bíblicas') || pos.includes('Interessados') || pos.includes('Casal') || pos.includes('Recepção') || pos.includes('Possibilidades') || pos.includes('Música') || pos.includes('Comunicação') || pos.includes('Sonoplastia')
-                    ).map((position) => (
-                      <div key={position} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`position-${position}`}
-                          checked={(config.positions || []).includes(position)}
-                          onCheckedChange={() => handlePositionToggle(position)}
-                        />
-                        <Label htmlFor={`position-${position}`} className="cursor-pointer flex-1 text-sm">
-                          {position}
-                        </Label>
-                      </div>
-                    ))}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDeselectAllPositions}
+                      disabled={!config.positions?.length}
+                    >
+                      Desmarcar Todos
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSelectAllPositions}
+                    >
+                      Marcar Todos
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -1447,24 +1973,28 @@ export default function ElectionConfig() {
                           <div className="mt-3 pt-3 border-t">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                               <div className="flex items-center space-x-2">
-                                <span className="font-medium">Tempo na igreja:</span>
-                                <span>{candidate.monthsInChurch} meses</span>
+                                <span className="font-medium">Tempo de batismo:</span>
+                                <Badge variant={candidate.churchTime?.includes('Não') ? 'secondary' : 'default'}>
+                                  {candidate.churchTimeYears > 0 ? `${candidate.churchTimeYears} anos` : 'Não informado'}
+                                </Badge>
                               </div>
                               <div className="flex items-center space-x-2">
                                 <span className="font-medium">Dizimista:</span>
-                                <Badge variant={candidate.isTither ? 'default' : 'secondary'}>
-                                  {candidate.isTither ? 'Sim' : 'Não'}
+                                <Badge variant={candidate.isTither?.includes('Não') || candidate.isTither === 'Não informado' ? 'secondary' : 'default'}>
+                                  {candidate.isTither}
                                 </Badge>
                               </div>
                               <div className="flex items-center space-x-2">
                                 <span className="font-medium">Ofertante:</span>
-                                <Badge variant={candidate.isDonor ? 'default' : 'secondary'}>
-                                  {candidate.isDonor ? 'Sim' : 'Não'}
+                                <Badge variant={candidate.isDonor?.includes('Não') || candidate.isDonor === 'Não informado' ? 'secondary' : 'default'}>
+                                  {candidate.isDonor}
                                 </Badge>
                               </div>
                               <div className="flex items-center space-x-2">
                                 <span className="font-medium">Presença:</span>
-                                <span>{candidate.attendance || 0}%</span>
+                                <Badge variant={candidate.attendance?.includes('Não') || candidate.attendance === 'Não informado' ? 'secondary' : 'default'}>
+                                  {candidate.attendance}
+                                </Badge>
                               </div>
                             </div>
                           </div>
@@ -1477,6 +2007,103 @@ export default function ElectionConfig() {
                       <AlertDescription>
                         Esta lista mostra apenas os membros que atendem aos critérios definidos. 
                         Durante a nomeação, apenas estes membros poderão ser indicados como candidatos.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+
+                {/* Seção de Candidatos Não Elegíveis */}
+                {ineligibleCandidates.length > 0 && (
+                  <div className="mt-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-orange-700 flex items-center gap-2">
+                        <AlertTriangle className="h-5 w-5" />
+                        Candidatos Não Elegíveis ({ineligibleCandidates.length})
+                      </h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Membros que não atendem aos critérios definidos, mas podem ser adicionados manualmente pelo administrador.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {ineligibleCandidates.map((candidate) => (
+                        <Card key={candidate.id} className="border-orange-200">
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <h4 className="font-medium text-orange-800">{candidate.name}</h4>
+                                <p className="text-sm text-muted-foreground">{candidate.email}</p>
+                                <div className="flex items-center gap-2 mt-2">
+                                  <Badge variant={candidate.status === 'approved' ? 'default' : 'secondary'}>
+                                    {candidate.status === 'approved' ? 'Ativo' : 'Pendente'}
+                                  </Badge>
+                                  <Badge variant="outline">
+                                    {candidate.role}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleAddIneligibleCandidate(candidate)}
+                                className="ml-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+                              >
+                                <UserPlus className="h-4 w-4 mr-1" />
+                                Adicionar
+                              </Button>
+                            </div>
+                            
+                            <div className="mt-3 pt-3 border-t border-orange-100">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-medium">Tempo de batismo:</span>
+                                  <Badge variant={candidate.churchTimeYears === 0 ? 'secondary' : 'default'}>
+                                    {candidate.churchTimeYears > 0 ? `${candidate.churchTimeYears} anos` : 'Não informado'}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-medium">Dizimista:</span>
+                                  <Badge variant={candidate.isTither?.includes('Não') || candidate.isTither === 'Não informado' ? 'secondary' : 'default'}>
+                                    {candidate.isTither}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-medium">Ofertante:</span>
+                                  <Badge variant={candidate.isDonor?.includes('Não') || candidate.isDonor === 'Não informado' ? 'secondary' : 'default'}>
+                                    {candidate.isDonor}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-medium">Presença:</span>
+                                  <Badge variant={candidate.attendance?.includes('Não') || candidate.attendance === 'Não informado' ? 'secondary' : 'default'}>
+                                    {candidate.attendance}
+                                  </Badge>
+                                </div>
+                              </div>
+                              
+                              {/* Motivos de não elegibilidade */}
+                              <div className="mt-3 pt-3 border-t border-orange-100">
+                                <p className="text-sm font-medium text-orange-700 mb-2">Motivos:</p>
+                                <div className="space-y-1">
+                                  {candidate.eligibilityReasons.map((reason, index) => (
+                                    <div key={index} className="flex items-center gap-2 text-sm text-orange-600">
+                                      <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                      <span>{reason}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+
+                    <Alert className="mt-4 border-orange-200">
+                      <AlertTriangle className="h-4 w-4 text-orange-600" />
+                      <AlertDescription className="text-orange-800">
+                        Estes membros não atendem aos critérios definidos, mas podem ser adicionados manualmente 
+                        clicando no botão "Adicionar" se o administrador considerar apropriado.
                       </AlertDescription>
                     </Alert>
                   </div>

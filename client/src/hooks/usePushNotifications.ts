@@ -55,8 +55,8 @@ export const usePushNotifications = () => {
 
       const registration = await navigator.serviceWorker.ready;
       
-      // VAPID key would be generated on your server
-      const vapidPublicKey = 'BEl62iUYgUivxIkv69yViEuiBIa40HI7BSukM5aYLlF8kqbD9PFXx_dSJ6hpQ2z8JA3d-b1T_7K5XaLh1-4lOBY';
+      // VAPID public key
+      const vapidPublicKey = 'BD6cS7ooCOhh1lfv-D__PNYDv3S_S9EyR4bpowVJHcBxYIl5gtTFs8AThEO-MZnpzsKIZuRY3iR2oOMBDAOH2wY';
       
       const sub = await registration.pushManager.subscribe({
         userVisibleOnly: true,

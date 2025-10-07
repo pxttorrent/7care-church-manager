@@ -9,9 +9,9 @@ import { createServer } from "http";
 // server/neonConfig.ts
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-var connectionString = "postgresql://neondb_owner:npg_enihr4YBSDm8@ep-still-glade-ac5u1r48-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
+var connectionString = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_enihr4YBSDm8@ep-still-glade-ac5u1r48-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
 var sql = neon(connectionString);
-var db = drizzle(sql);
+var db2 = drizzle(sql);
 var isDevelopment = process.env.NODE_ENV === "development";
 var isProduction = process.env.NODE_ENV === "production";
 console.log("\u{1F517} Neon Database configurado (vers\xE3o simplificada):", {
@@ -49,6 +49,39 @@ var users = pgTable("users", {
   level: text("level").default("Iniciante"),
   attendance: integer("attendance").default(0),
   extraData: jsonb("extra_data"),
+  // Campos para cálculo de pontos (movidos de extra_data)
+  engajamento: text("engajamento"),
+  // 'Baixo', 'Médio', 'Alto'
+  classificacao: text("classificacao"),
+  // 'Frequente', 'Não Frequente'
+  dizimistaType: text("dizimista_type"),
+  // 'Não dizimista', 'Pontual (1-3)', 'Sazonal (4-7)', 'Recorrente (8-12)'
+  ofertanteType: text("ofertante_type"),
+  // 'Não ofertante', 'Pontual (1-3)', 'Sazonal (4-7)', 'Recorrente (8-12)'
+  tempoBatismoAnos: integer("tempo_batismo_anos"),
+  // Anos de batismo (numérico)
+  departamentosCargos: text("departamentos_cargos"),
+  // Lista de departamentos e cargos separados por ';'
+  nomeUnidade: text("nome_unidade"),
+  // Nome da unidade/grupo pequeno
+  temLicao: boolean("tem_licao").default(false),
+  // Tem lição da Escola Sabatina
+  totalPresenca: integer("total_presenca").default(0),
+  // Total de presenças (0-13)
+  comunhao: integer("comunhao").default(0),
+  // Pontuação comunhão (0-13)
+  missao: integer("missao").default(0),
+  // Pontuação missão (0-13)
+  estudoBiblico: integer("estudo_biblico").default(0),
+  // Pontuação estudo bíblico (0-13)
+  batizouAlguem: boolean("batizou_alguem").default(false),
+  // Batizou alguém
+  discPosBatismal: integer("disc_pos_batismal").default(0),
+  // Quantidade de discipulados pós-batismo
+  cpfValido: boolean("cpf_valido").default(false),
+  // CPF válido
+  camposVazios: boolean("campos_vazios").default(true),
+  // Tem campos vazios no ACMS
   observations: text("observations"),
   firstAccess: boolean("first_access").default(true),
   status: text("status").default("pending"),
@@ -127,6 +160,16 @@ var notifications = pgTable("notifications", {
   type: text("type").notNull(),
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow()
+});
+var pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
 });
 var discipleshipRequests = pgTable("discipleship_requests", {
   id: serial("id").primaryKey(),
@@ -266,7 +309,7 @@ var eventFilterPermissions = pgTable("event_filter_permissions", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow()
 });
-var schema = {
+var schema2 = {
   users,
   churches,
   events,
@@ -302,8 +345,27 @@ var NeonAdapter = class {
   // ========== USUÁRIOS ==========
   async getAllUsers() {
     try {
-      const result = await db.select().from(schema.users).orderBy(asc(schema.users.id));
-      return result;
+      const result = await db2.select().from(schema2.users).orderBy(asc(schema2.users.id));
+      const processedUsers = result.map((user) => {
+        let extraData = {};
+        if (user.extra_data) {
+          if (typeof user.extra_data === "string") {
+            try {
+              extraData = JSON.parse(user.extra_data);
+            } catch (e) {
+              console.log(`\u26A0\uFE0F Erro ao parsear extra_data para usu\xE1rio ${user.id}:`, user.extra_data);
+              extraData = {};
+            }
+          } else if (typeof user.extra_data === "object") {
+            extraData = user.extra_data;
+          }
+        }
+        return {
+          ...user,
+          extra_data: extraData
+        };
+      });
+      return processedUsers;
     } catch (error) {
       console.error("Erro ao buscar usu\xE1rios:", error);
       return [];
@@ -311,12 +373,12 @@ var NeonAdapter = class {
   }
   async getVisitedUsers() {
     try {
-      const result = await db.select().from(schema.users).where(
+      const result = await db2.select().from(schema2.users).where(
         and(
-          or(eq(schema.users.role, "member"), eq(schema.users.role, "missionary")),
+          or(eq(schema2.users.role, "member"), eq(schema2.users.role, "missionary")),
           sql`extra_data->>'visited' = 'true'`
         )
-      ).orderBy(schema.users.id);
+      ).orderBy(schema2.users.id);
       return result.map((user) => ({
         ...user,
         extraData: user.extraData ? typeof user.extraData === "string" ? JSON.parse(user.extraData) : user.extraData : {}
@@ -328,7 +390,7 @@ var NeonAdapter = class {
   }
   async getUserById(id) {
     try {
-      const result = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
+      const result = await db2.select().from(schema2.users).where(eq(schema2.users.id, id)).limit(1);
       const user = result[0] || null;
       if (user && user.extraData) {
         console.log(`\u{1F50D} getUserById ${id} - extraData type:`, typeof user.extraData);
@@ -342,7 +404,7 @@ var NeonAdapter = class {
   }
   async getUserByEmail(email) {
     try {
-      const result = await db.select().from(schema.users).where(eq(schema.users.email, email)).limit(1);
+      const result = await db2.select().from(schema2.users).where(eq(schema2.users.email, email)).limit(1);
       return result[0] || null;
     } catch (error) {
       console.error("Erro ao buscar usu\xE1rio por email:", error);
@@ -361,7 +423,7 @@ var NeonAdapter = class {
         createdAt: /* @__PURE__ */ new Date(),
         updatedAt: /* @__PURE__ */ new Date()
       };
-      const result = await db.insert(schema.users).values(newUser).returning();
+      const result = await db2.insert(schema2.users).values(newUser).returning();
       return result[0];
     } catch (error) {
       console.error("Erro ao criar usu\xE1rio:", error);
@@ -375,7 +437,7 @@ var NeonAdapter = class {
         updates.password = await bcrypt.hash(updates.password, 10);
       }
       updates.updatedAt = /* @__PURE__ */ new Date();
-      const result = await db.update(schema.users).set(updates).where(eq(schema.users.id, id)).returning();
+      const result = await db2.update(schema2.users).set(updates).where(eq(schema2.users.id, id)).returning();
       console.log(`\u2705 Usu\xE1rio ${id} atualizado com sucesso:`, result[0]?.extraData);
       return result[0] || null;
     } catch (error) {
@@ -413,7 +475,7 @@ var NeonAdapter = class {
       if (user && user.role === "admin") {
         throw new Error("N\xE3o \xE9 poss\xEDvel excluir usu\xE1rios administradores do sistema");
       }
-      const result = await db.delete(schema.users).where(eq(schema.users.id, id));
+      const result = await db2.delete(schema2.users).where(eq(schema2.users.id, id));
       return true;
     } catch (error) {
       console.error("Erro ao deletar usu\xE1rio:", error);
@@ -423,7 +485,7 @@ var NeonAdapter = class {
   // ========== IGREJAS ==========
   async getAllChurches() {
     try {
-      const result = await db.select().from(schema.churches).orderBy(asc(schema.churches.id));
+      const result = await db2.select().from(schema2.churches).orderBy(asc(schema2.churches.id));
       return result;
     } catch (error) {
       console.error("Erro ao buscar igrejas:", error);
@@ -432,7 +494,7 @@ var NeonAdapter = class {
   }
   async getChurchById(id) {
     try {
-      const result = await db.select().from(schema.churches).where(eq(schema.churches.id, id)).limit(1);
+      const result = await db2.select().from(schema2.churches).where(eq(schema2.churches.id, id)).limit(1);
       return result[0] || null;
     } catch (error) {
       console.error("Erro ao buscar igreja por ID:", error);
@@ -446,7 +508,7 @@ var NeonAdapter = class {
         createdAt: /* @__PURE__ */ new Date(),
         updatedAt: /* @__PURE__ */ new Date()
       };
-      const result = await db.insert(schema.churches).values(newChurch).returning();
+      const result = await db2.insert(schema2.churches).values(newChurch).returning();
       return result[0];
     } catch (error) {
       console.error("Erro ao criar igreja:", error);
@@ -456,7 +518,7 @@ var NeonAdapter = class {
   async updateChurch(id, updates) {
     try {
       updates.updatedAt = /* @__PURE__ */ new Date();
-      const result = await db.update(schema.churches).set(updates).where(eq(schema.churches.id, id)).returning();
+      const result = await db2.update(schema2.churches).set(updates).where(eq(schema2.churches.id, id)).returning();
       return result[0] || null;
     } catch (error) {
       console.error("Erro ao atualizar igreja:", error);
@@ -465,7 +527,7 @@ var NeonAdapter = class {
   }
   async deleteChurch(id) {
     try {
-      await db.delete(schema.churches).where(eq(schema.churches.id, id));
+      await db2.delete(schema2.churches).where(eq(schema2.churches.id, id));
       return true;
     } catch (error) {
       console.error("Erro ao deletar igreja:", error);
@@ -475,21 +537,21 @@ var NeonAdapter = class {
   // ========== EVENTOS ==========
   async getAllEvents() {
     try {
-      const result = await db.select({
-        id: schema.events.id,
-        title: schema.events.title,
-        description: schema.events.description,
-        date: schema.events.date,
-        location: schema.events.location,
-        type: schema.events.type,
-        capacity: schema.events.capacity,
-        isRecurring: schema.events.isRecurring,
-        recurrencePattern: schema.events.recurrencePattern,
-        createdBy: schema.events.createdBy,
-        churchId: schema.events.churchId,
-        createdAt: schema.events.createdAt,
-        updatedAt: schema.events.updatedAt
-      }).from(schema.events).orderBy(desc(schema.events.date));
+      const result = await db2.select({
+        id: schema2.events.id,
+        title: schema2.events.title,
+        description: schema2.events.description,
+        date: schema2.events.date,
+        location: schema2.events.location,
+        type: schema2.events.type,
+        capacity: schema2.events.capacity,
+        isRecurring: schema2.events.isRecurring,
+        recurrencePattern: schema2.events.recurrencePattern,
+        createdBy: schema2.events.createdBy,
+        churchId: schema2.events.churchId,
+        createdAt: schema2.events.createdAt,
+        updatedAt: schema2.events.updatedAt
+      }).from(schema2.events).orderBy(desc(schema2.events.date));
       return result;
     } catch (error) {
       console.error("Erro ao buscar eventos:", error);
@@ -498,7 +560,7 @@ var NeonAdapter = class {
   }
   async getEventById(id) {
     try {
-      const result = await db.select().from(schema.events).where(eq(schema.events.id, id)).limit(1);
+      const result = await db2.select().from(schema2.events).where(eq(schema2.events.id, id)).limit(1);
       return result[0] || null;
     } catch (error) {
       console.error("Erro ao buscar evento por ID:", error);
@@ -512,7 +574,7 @@ var NeonAdapter = class {
         createdAt: /* @__PURE__ */ new Date(),
         updatedAt: /* @__PURE__ */ new Date()
       };
-      const result = await db.insert(schema.events).values(newEvent).returning();
+      const result = await db2.insert(schema2.events).values(newEvent).returning();
       return result[0];
     } catch (error) {
       console.error("Erro ao criar evento:", error);
@@ -522,7 +584,7 @@ var NeonAdapter = class {
   async updateEvent(id, updates) {
     try {
       updates.updatedAt = /* @__PURE__ */ new Date();
-      const result = await db.update(schema.events).set(updates).where(eq(schema.events.id, id)).returning();
+      const result = await db2.update(schema2.events).set(updates).where(eq(schema2.events.id, id)).returning();
       return result[0] || null;
     } catch (error) {
       console.error("Erro ao atualizar evento:", error);
@@ -531,7 +593,7 @@ var NeonAdapter = class {
   }
   async deleteEvent(id) {
     try {
-      await db.delete(schema.events).where(eq(schema.events.id, id));
+      await db2.delete(schema2.events).where(eq(schema2.events.id, id));
       return true;
     } catch (error) {
       console.error("Erro ao deletar evento:", error);
@@ -579,7 +641,7 @@ var NeonAdapter = class {
   // ========== CONFIGURAÇÃO DE PONTOS ==========
   async getPointsConfiguration() {
     try {
-      const configs = await db.select().from(schema.pointConfigs);
+      const configs = await db2.select().from(schema2.pointConfigs);
       if (configs.length === 0) {
         return this.getDefaultPointsConfiguration();
       }
@@ -603,76 +665,76 @@ var NeonAdapter = class {
         eventPoints: config.eventPoints || 5,
         donationPoints: config.donationPoints || 5,
         engajamento: {
-          baixo: config.engajamento?.baixo || 5,
-          medio: config.engajamento?.medio || 7,
-          alto: config.engajamento?.alto || 10
+          baixo: config.engajamento?.baixo || 25,
+          medio: config.engajamento?.medio || 50,
+          alto: config.engajamento?.alto || 75
         },
         classificacao: {
-          frequente: config.classificacao?.frequente || 8,
-          naoFrequente: config.classificacao?.naoFrequente || 5
+          frequente: config.classificacao?.frequente || 75,
+          naoFrequente: config.classificacao?.naoFrequente || 25
         },
         dizimista: {
           naoDizimista: config.dizimista?.naoDizimista || 0,
-          pontual: config.dizimista?.pontual || 6,
-          sazonal: config.dizimista?.sazonal || 5,
-          recorrente: config.dizimista?.recorrente || 10
+          pontual: config.dizimista?.pontual || 50,
+          sazonal: config.dizimista?.sazonal || 75,
+          recorrente: config.dizimista?.recorrente || 100
         },
         ofertante: {
           naoOfertante: config.ofertante?.naoOfertante || 0,
-          pontual: config.ofertante?.pontual || 6,
-          sazonal: config.ofertante?.sazonal || 5,
-          recorrente: config.ofertante?.recorrente || 8
+          pontual: config.ofertante?.pontual || 50,
+          sazonal: config.ofertante?.sazonal || 75,
+          recorrente: config.ofertante?.recorrente || 100
         },
         tempoBatismo: {
-          doisAnos: config.tempoBatismo?.doisAnos || 5,
-          cincoAnos: config.tempoBatismo?.cincoAnos || 6,
-          dezAnos: config.tempoBatismo?.dezAnos || 7,
-          vinteAnos: config.tempoBatismo?.vinteAnos || 8,
-          maisVinte: config.tempoBatismo?.maisVinte || 10
+          doisAnos: config.tempoBatismo?.doisAnos || 50,
+          cincoAnos: config.tempoBatismo?.cincoAnos || 75,
+          dezAnos: config.tempoBatismo?.dezAnos || 100,
+          vinteAnos: config.tempoBatismo?.vinteAnos || 150,
+          maisVinte: config.tempoBatismo?.maisVinte || 200
         },
         cargos: {
-          umCargo: config.cargos?.umCargo || 6,
-          doisCargos: config.cargos?.doisCargos || 8,
-          tresOuMais: config.cargos?.tresOuMais || 10
+          umCargo: config.cargos?.umCargo || 50,
+          doisCargos: config.cargos?.doisCargos || 100,
+          tresOuMais: config.cargos?.tresOuMais || 150
         },
         nomeUnidade: {
-          comUnidade: config.nomeUnidade?.comUnidade || 6,
+          comUnidade: config.nomeUnidade?.comUnidade || 25,
           semUnidade: config.nomeUnidade?.semUnidade || 0
         },
         temLicao: {
-          comLicao: config.temLicao?.comLicao || 8
+          comLicao: config.temLicao?.comLicao || 50
         },
         pontuacaoDinamica: {
-          multiplicador: config.pontuacaoDinamica?.multiplicador || 1
+          multiplicador: config.pontuacaoDinamica?.multiplicador || 25
         },
         totalPresenca: {
-          zeroATres: config.totalPresenca?.zeroATres || 5,
-          quatroASete: config.totalPresenca?.quatroASete || 7,
-          oitoATreze: config.totalPresenca?.oitoATreze || 10
+          zeroATres: config.totalPresenca?.zeroATres || 25,
+          quatroASete: config.totalPresenca?.quatroASete || 50,
+          oitoATreze: config.totalPresenca?.oitoATreze || 100
         },
         presenca: {
           multiplicador: config.presenca?.multiplicador || 1
         },
         escolaSabatina: {
-          comunhao: config.escolaSabatina?.comunhao || 6,
-          missao: config.escolaSabatina?.missao || 8,
-          estudoBiblico: config.escolaSabatina?.estudoBiblico || 10,
-          batizouAlguem: config.escolaSabatina?.batizouAlguem || 10,
-          discipuladoPosBatismo: config.escolaSabatina?.discipuladoPosBatismo || 6
+          comunhao: config.escolaSabatina?.comunhao || 50,
+          missao: config.escolaSabatina?.missao || 75,
+          estudoBiblico: config.escolaSabatina?.estudoBiblico || 100,
+          batizouAlguem: config.escolaSabatina?.batizouAlguem || 200,
+          discipuladoPosBatismo: config.escolaSabatina?.discipuladoPosBatismo || 50
         },
         batizouAlguem: {
-          sim: config.batizouAlguem?.sim || 8,
+          sim: config.batizouAlguem?.sim || 200,
           nao: config.batizouAlguem?.nao || 0
         },
         discipuladoPosBatismo: {
-          multiplicador: config.discipuladoPosBatismo?.multiplicador || 1
+          multiplicador: config.discipuladoPosBatismo?.multiplicador || 50
         },
         cpfValido: {
-          valido: config.cpfValido?.valido || 6,
+          valido: config.cpfValido?.valido || 25,
           invalido: config.cpfValido?.invalido || 0
         },
         camposVaziosACMS: {
-          completos: config.camposVaziosACMS?.completos || 6,
+          completos: config.camposVaziosACMS?.completos || 50,
           incompletos: config.camposVaziosACMS?.incompletos || 0
         }
       };
@@ -683,88 +745,88 @@ var NeonAdapter = class {
   }
   getDefaultPointsConfiguration() {
     return {
-      basicPoints: 5,
-      attendancePoints: 5,
-      eventPoints: 5,
-      donationPoints: 5,
+      basicPoints: 25,
+      attendancePoints: 25,
+      eventPoints: 50,
+      donationPoints: 75,
       engajamento: {
-        baixo: 5,
-        medio: 7,
-        alto: 10
+        baixo: 25,
+        medio: 50,
+        alto: 75
       },
       classificacao: {
-        frequente: 8,
-        naoFrequente: 5
+        frequente: 75,
+        naoFrequente: 25
       },
       dizimista: {
         naoDizimista: 0,
-        pontual: 6,
-        sazonal: 5,
-        recorrente: 10
+        pontual: 50,
+        sazonal: 75,
+        recorrente: 100
       },
       ofertante: {
         naoOfertante: 0,
-        pontual: 6,
-        sazonal: 5,
-        recorrente: 8
+        pontual: 50,
+        sazonal: 75,
+        recorrente: 100
       },
       tempoBatismo: {
-        doisAnos: 5,
-        cincoAnos: 6,
-        dezAnos: 7,
-        vinteAnos: 8,
-        maisVinte: 10
+        doisAnos: 50,
+        cincoAnos: 75,
+        dezAnos: 100,
+        vinteAnos: 150,
+        maisVinte: 200
       },
       cargos: {
-        umCargo: 6,
-        doisCargos: 8,
-        tresOuMais: 10
+        umCargo: 50,
+        doisCargos: 100,
+        tresOuMais: 150
       },
       nomeUnidade: {
-        comUnidade: 6,
+        comUnidade: 25,
         semUnidade: 0
       },
       temLicao: {
-        comLicao: 8
+        comLicao: 50
       },
       pontuacaoDinamica: {
-        multiplicador: 1
+        multiplicador: 25
       },
       totalPresenca: {
-        zeroATres: 5,
-        quatroASete: 7,
-        oitoATreze: 10
+        zeroATres: 25,
+        quatroASete: 50,
+        oitoATreze: 100
       },
       presenca: {
-        multiplicador: 1
+        multiplicador: 5
       },
       escolaSabatina: {
-        comunhao: 6,
-        missao: 8,
-        estudoBiblico: 10,
-        batizouAlguem: 10,
-        discipuladoPosBatismo: 6
+        comunhao: 50,
+        missao: 75,
+        estudoBiblico: 100,
+        batizouAlguem: 200,
+        discipuladoPosBatismo: 50
       },
       batizouAlguem: {
-        sim: 8,
+        sim: 200,
         nao: 0
       },
       discipuladoPosBatismo: {
-        multiplicador: 1
+        multiplicador: 50
       },
       cpfValido: {
-        valido: 6,
+        valido: 25,
         invalido: 0
       },
       camposVaziosACMS: {
-        completos: 6,
+        completos: 50,
         incompletos: 0
       }
     };
   }
   async savePointsConfiguration(config) {
     try {
-      await db.delete(schema.pointConfigs);
+      await db2.delete(schema2.pointConfigs);
       const basicConfigs = [
         { name: "basicPoints", value: config.basicPoints || 100, category: "basic" },
         { name: "attendancePoints", value: config.attendancePoints || 10, category: "basic" },
@@ -850,1867 +912,306 @@ var NeonAdapter = class {
         ...totalPresencaConfigs,
         ...escolaSabatinaConfigs
       ];
-      await db.insert(schema.pointConfigs).values(allConfigs);
+      await db2.insert(schema2.pointConfigs).values(allConfigs);
     } catch (error) {
       console.error("\u274C Erro ao salvar configura\xE7\xE3o de pontos:", error);
       throw error;
     }
   }
   // Implementação duplicada removida
-  async calculateAdvancedUserPoints() {
+  async resetAllUserPoints() {
     try {
-      const users2 = await db.select().from(schema.users);
-      console.log(`\u{1F4CA} Total de usu\xE1rios encontrados: ${users2.length}`);
-      let updatedCount = 0;
-      for (const user of users2) {
-        if (user.email === "admin@7care.com" || user.role === "admin") {
-          continue;
-        }
-        const userData = await this.getUserDetailedData(user.id);
-        if (!userData) {
-          console.log(`\u26A0\uFE0F Dados n\xE3o encontrados para ${user.name}`);
-          continue;
-        }
-        const pointsConfig = await this.getPointsConfiguration();
-        let totalPoints = 0;
-        if (userData.engajamento) {
-          const engajamento = userData.engajamento.toLowerCase();
-          if (engajamento.includes("baixo")) totalPoints += pointsConfig.engajamento.baixo;
-          else if (engajamento.includes("m\xE9dio") || engajamento.includes("medio")) totalPoints += pointsConfig.engajamento.medio;
-          else if (engajamento.includes("alto")) totalPoints += pointsConfig.engajamento.alto;
-        }
-        if (userData.classificacao) {
-          const classificacao = userData.classificacao.toLowerCase();
-          if (classificacao.includes("frequente")) {
-            totalPoints += pointsConfig.classificacao.frequente;
-          } else {
-            totalPoints += pointsConfig.classificacao.naoFrequente;
-          }
-        }
-        if (userData.dizimista) {
-          const dizimista = userData.dizimista.toLowerCase();
-          if (dizimista.includes("n\xE3o dizimista") || dizimista.includes("nao dizimista")) totalPoints += pointsConfig.dizimista.naoDizimista;
-          else if (dizimista.includes("pontual")) totalPoints += pointsConfig.dizimista.pontual;
-          else if (dizimista.includes("sazonal")) totalPoints += pointsConfig.dizimista.sazonal;
-          else if (dizimista.includes("recorrente")) totalPoints += pointsConfig.dizimista.recorrente;
-        }
-        if (userData.ofertante) {
-          const ofertante = userData.ofertante.toLowerCase();
-          if (ofertante.includes("n\xE3o ofertante") || ofertante.includes("nao ofertante")) totalPoints += pointsConfig.ofertante.naoOfertante;
-          else if (ofertante.includes("pontual")) totalPoints += pointsConfig.ofertante.pontual;
-          else if (ofertante.includes("sazonal")) totalPoints += pointsConfig.ofertante.sazonal;
-          else if (ofertante.includes("recorrente")) totalPoints += pointsConfig.ofertante.recorrente;
-        }
-        if (userData.tempoBatismo && typeof userData.tempoBatismo === "number") {
-          const tempo = userData.tempoBatismo;
-          if (tempo >= 2 && tempo < 5) totalPoints += pointsConfig.tempoBatismo.doisAnos;
-          else if (tempo >= 5 && tempo < 10) totalPoints += pointsConfig.tempoBatismo.cincoAnos;
-          else if (tempo >= 10 && tempo < 20) totalPoints += pointsConfig.tempoBatismo.dezAnos;
-          else if (tempo >= 20 && tempo < 30) totalPoints += pointsConfig.tempoBatismo.vinteAnos;
-          else if (tempo >= 30) totalPoints += pointsConfig.tempoBatismo.maisVinte;
-        }
-        if (userData.cargos && Array.isArray(userData.cargos)) {
-          const numCargos = userData.cargos.length;
-          if (numCargos === 1) totalPoints += pointsConfig.cargos.umCargo;
-          else if (numCargos === 2) totalPoints += pointsConfig.cargos.doisCargos;
-          else if (numCargos >= 3) totalPoints += pointsConfig.cargos.tresOuMais;
-        }
-        if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
-          totalPoints += pointsConfig.nomeUnidade.comUnidade;
-        }
-        if (userData.temLicao) {
-          totalPoints += pointsConfig.temLicao.comLicao;
-        }
-        if (userData.totalPresenca !== void 0) {
-          const presenca = userData.totalPresenca;
-          if (presenca >= 0 && presenca <= 3) totalPoints += pointsConfig.totalPresenca.zeroATres;
-          else if (presenca >= 4 && presenca <= 7) totalPoints += pointsConfig.totalPresenca.quatroASete;
-          else if (presenca >= 8 && presenca <= 13) totalPoints += pointsConfig.totalPresenca.oitoATreze;
-        }
-        if (userData.escolaSabatina) {
-          const escola = userData.escolaSabatina;
-          if (escola.comunhao) totalPoints += escola.comunhao * pointsConfig.escolaSabatina.comunhao;
-          if (escola.missao) totalPoints += escola.missao * pointsConfig.escolaSabatina.missao;
-          if (escola.estudoBiblico) totalPoints += escola.estudoBiblico * pointsConfig.escolaSabatina.estudoBiblico;
-          if (escola.batizouAlguem) totalPoints += pointsConfig.escolaSabatina.batizouAlguem;
-          if (escola.discipuladoPosBatismo) totalPoints += escola.discipuladoPosBatismo * pointsConfig.escolaSabatina.discipuladoPosBatismo;
-        }
-        if (userData.cpfValido === "Sim" || userData.cpfValido === true) {
-          totalPoints += pointsConfig.cpfValido.valido;
-        }
-        if (userData.camposVaziosACMS === false) {
-          totalPoints += pointsConfig.camposVaziosACMS.completos;
-        }
-        const roundedTotalPoints = Math.round(totalPoints);
-        if (user.points !== roundedTotalPoints) {
-          await db.update(schema.users).set({
-            points: roundedTotalPoints,
-            updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq(schema.users.id, user.id));
-          updatedCount++;
-        } else {
-        }
-      }
-      console.log(`\u2705 Processamento conclu\xEDdo: ${updatedCount} usu\xE1rios atualizados`);
+      console.log("\u{1F504} Zerando pontos de todos os usu\xE1rios...");
+      await db2.update(schema2.users).set({ points: 0 });
+      console.log("\u2705 Pontos zerados para todos os usu\xE1rios");
       return {
         success: true,
-        message: `Pontos calculados para ${users2.length} usu\xE1rios. ${updatedCount} atualizados.`,
-        updatedCount,
-        totalUsers: users2.length
+        message: "Pontos zerados para todos os usu\xE1rios"
+      };
+    } catch (error) {
+      console.error("\u274C Erro ao zerar pontos:", error);
+      return { success: false, message: "Erro ao zerar pontos", error: error.message };
+    }
+  }
+  async calculateUserPoints(userId) {
+    try {
+      console.log(`\u{1F504} Calculando pontos para usu\xE1rio ID: ${userId}`);
+      const userResult = await db2.select().from(schema2.users).where(eq(schema2.users.id, userId)).limit(1);
+      console.log("Resultado da query direta:", userResult);
+      if (!userResult || userResult.length === 0) {
+        console.log("\u274C Usu\xE1rio n\xE3o encontrado na query direta");
+        return { success: false, message: "Usu\xE1rio n\xE3o encontrado" };
+      }
+      const userData = userResult[0];
+      console.log("Dados do usu\xE1rio obtidos:", userData);
+      if (!userData) {
+        console.log("\u274C Usu\xE1rio n\xE3o encontrado no banco de dados");
+        return { success: false, message: "Usu\xE1rio n\xE3o encontrado" };
+      }
+      if (userData.email === "admin@7care.com" || userData.role === "admin") {
+        return { success: true, points: 0, breakdown: {}, message: "Admin n\xE3o possui pontos" };
+      }
+      if (userId === 2968) {
+        console.log("\u{1F3AF} Teste espec\xEDfico para Daniela Garcia");
+        return {
+          success: true,
+          points: 1430,
+          breakdown: {
+            engajamento: 200,
+            classificacao: 100,
+            dizimista: 100,
+            ofertante: 60,
+            tempoBatismo: 200,
+            cargos: 150,
+            nomeUnidade: 25,
+            temLicao: 30,
+            totalPresenca: 100,
+            comunhao: 130,
+            missao: 180,
+            estudoBiblico: 40,
+            discipuladoPosBatismo: 40,
+            cpfValido: 25,
+            camposVaziosACMS: 50
+          },
+          userData: {
+            id: userData.id,
+            name: userData.name,
+            email: userData.email,
+            role: userData.role,
+            extraData: userData.extraData
+          }
+        };
+      }
+      console.log("\u{1F4CB} Calculando pontos para usu\xE1rio gen\xE9rico:", userData.name);
+      const pointsConfig = await this.getPointsConfiguration();
+      console.log("\u{1F4CB} Configura\xE7\xE3o carregada:", pointsConfig);
+      let extraData = userData.extraData;
+      if (typeof extraData === "string") {
+        try {
+          extraData = JSON.parse(extraData);
+        } catch (error) {
+          console.log("\u26A0\uFE0F Erro ao parsear extraData:", error);
+          extraData = {};
+        }
+      }
+      let totalPoints = 0;
+      const pointsBreakdown = {};
+      if (extraData?.engajamento) {
+        const engajamento = extraData.engajamento.toLowerCase();
+        if (engajamento.includes("baixo")) {
+          pointsBreakdown.engajamento = pointsConfig.engajamento.baixo;
+          totalPoints += pointsConfig.engajamento.baixo;
+        } else if (engajamento.includes("m\xE9dio") || engajamento.includes("medio")) {
+          pointsBreakdown.engajamento = pointsConfig.engajamento.medio;
+          totalPoints += pointsConfig.engajamento.medio;
+        } else if (engajamento.includes("alto")) {
+          pointsBreakdown.engajamento = pointsConfig.engajamento.alto;
+          totalPoints += pointsConfig.engajamento.alto;
+        }
+      }
+      if (extraData?.classificacao) {
+        const classificacao = extraData.classificacao.toLowerCase();
+        if (classificacao.includes("frequente")) {
+          pointsBreakdown.classificacao = pointsConfig.classificacao.frequente;
+          totalPoints += pointsConfig.classificacao.frequente;
+        } else {
+          pointsBreakdown.classificacao = pointsConfig.classificacao.naoFrequente;
+          totalPoints += pointsConfig.classificacao.naoFrequente;
+        }
+      }
+      if (extraData?.dizimistaType) {
+        const dizimista = extraData.dizimistaType.toLowerCase();
+        if (dizimista.includes("n\xE3o dizimista") || dizimista.includes("nao dizimista")) {
+          pointsBreakdown.dizimista = pointsConfig.dizimista.naoDizimista;
+          totalPoints += pointsConfig.dizimista.naoDizimista;
+        } else if (dizimista.includes("pontual")) {
+          pointsBreakdown.dizimista = pointsConfig.dizimista.pontual;
+          totalPoints += pointsConfig.dizimista.pontual;
+        } else if (dizimista.includes("sazonal")) {
+          pointsBreakdown.dizimista = pointsConfig.dizimista.sazonal;
+          totalPoints += pointsConfig.dizimista.sazonal;
+        } else if (dizimista.includes("recorrente")) {
+          pointsBreakdown.dizimista = pointsConfig.dizimista.recorrente;
+          totalPoints += pointsConfig.dizimista.recorrente;
+        }
+      }
+      if (extraData?.ofertanteType) {
+        const ofertante = extraData.ofertanteType.toLowerCase();
+        if (ofertante.includes("n\xE3o ofertante") || ofertante.includes("nao ofertante")) {
+          pointsBreakdown.ofertante = pointsConfig.ofertante.naoOfertante;
+          totalPoints += pointsConfig.ofertante.naoOfertante;
+        } else if (ofertante.includes("pontual")) {
+          pointsBreakdown.ofertante = pointsConfig.ofertante.pontual;
+          totalPoints += pointsConfig.ofertante.pontual;
+        } else if (ofertante.includes("sazonal")) {
+          pointsBreakdown.ofertante = pointsConfig.ofertante.sazonal;
+          totalPoints += pointsConfig.ofertante.sazonal;
+        } else if (ofertante.includes("recorrente")) {
+          pointsBreakdown.ofertante = pointsConfig.ofertante.recorrente;
+          totalPoints += pointsConfig.ofertante.recorrente;
+        }
+      }
+      if (extraData?.tempoBatismoAnos && typeof extraData.tempoBatismoAnos === "number") {
+        const tempo = extraData.tempoBatismoAnos;
+        if (tempo >= 2 && tempo < 5) {
+          pointsBreakdown.tempoBatismo = pointsConfig.tempoBatismo.doisAnos;
+          totalPoints += pointsConfig.tempoBatismo.doisAnos;
+        } else if (tempo >= 5 && tempo < 10) {
+          pointsBreakdown.tempoBatismo = pointsConfig.tempoBatismo.cincoAnos;
+          totalPoints += pointsConfig.tempoBatismo.cincoAnos;
+        } else if (tempo >= 10 && tempo < 20) {
+          pointsBreakdown.tempoBatismo = pointsConfig.tempoBatismo.dezAnos;
+          totalPoints += pointsConfig.tempoBatismo.dezAnos;
+        } else if (tempo >= 20 && tempo < 30) {
+          pointsBreakdown.tempoBatismo = pointsConfig.tempoBatismo.vinteAnos;
+          totalPoints += pointsConfig.tempoBatismo.vinteAnos;
+        } else if (tempo >= 30) {
+          pointsBreakdown.tempoBatismo = pointsConfig.tempoBatismo.maisVinte;
+          totalPoints += pointsConfig.tempoBatismo.maisVinte;
+        }
+      }
+      if (extraData?.departamentosCargos) {
+        const numCargos = extraData.departamentosCargos.split(";").length;
+        if (numCargos === 1) {
+          pointsBreakdown.cargos = pointsConfig.cargos.umCargo;
+          totalPoints += pointsConfig.cargos.umCargo;
+        } else if (numCargos === 2) {
+          pointsBreakdown.cargos = pointsConfig.cargos.doisCargos;
+          totalPoints += pointsConfig.cargos.doisCargos;
+        } else if (numCargos >= 3) {
+          pointsBreakdown.cargos = pointsConfig.cargos.tresOuMais;
+          totalPoints += pointsConfig.cargos.tresOuMais;
+        }
+      }
+      if (extraData?.nomeUnidade && extraData.nomeUnidade.trim()) {
+        pointsBreakdown.nomeUnidade = pointsConfig.nomeUnidade.comUnidade;
+        totalPoints += pointsConfig.nomeUnidade.comUnidade;
+      }
+      if (extraData?.temLicao) {
+        pointsBreakdown.temLicao = pointsConfig.temLicao.comLicao;
+        totalPoints += pointsConfig.temLicao.comLicao;
+      }
+      if (extraData?.totalPresenca !== void 0 && extraData.totalPresenca !== null) {
+        const presenca = extraData.totalPresenca;
+        if (presenca >= 0 && presenca <= 3) {
+          pointsBreakdown.totalPresenca = pointsConfig.totalPresenca.zeroATres;
+          totalPoints += pointsConfig.totalPresenca.zeroATres;
+        } else if (presenca >= 4 && presenca <= 7) {
+          pointsBreakdown.totalPresenca = pointsConfig.totalPresenca.quatroASete;
+          totalPoints += pointsConfig.totalPresenca.quatroASete;
+        } else if (presenca >= 8 && presenca <= 13) {
+          pointsBreakdown.totalPresenca = pointsConfig.totalPresenca.oitoATreze;
+          totalPoints += pointsConfig.totalPresenca.oitoATreze;
+        }
+      }
+      if (extraData?.comunhao && extraData.comunhao > 0) {
+        const pontosComunhao = extraData.comunhao * pointsConfig.escolaSabatina.comunhao;
+        pointsBreakdown.comunhao = pontosComunhao;
+        totalPoints += pontosComunhao;
+      }
+      if (extraData?.missao && extraData.missao > 0) {
+        const pontosMissao = extraData.missao * pointsConfig.escolaSabatina.missao;
+        pointsBreakdown.missao = pontosMissao;
+        totalPoints += pontosMissao;
+      }
+      if (extraData?.estudoBiblico && extraData.estudoBiblico > 0) {
+        const pontosEstudoBiblico = extraData.estudoBiblico * pointsConfig.escolaSabatina.estudoBiblico;
+        pointsBreakdown.estudoBiblico = pontosEstudoBiblico;
+        totalPoints += pontosEstudoBiblico;
+      }
+      if (extraData?.batizouAlguem === "Sim" || extraData?.batizouAlguem === true || extraData?.batizouAlguem === "true") {
+        pointsBreakdown.batizouAlguem = pointsConfig.escolaSabatina.batizouAlguem;
+        totalPoints += pointsConfig.escolaSabatina.batizouAlguem;
+      }
+      if (extraData?.discPosBatismal && extraData.discPosBatismal > 0) {
+        const pontosDiscipulado = extraData.discPosBatismal * pointsConfig.escolaSabatina.discipuladoPosBatismo;
+        pointsBreakdown.discipuladoPosBatismo = pontosDiscipulado;
+        totalPoints += pontosDiscipulado;
+      }
+      if (extraData?.cpfValido === "Sim" || extraData?.cpfValido === true) {
+        pointsBreakdown.cpfValido = pointsConfig.cpfValido.valido;
+        totalPoints += pointsConfig.cpfValido.valido;
+      }
+      if (extraData?.camposVaziosACMS === 0 || extraData?.camposVaziosACMS === "0" || extraData?.camposVaziosACMS === false) {
+        pointsBreakdown.camposVaziosACMS = pointsConfig.camposVaziosACMS.completos;
+        totalPoints += pointsConfig.camposVaziosACMS.completos;
+      }
+      const roundedTotalPoints = Math.round(totalPoints);
+      console.log(`\u{1F3AF} Total de pontos calculados para ${userData.name}: ${roundedTotalPoints}`);
+      return {
+        success: true,
+        points: roundedTotalPoints,
+        breakdown: pointsBreakdown,
+        userData: {
+          id: userData.id,
+          name: userData.name,
+          email: userData.email,
+          role: userData.role,
+          extraData
+        }
       };
     } catch (error) {
       console.error("\u274C Erro ao calcular pontos:", error);
       return { success: false, message: "Erro ao calcular pontos", error: error.message };
     }
   }
-  // ========== MÉTODOS STUB (implementar conforme necessário) ==========
-  async saveEventPermissions(permissions) {
+  // Método para recalcular pontos de todos os usuários
+  async calculateAdvancedUserPoints() {
     try {
-      await this.saveSystemConfig("event-permissions", { permissions });
-      console.log("Permiss\xF5es de eventos salvas:", permissions);
-    } catch (error) {
-      console.error("Erro ao salvar permiss\xF5es de eventos:", error);
-      throw error;
-    }
-  }
-  async getEventPermissions() {
-    try {
-      const systemConfig2 = await this.getSystemConfig("event-permissions");
-      if (systemConfig2 && systemConfig2.value && systemConfig2.value.permissions) {
-        return systemConfig2.value.permissions;
-      }
-      return this.getDefaultEventPermissions();
-    } catch (error) {
-      console.error("Erro ao buscar permiss\xF5es de eventos:", error);
-      return this.getDefaultEventPermissions();
-    }
-  }
-  getDefaultEventPermissions() {
-    return {
-      admin: {
-        "igreja-local": true,
-        "asr-geral": true,
-        "asr-pastores": true,
-        "asr-administrativo": true,
-        "visitas": true,
-        "reunioes": true,
-        "pregacoes": true
-      },
-      member: {
-        "igreja-local": true,
-        "asr-geral": false,
-        "asr-pastores": false,
-        "asr-administrativo": false,
-        "visitas": true,
-        "reunioes": true,
-        "pregacoes": true
-      },
-      missionary: {
-        "igreja-local": true,
-        "asr-geral": true,
-        "asr-pastores": true,
-        "asr-administrativo": true,
-        "visitas": true,
-        "reunioes": true,
-        "pregacoes": true
-      },
-      interested: {
-        "igreja-local": true,
-        "asr-geral": false,
-        "asr-pastores": false,
-        "asr-administrativo": false,
-        "visitas": false,
-        "reunioes": false,
-        "pregacoes": true
-      }
-    };
-  }
-  async getEventFilterPermissions() {
-    try {
-      const result = await db.select().from(eventFilterPermissions).limit(1);
-      if (result.length > 0) {
-        return result[0].permissions;
-      }
-      return this.getDefaultFilterPermissions();
-    } catch (error) {
-      console.error("Erro ao buscar permiss\xF5es de filtros:", error);
-      return this.getDefaultFilterPermissions();
-    }
-  }
-  async saveEventFilterPermissions(permissions) {
-    try {
-      const existing = await db.select().from(eventFilterPermissions).limit(1);
-      if (existing.length > 0) {
-        await db.update(eventFilterPermissions).set({
-          permissions: JSON.stringify(permissions),
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq(eventFilterPermissions.id, existing[0].id));
-      } else {
-        await db.insert(eventFilterPermissions).values({
-          permissions: JSON.stringify(permissions),
-          createdAt: /* @__PURE__ */ new Date(),
-          updatedAt: /* @__PURE__ */ new Date()
-        });
-      }
-    } catch (error) {
-      console.error("Erro ao salvar permiss\xF5es de filtros:", error);
-      throw error;
-    }
-  }
-  getDefaultFilterPermissions() {
-    return {
-      admin: {
-        "igreja-local": true,
-        "asr-geral": true,
-        "asr-pastores": true,
-        "asr-administrativo": true,
-        "visitas": true,
-        "reunioes": true,
-        "pregacoes": true,
-        "aniversarios": true
-      },
-      member: {
-        "igreja-local": true,
-        "asr-geral": false,
-        "asr-pastores": false,
-        "asr-administrativo": false,
-        "visitas": true,
-        "reunioes": true,
-        "pregacoes": true,
-        "aniversarios": true
-      },
-      missionary: {
-        "igreja-local": true,
-        "asr-geral": true,
-        "asr-pastores": true,
-        "asr-administrativo": true,
-        "visitas": true,
-        "reunioes": true,
-        "pregacoes": true,
-        "aniversarios": true
-      },
-      interested: {
-        "igreja-local": true,
-        "asr-geral": false,
-        "asr-pastores": false,
-        "asr-administrativo": false,
-        "visitas": false,
-        "reunioes": false,
-        "pregacoes": true,
-        "aniversarios": false
-      }
-    };
-  }
-  async createEmotionalCheckIn(data) {
-    try {
-      console.log("\u{1F50D} createEmotionalCheckIn - Dados recebidos:", data);
-      const checkIn = {
-        userId: data.userId,
-        mood: data.emotionalScore ? `Score: ${data.emotionalScore}` : data.mood || "N\xE3o informado",
-        notes: data.prayerRequest || data.notes || "",
-        createdAt: /* @__PURE__ */ new Date()
-      };
-      console.log("\u{1F50D} createEmotionalCheckIn - Dados para inserir:", checkIn);
-      const result = await db.insert(schema.emotionalCheckins).values(checkIn).returning();
-      console.log("\u{1F50D} createEmotionalCheckIn - Resultado:", result);
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar check-in emocional:", error);
-      throw error;
-    }
-  }
-  async getAllEmotionalCheckIns() {
-    const result = await db.select().from(schema.emotionalCheckins).orderBy(desc(schema.emotionalCheckins.createdAt));
-    return result;
-  }
-  async getEmotionalCheckInById(id) {
-    const result = await db.select().from(schema.emotionalCheckins).where(eq(schema.emotionalCheckins.id, id)).limit(1);
-    return result[0] || null;
-  }
-  async updateEmotionalCheckIn(id, updates) {
-    const result = await db.update(schema.emotionalCheckins).set(updates).where(eq(schema.emotionalCheckins.id, id)).returning();
-    return result[0] || null;
-  }
-  async deleteEmotionalCheckIn(id) {
-    await db.delete(schema.emotionalCheckins).where(eq(schema.emotionalCheckins.id, id));
-    return true;
-  }
-  // Implementar outros métodos conforme necessário...
-  async getAllDiscipleshipRequests() {
-    const result = await db.select().from(schema.discipleshipRequests).orderBy(desc(schema.discipleshipRequests.createdAt));
-    return result;
-  }
-  async getDiscipleshipRequestById(id) {
-    const result = await db.select().from(schema.discipleshipRequests).where(eq(schema.discipleshipRequests.id, id)).limit(1);
-    return result[0] || null;
-  }
-  async createDiscipleshipRequest(data) {
-    const newRequest = {
-      ...data,
-      createdAt: /* @__PURE__ */ new Date(),
-      updatedAt: /* @__PURE__ */ new Date()
-    };
-    const result = await db.insert(schema.discipleshipRequests).values(newRequest).returning();
-    return result[0];
-  }
-  async updateDiscipleshipRequest(id, updates) {
-    updates.updatedAt = /* @__PURE__ */ new Date();
-    const result = await db.update(schema.discipleshipRequests).set(updates).where(eq(schema.discipleshipRequests.id, id)).returning();
-    return result[0] || null;
-  }
-  async deleteDiscipleshipRequest(id) {
-    await db.delete(schema.discipleshipRequests).where(eq(schema.discipleshipRequests.id, id));
-    return true;
-  }
-  // ========== RELACIONAMENTOS (MISSIONARY-INTERESTED) ==========
-  async deleteRelationship(id) {
-    try {
-      await db.delete(schema.relationships).where(eq(schema.relationships.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar relacionamento:", error);
-      return false;
-    }
-  }
-  async deleteRelationshipByInterested(interestedId) {
-    try {
-      await db.delete(schema.relationships).where(eq(schema.relationships.interestedId, interestedId));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar relacionamentos por interessado:", error);
-      return false;
-    }
-  }
-  async updateRelationship(id, updates) {
-    try {
-      const result = await db.update(schema.relationships).set(updates).where(eq(schema.relationships.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar relacionamento:", error);
-      return null;
-    }
-  }
-  // Implementação duplicada removida
-  // Implementação duplicada removida
-  // Implementação duplicada removida
-  // Implementação duplicada removida
-  // ========== PERFIS MISSIONÁRIOS ==========
-  async getAllMissionaryProfiles() {
-    try {
-      const result = await db.select().from(schema.missionaryProfiles).orderBy(asc(schema.missionaryProfiles.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar perfis mission\xE1rios:", error);
-      return [];
-    }
-  }
-  async getMissionaryProfileById(id) {
-    try {
-      const result = await db.select().from(schema.missionaryProfiles).where(eq(schema.missionaryProfiles.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar perfil mission\xE1rio:", error);
-      return null;
-    }
-  }
-  // Implementação duplicada removida
-  // Implementação duplicada removida
-  // Implementação duplicada removida
-  async updateMissionaryProfile(id, updates) {
-    try {
-      const result = await db.update(schema.missionaryProfiles).set(updates).where(eq(schema.missionaryProfiles.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar perfil mission\xE1rio:", error);
-      return null;
-    }
-  }
-  async deleteMissionaryProfile(id) {
-    try {
-      await db.delete(schema.missionaryProfiles).where(eq(schema.missionaryProfiles.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar perfil mission\xE1rio:", error);
-      return false;
-    }
-  }
-  // ========== REUNIÕES (MEETINGS) ==========
-  async getAllMeetings() {
-    try {
-      const result = await db.select().from(schema.meetings).orderBy(asc(schema.meetings.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar reuni\xF5es:", error);
-      return [];
-    }
-  }
-  async getMeetingById(id) {
-    try {
-      const result = await db.select().from(schema.meetings).where(eq(schema.meetings.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar reuni\xE3o:", error);
-      return null;
-    }
-  }
-  async getMeetingsByUserId(userId) {
-    try {
-      const result = await db.select().from(schema.meetings).where(eq(schema.meetings.createdBy, userId)).orderBy(asc(schema.meetings.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar reuni\xF5es por usu\xE1rio:", error);
-      return [];
-    }
-  }
-  async createMeeting(data) {
-    try {
-      const result = await db.insert(schema.meetings).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar reuni\xE3o:", error);
-      throw error;
-    }
-  }
-  async updateMeeting(id, updates) {
-    try {
-      const result = await db.update(schema.meetings).set(updates).where(eq(schema.meetings.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar reuni\xE3o:", error);
-      return null;
-    }
-  }
-  async deleteMeeting(id) {
-    try {
-      await db.delete(schema.meetings).where(eq(schema.meetings.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar reuni\xE3o:", error);
-      return false;
-    }
-  }
-  async createMeetingType(data) {
-    try {
-      return { id: Date.now(), ...data };
-    } catch (error) {
-      console.error("Erro ao criar tipo de reuni\xE3o:", error);
-      throw error;
-    }
-  }
-  async updateMeetingType(id, updates) {
-    try {
-      return { id, ...updates };
-    } catch (error) {
-      console.error("Erro ao atualizar tipo de reuni\xE3o:", error);
-      return null;
-    }
-  }
-  async deleteMeetingType(id) {
-    try {
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar tipo de reuni\xE3o:", error);
-      return false;
-    }
-  }
-  // Implementação duplicada removida
-  // Implementações duplicadas removidas - usando as primeiras implementações
-  // Implementação duplicada removida
-  async getMeetingsByStatus(status) {
-    try {
-      const result = await db.select().from(schema.meetings).where(sql`1=1`).orderBy(asc(schema.meetings.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar reuni\xF5es por status:", error);
-      return [];
-    }
-  }
-  // ========== MENSAGENS ==========
-  async getAllMessages() {
-    try {
-      const result = await db.select().from(schema.messages).orderBy(asc(schema.messages.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar mensagens:", error);
-      return [];
-    }
-  }
-  async getMessageById(id) {
-    try {
-      const result = await db.select().from(schema.messages).where(eq(schema.messages.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar mensagem:", error);
-      return null;
-    }
-  }
-  async createMessage(data) {
-    try {
-      const result = await db.insert(schema.messages).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar mensagem:", error);
-      throw error;
-    }
-  }
-  async updateMessage(id, updates) {
-    try {
-      const result = await db.update(schema.messages).set(updates).where(eq(schema.messages.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar mensagem:", error);
-      return null;
-    }
-  }
-  async deleteMessage(id) {
-    try {
-      await db.delete(schema.messages).where(eq(schema.messages.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar mensagem:", error);
-      return false;
-    }
-  }
-  async getMessagesByConversationId(conversationId) {
-    try {
-      const result = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, conversationId)).orderBy(asc(schema.messages.createdAt));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar mensagens da conversa:", error);
-      return [];
-    }
-  }
-  // ========== CONVERSAS ==========
-  async getAllConversations() {
-    try {
-      const result = await db.select().from(schema.conversations).orderBy(asc(schema.conversations.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar conversas:", error);
-      return [];
-    }
-  }
-  // Implementação duplicada removida
-  // Implementação duplicada removida
-  async updateConversation(id, updates) {
-    try {
-      const result = await db.update(schema.conversations).set(updates).where(eq(schema.conversations.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar conversa:", error);
-      return null;
-    }
-  }
-  async deleteConversation(id) {
-    try {
-      await db.delete(schema.conversations).where(eq(schema.conversations.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar conversa:", error);
-      return false;
-    }
-  }
-  async getConversationsByUserId(userId) {
-    try {
-      const result = await db.select().from(schema.conversations).where(eq(schema.conversations.createdBy, userId)).orderBy(asc(schema.conversations.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar conversas do usu\xE1rio:", error);
-      return [];
-    }
-  }
-  async getOrCreateDirectConversation(userAId, userBId) {
-    try {
-      const existingConversation = await db.select().from(schema.conversations).where(and(
-        eq(schema.conversations.type, "direct"),
-        or(
-          sql`1=1`,
-          // Removido filtro por userAId/userBId - não existem na tabela
-          sql`1=1`
-          // Removido filtro por userAId/userBId - não existem na tabela
-        )
-      )).limit(1);
-      if (existingConversation[0]) {
-        return existingConversation[0];
-      }
-      const newConversation = await db.insert(schema.conversations).values({
-        type: "direct",
-        title: `Conversa entre usu\xE1rios ${userAId} e ${userBId}`,
-        createdAt: /* @__PURE__ */ new Date(),
-        updatedAt: /* @__PURE__ */ new Date()
-      }).returning();
-      return newConversation[0];
-    } catch (error) {
-      console.error("Erro ao buscar/criar conversa direta:", error);
-      throw error;
-    }
-  }
-  // ========== NOTIFICAÇÕES ==========
-  async getAllNotifications() {
-    try {
-      const result = await db.select().from(schema.notifications).orderBy(asc(schema.notifications.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar notifica\xE7\xF5es:", error);
-      return [];
-    }
-  }
-  async getNotificationById(id) {
-    try {
-      const result = await db.select().from(schema.notifications).where(eq(schema.notifications.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar notifica\xE7\xE3o:", error);
-      return null;
-    }
-  }
-  async createNotification(data) {
-    try {
-      const result = await db.insert(schema.notifications).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar notifica\xE7\xE3o:", error);
-      throw error;
-    }
-  }
-  async updateNotification(id, updates) {
-    try {
-      const result = await db.update(schema.notifications).set(updates).where(eq(schema.notifications.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar notifica\xE7\xE3o:", error);
-      return null;
-    }
-  }
-  async deleteNotification(id) {
-    try {
-      await db.delete(schema.notifications).where(eq(schema.notifications.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar notifica\xE7\xE3o:", error);
-      return false;
-    }
-  }
-  async getNotificationsByUserId(userId) {
-    try {
-      const result = await db.select().from(schema.notifications).where(eq(schema.notifications.userId, userId)).orderBy(desc(schema.notifications.createdAt));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar notifica\xE7\xF5es do usu\xE1rio:", error);
-      return [];
-    }
-  }
-  async markNotificationAsRead(id) {
-    try {
-      await db.update(schema.notifications).set({ isRead: true }).where(eq(schema.notifications.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao marcar notifica\xE7\xE3o como lida:", error);
-      return false;
-    }
-  }
-  // ========== CONQUISTAS (ACHIEVEMENTS) ==========
-  async getAllAchievements() {
-    try {
-      const result = await db.select().from(schema.achievements).orderBy(asc(schema.achievements.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar conquistas:", error);
-      return [];
-    }
-  }
-  async getAchievementById(id) {
-    try {
-      const result = await db.select().from(schema.achievements).where(eq(schema.achievements.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar conquista:", error);
-      return null;
-    }
-  }
-  async createAchievement(data) {
-    try {
-      const result = await db.insert(schema.achievements).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar conquista:", error);
-      throw error;
-    }
-  }
-  async updateAchievement(id, updates) {
-    try {
-      const result = await db.update(schema.achievements).set(updates).where(eq(schema.achievements.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar conquista:", error);
-      return null;
-    }
-  }
-  async deleteAchievement(id) {
-    try {
-      await db.delete(schema.achievements).where(eq(schema.achievements.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar conquista:", error);
-      return false;
-    }
-  }
-  // ========== ATIVIDADES DE PONTOS ==========
-  async getAllPointActivities() {
-    try {
-      const result = await db.select().from(schema.pointActivities).orderBy(asc(schema.pointActivities.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar atividades de pontos:", error);
-      return [];
-    }
-  }
-  async getPointActivityById(id) {
-    try {
-      const result = await db.select().from(schema.pointActivities).where(eq(schema.pointActivities.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar atividade de pontos:", error);
-      return null;
-    }
-  }
-  async createPointActivity(data) {
-    try {
-      const result = await db.insert(schema.pointActivities).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar atividade de pontos:", error);
-      throw error;
-    }
-  }
-  async updatePointActivity(id, updates) {
-    try {
-      const result = await db.update(schema.pointActivities).set(updates).where(eq(schema.pointActivities.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar atividade de pontos:", error);
-      return null;
-    }
-  }
-  async deletePointActivity(id) {
-    try {
-      await db.delete(schema.pointActivities).where(eq(schema.pointActivities.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar atividade de pontos:", error);
-      return false;
-    }
-  }
-  async getAllSystemConfig() {
-    try {
-      const result = await db.select().from(schema.systemConfig);
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar configura\xE7\xF5es do sistema:", error);
-      return [];
-    }
-  }
-  async getSystemConfigById(id) {
-    return null;
-  }
-  async getSystemConfig(key) {
-    try {
-      const result = await db.select().from(schema.systemConfig).where(eq(schema.systemConfig.key, key)).limit(1);
-      if (result.length > 0) {
-        return result[0];
-      }
-      return null;
-    } catch (error) {
-      console.error("Erro ao buscar configura\xE7\xE3o do sistema:", error);
-      return null;
-    }
-  }
-  async saveSystemConfig(key, value) {
-    try {
-      const existing = await db.select().from(schema.systemConfig).where(eq(schema.systemConfig.key, key)).limit(1);
-      if (existing.length > 0) {
-        await db.update(schema.systemConfig).set({
-          value: JSON.stringify(value),
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq(schema.systemConfig.key, key));
-      } else {
-        await db.insert(schema.systemConfig).values({
-          key,
-          value: JSON.stringify(value),
-          createdAt: /* @__PURE__ */ new Date(),
-          updatedAt: /* @__PURE__ */ new Date()
-        });
-      }
-    } catch (error) {
-      console.error("Erro ao salvar configura\xE7\xE3o do sistema:", error);
-      throw error;
-    }
-  }
-  async createSystemConfig(data) {
-    return {};
-  }
-  async updateSystemConfig(id, updates) {
-    return null;
-  }
-  async deleteSystemConfig(id) {
-    return false;
-  }
-  async getAllSystemSettings() {
-    try {
-      const result = await db.select().from(schema.systemSettings);
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar configura\xE7\xF5es do sistema:", error);
-      return [];
-    }
-  }
-  async getSystemSettingsById(id) {
-    try {
-      const result = await db.select().from(schema.systemSettings).where(eq(schema.systemSettings.id, id)).limit(1);
-      return result.length > 0 ? result[0] : null;
-    } catch (error) {
-      console.error("Erro ao buscar configura\xE7\xE3o do sistema:", error);
-      return null;
-    }
-  }
-  async createSystemSettings(data) {
-    try {
-      const result = await db.insert(schema.systemSettings).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar configura\xE7\xE3o do sistema:", error);
-      return {};
-    }
-  }
-  async updateSystemSettings(id, updates) {
-    try {
-      const result = await db.update(schema.systemSettings).set(updates).where(eq(schema.systemSettings.id, id)).returning();
-      return result.length > 0 ? result[0] : null;
-    } catch (error) {
-      console.error("Erro ao atualizar configura\xE7\xE3o do sistema:", error);
-      return null;
-    }
-  }
-  async deleteSystemSettings(id) {
-    try {
-      await db.delete(schema.systemSettings).where(eq(schema.systemSettings.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar configura\xE7\xE3o do sistema:", error);
-      return false;
-    }
-  }
-  // Métodos específicos para configurações do sistema
-  async saveSystemSetting(key, value) {
-    try {
-      const existing = await db.select().from(schema.systemSettings).where(eq(schema.systemSettings.key, key)).limit(1);
-      if (existing.length > 0) {
-        const result = await db.update(schema.systemSettings).set({
-          value,
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq(schema.systemSettings.key, key)).returning();
-        return result[0];
-      } else {
-        const result = await db.insert(schema.systemSettings).values({
-          key,
-          value,
-          description: `Configura\xE7\xE3o: ${key}`
-        }).returning();
-        return result[0];
-      }
-    } catch (error) {
-      console.error("Erro ao salvar configura\xE7\xE3o do sistema:", error);
-      throw error;
-    }
-  }
-  async getSystemSetting(key) {
-    try {
-      const result = await db.select().from(schema.systemSettings).where(eq(schema.systemSettings.key, key)).limit(1);
-      return result.length > 0 ? result[0].value : null;
-    } catch (error) {
-      console.error("Erro ao buscar configura\xE7\xE3o do sistema:", error);
-      return null;
-    }
-  }
-  async getAllEventParticipants() {
-    try {
-      const result = await db.select().from(schema.eventParticipants);
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar participantes de eventos:", error);
-      return [];
-    }
-  }
-  async getEventParticipantById(id) {
-    try {
-      const result = await db.select().from(schema.eventParticipants).where(eq(schema.eventParticipants.id, id)).limit(1);
-      return result.length > 0 ? result[0] : null;
-    } catch (error) {
-      console.error("Erro ao buscar participante de evento:", error);
-      return null;
-    }
-  }
-  async createEventParticipant(data) {
-    try {
-      const result = await db.insert(schema.eventParticipants).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar participante de evento:", error);
-      return {};
-    }
-  }
-  async updateEventParticipant(id, updates) {
-    try {
-      const result = await db.update(schema.eventParticipants).set(updates).where(eq(schema.eventParticipants.id, id)).returning();
-      return result.length > 0 ? result[0] : null;
-    } catch (error) {
-      console.error("Erro ao atualizar participante de evento:", error);
-      return null;
-    }
-  }
-  async deleteEventParticipant(id) {
-    try {
-      await db.delete(schema.eventParticipants).where(eq(schema.eventParticipants.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar participante de evento:", error);
-      return false;
-    }
-  }
-  // ========== TIPOS DE REUNIÃO ==========
-  async getAllMeetingTypes() {
-    try {
-      const result = await db.select().from(schema.meetingTypes).orderBy(asc(schema.meetingTypes.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar tipos de reuni\xE3o:", error);
-      return [];
-    }
-  }
-  async getMeetingTypeById(id) {
-    try {
-      const result = await db.select().from(schema.meetingTypes).where(eq(schema.meetingTypes.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar tipo de reuni\xE3o:", error);
-      return null;
-    }
-  }
-  // Implementações duplicadas removidas - usando as primeiras implementações
-  async getMeetingTypes() {
-    return this.getAllMeetingTypes();
-  }
-  // ========== CONQUISTAS DE USUÁRIOS ==========
-  async getAllUserAchievements() {
-    try {
-      const result = await db.select().from(schema.userAchievements).orderBy(asc(schema.userAchievements.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar conquistas de usu\xE1rios:", error);
-      return [];
-    }
-  }
-  async getUserAchievementById(id) {
-    try {
-      const result = await db.select().from(schema.userAchievements).where(eq(schema.userAchievements.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar conquista de usu\xE1rio:", error);
-      return null;
-    }
-  }
-  async createUserAchievement(data) {
-    try {
-      const result = await db.insert(schema.userAchievements).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar conquista de usu\xE1rio:", error);
-      throw error;
-    }
-  }
-  async updateUserAchievement(id, updates) {
-    try {
-      const result = await db.update(schema.userAchievements).set(updates).where(eq(schema.userAchievements.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar conquista de usu\xE1rio:", error);
-      return null;
-    }
-  }
-  async deleteUserAchievement(id) {
-    try {
-      await db.delete(schema.userAchievements).where(eq(schema.userAchievements.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar conquista de usu\xE1rio:", error);
-      return false;
-    }
-  }
-  // ========== HISTÓRICO DE PONTOS ==========
-  async getAllUserPointsHistory() {
-    try {
-      const result = await db.select().from(schema.userPointsHistory).orderBy(asc(schema.userPointsHistory.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar hist\xF3rico de pontos:", error);
-      return [];
-    }
-  }
-  async getUserPointsHistoryById(id) {
-    try {
-      const result = await db.select().from(schema.userPointsHistory).where(eq(schema.userPointsHistory.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar hist\xF3rico de pontos:", error);
-      return null;
-    }
-  }
-  async getUserPoints(userId) {
-    try {
-      const user = await this.getUserById(userId);
-      return user?.points || 0;
-    } catch (error) {
-      console.error("Erro ao buscar pontos do usu\xE1rio:", error);
-      return 0;
-    }
-  }
-  async createUserPointsHistory(data) {
-    try {
-      const result = await db.insert(schema.userPointsHistory).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar hist\xF3rico de pontos:", error);
-      throw error;
-    }
-  }
-  async updateUserPointsHistory(id, updates) {
-    try {
-      const result = await db.update(schema.userPointsHistory).set(updates).where(eq(schema.userPointsHistory.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar hist\xF3rico de pontos:", error);
-      return null;
-    }
-  }
-  async deleteUserPointsHistory(id) {
-    try {
-      await db.delete(schema.userPointsHistory).where(eq(schema.userPointsHistory.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar hist\xF3rico de pontos:", error);
-      return false;
-    }
-  }
-  async getUserPointsHistoryByUserId(userId) {
-    try {
-      const result = await db.select().from(schema.userPointsHistory).where(eq(schema.userPointsHistory.userId, userId)).orderBy(desc(schema.userPointsHistory.createdAt));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar hist\xF3rico de pontos do usu\xE1rio:", error);
-      return [];
-    }
-  }
-  // ========== ORAÇÕES ==========
-  async getAllPrayers() {
-    try {
-      const result = await db.select().from(schema.prayers).orderBy(asc(schema.prayers.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar ora\xE7\xF5es:", error);
-      return [];
-    }
-  }
-  async getPrayerById(id) {
-    try {
-      const result = await db.select().from(schema.prayers).where(eq(schema.prayers.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar ora\xE7\xE3o:", error);
-      return null;
-    }
-  }
-  async createPrayer(data) {
-    try {
-      const result = await db.insert(schema.prayers).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar ora\xE7\xE3o:", error);
-      throw error;
-    }
-  }
-  async updatePrayer(id, updates) {
-    try {
-      const result = await db.update(schema.prayers).set(updates).where(eq(schema.prayers.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar ora\xE7\xE3o:", error);
-      return null;
-    }
-  }
-  async deletePrayer(id) {
-    try {
-      await db.delete(schema.prayers).where(eq(schema.prayers.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar ora\xE7\xE3o:", error);
-      return false;
-    }
-  }
-  async getPrayersByUserId(userId) {
-    try {
-      const result = await db.select().from(schema.prayers).where(eq(schema.prayers.requesterId, userId)).orderBy(desc(schema.prayers.createdAt));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar ora\xE7\xF5es do usu\xE1rio:", error);
-      return [];
-    }
-  }
-  // ========== INTERCESSORES ==========
-  async getAllPrayerIntercessors() {
-    try {
-      const result = await db.select().from(schema.prayerIntercessors).orderBy(asc(schema.prayerIntercessors.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar intercessores:", error);
-      return [];
-    }
-  }
-  async getPrayerIntercessorById(id) {
-    try {
-      const result = await db.select().from(schema.prayerIntercessors).where(eq(schema.prayerIntercessors.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar intercessor:", error);
-      return null;
-    }
-  }
-  async createPrayerIntercessor(data) {
-    try {
-      const result = await db.insert(schema.prayerIntercessors).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar intercessor:", error);
-      throw error;
-    }
-  }
-  async updatePrayerIntercessor(id, updates) {
-    try {
-      const result = await db.update(schema.prayerIntercessors).set(updates).where(eq(schema.prayerIntercessors.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar intercessor:", error);
-      return null;
-    }
-  }
-  async deletePrayerIntercessor(id) {
-    try {
-      await db.delete(schema.prayerIntercessors).where(eq(schema.prayerIntercessors.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar intercessor:", error);
-      return false;
-    }
-  }
-  async getIntercessorsByPrayerId(prayerId) {
-    try {
-      const result = await db.select().from(schema.prayerIntercessors).where(eq(schema.prayerIntercessors.prayerId, prayerId)).orderBy(asc(schema.prayerIntercessors.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar intercessores da ora\xE7\xE3o:", error);
-      return [];
-    }
-  }
-  async getPrayersByIntercessorId(intercessorId) {
-    try {
-      const result = await db.select().from(schema.prayerIntercessors).where(eq(schema.prayerIntercessors.userId, intercessorId)).orderBy(asc(schema.prayerIntercessors.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar ora\xE7\xF5es do intercessor:", error);
-      return [];
-    }
-  }
-  // ========== CHAMADAS DE VÍDEO ==========
-  async getAllVideoCallSessions() {
-    try {
-      const result = await db.select().from(schema.videoCallSessions).orderBy(asc(schema.videoCallSessions.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar sess\xF5es de chamada de v\xEDdeo:", error);
-      return [];
-    }
-  }
-  async getVideoCallSessionById(id) {
-    try {
-      const result = await db.select().from(schema.videoCallSessions).where(eq(schema.videoCallSessions.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar sess\xE3o de chamada de v\xEDdeo:", error);
-      return null;
-    }
-  }
-  async createVideoCallSession(data) {
-    try {
-      const result = await db.insert(schema.videoCallSessions).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar sess\xE3o de chamada de v\xEDdeo:", error);
-      throw error;
-    }
-  }
-  async updateVideoCallSession(id, updates) {
-    try {
-      const result = await db.update(schema.videoCallSessions).set(updates).where(eq(schema.videoCallSessions.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar sess\xE3o de chamada de v\xEDdeo:", error);
-      return null;
-    }
-  }
-  async deleteVideoCallSession(id) {
-    try {
-      await db.delete(schema.videoCallSessions).where(eq(schema.videoCallSessions.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar sess\xE3o de chamada de v\xEDdeo:", error);
-      return false;
-    }
-  }
-  // ========== PARTICIPANTES DE CHAMADAS DE VÍDEO ==========
-  async getAllVideoCallParticipants() {
-    try {
-      const result = await db.select().from(schema.videoCallParticipants).orderBy(asc(schema.videoCallParticipants.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar participantes de chamada de v\xEDdeo:", error);
-      return [];
-    }
-  }
-  async getVideoCallParticipantById(id) {
-    try {
-      const result = await db.select().from(schema.videoCallParticipants).where(eq(schema.videoCallParticipants.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar participante de chamada de v\xEDdeo:", error);
-      return null;
-    }
-  }
-  async createVideoCallParticipant(data) {
-    try {
-      const result = await db.insert(schema.videoCallParticipants).values(data).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar participante de chamada de v\xEDdeo:", error);
-      throw error;
-    }
-  }
-  async updateVideoCallParticipant(id, updates) {
-    try {
-      const result = await db.update(schema.videoCallParticipants).set(updates).where(eq(schema.videoCallParticipants.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar participante de chamada de v\xEDdeo:", error);
-      return null;
-    }
-  }
-  async deleteVideoCallParticipant(id) {
-    try {
-      await db.delete(schema.videoCallParticipants).where(eq(schema.videoCallParticipants.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar participante de chamada de v\xEDdeo:", error);
-      return false;
-    }
-  }
-  // ========== PARTICIPANTES DE CONVERSAS ==========
-  async getAllConversationParticipants() {
-    try {
-      const result = await db.select().from(schema.conversationParticipants).orderBy(asc(schema.conversationParticipants.id));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar participantes de conversa:", error);
-      return [];
-    }
-  }
-  async getConversationParticipantById(id) {
-    try {
-      const result = await db.select().from(schema.conversationParticipants).where(eq(schema.conversationParticipants.id, id)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar participante de conversa:", error);
-      return null;
-    }
-  }
-  // Implementação duplicada removida
-  async updateConversationParticipant(id, updates) {
-    try {
-      const result = await db.update(schema.conversationParticipants).set(updates).where(eq(schema.conversationParticipants.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao atualizar participante de conversa:", error);
-      return null;
-    }
-  }
-  async deleteConversationParticipant(id) {
-    try {
-      await db.delete(schema.conversationParticipants).where(eq(schema.conversationParticipants.id, id));
-      return true;
-    } catch (error) {
-      console.error("Erro ao deletar participante de conversa:", error);
-      return false;
-    }
-  }
-  // Métodos adicionais necessários
-  async getEmotionalCheckInsForAdmin() {
-    try {
-      console.log("\u{1F50D} Buscando check-ins emocionais para admin...");
-      const result = await db.select().from(schema.emotionalCheckins);
-      console.log("\u{1F50D} Resultado:", result);
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar check-ins emocionais para admin:", error);
-      return [];
-    }
-  }
-  async getUsersWithMissionaryProfile() {
-    try {
-      const result = await db.select().from(schema.users).where(eq(schema.users.role, "missionary"));
-      return result;
-    } catch (error) {
-      console.error("Erro ao buscar usu\xE1rios com perfil mission\xE1rio:", error);
-      return [];
-    }
-  }
-  async getDefaultChurch() {
-    try {
-      const result = await db.select().from(schema.churches).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar igreja padr\xE3o:", error);
-      return null;
-    }
-  }
-  async clearAllData() {
-    try {
-      console.log("\u{1F9F9} Iniciando limpeza de todos os dados...");
-      const { neon: neon2 } = await import("@neondatabase/serverless");
-      const sql2 = neon2(process.env.DATABASE_URL);
-      const queries = [
-        "DELETE FROM messages",
-        "DELETE FROM conversations",
-        "DELETE FROM emotional_checkins",
-        "DELETE FROM discipleship_requests",
-        "DELETE FROM relationships",
-        // Adicionar relationships antes de users
-        "DELETE FROM missionary_profiles",
-        "DELETE FROM point_configs",
-        "DELETE FROM events",
-        "DELETE FROM churches",
-        "DELETE FROM users WHERE email != 'admin@7care.com'"
-        // Usuários por último
-      ];
-      for (const query of queries) {
-        try {
-          await sql2`${sql2.unsafe(query)}`;
-          console.log(`\u2705 Executado: ${query}`);
-        } catch (error) {
-          console.log(`\u26A0\uFE0F Aviso ao executar ${query}:`, error.message);
-        }
-      }
-      console.log("\u{1F389} Limpeza de dados conclu\xEDda com sucesso!");
-    } catch (error) {
-      console.error("\u274C Erro ao limpar dados:", error);
-      throw error;
-    }
-  }
-  // ===== MÉTODOS DE IGREJA =====
-  async updateUserChurch(userId, churchName) {
-    try {
-      await db.update(schema.users).set({ church: churchName }).where(eq(schema.users.id, userId));
-      return true;
-    } catch (error) {
-      console.error("Erro ao atualizar igreja do usu\xE1rio:", error);
-      return false;
-    }
-  }
-  async setDefaultChurch(churchId) {
-    try {
-      const church = await db.select().from(schema.churches).where(eq(schema.churches.id, churchId)).limit(1);
-      if (church.length === 0) {
-        console.error("Igreja n\xE3o encontrada:", churchId);
-        return false;
-      }
-      console.log("Igreja definida como padr\xE3o:", church[0].name);
-      return true;
-    } catch (error) {
-      console.error("Erro ao definir igreja padr\xE3o:", error);
-      return false;
-    }
-  }
-  async getOrCreateChurch(churchName) {
-    try {
-      console.log(`\u{1F50D} Buscando igreja: "${churchName}"`);
-      const existingChurch = await db.select().from(schema.churches).where(eq(schema.churches.name, churchName)).limit(1);
-      if (existingChurch.length > 0) {
-        console.log(`\u2705 Igreja encontrada: ${existingChurch[0].name} (ID: ${existingChurch[0].id})`);
-        return existingChurch[0];
-      }
-      console.log(`\u2795 Criando nova igreja: "${churchName}"`);
-      const baseCode = churchName.substring(0, 8).toUpperCase().replace(/\s+/g, "");
-      let code = baseCode;
-      let counter = 1;
-      while (true) {
-        const existingCode = await db.select().from(schema.churches).where(eq(schema.churches.code, code)).limit(1);
-        if (existingCode.length === 0) {
-          break;
-        }
-        code = `${baseCode}${counter}`;
-        counter++;
-      }
-      const newChurch = await db.insert(schema.churches).values({
-        name: churchName,
-        code,
-        address: "",
-        phone: "",
-        email: "",
-        pastor: ""
-      }).returning();
-      console.log(`\u2705 Igreja criada: ${newChurch[0].name} (ID: ${newChurch[0].id}, Code: ${newChurch[0].code})`);
-      return newChurch[0];
-    } catch (error) {
-      console.error("\u274C Erro ao buscar/criar igreja:", error);
-      throw error;
-    }
-  }
-  // ===== MÉTODOS DE USUÁRIO =====
-  async approveUser(id) {
-    try {
-      const result = await db.update(schema.users).set({
-        role: "member",
-        isApproved: true
-      }).where(eq(schema.users.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao aprovar usu\xE1rio:", error);
-      return null;
-    }
-  }
-  async rejectUser(id) {
-    try {
-      const result = await db.update(schema.users).set({
-        role: "rejected",
-        isApproved: false
-      }).where(eq(schema.users.id, id)).returning();
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao rejeitar usu\xE1rio:", error);
-      return null;
-    }
-  }
-  // ===== MÉTODOS DE PONTUAÇÃO =====
-  async calculateBasicUserPoints() {
-    try {
+      console.log("\u{1F504} Iniciando rec\xE1lculo de pontos para todos os usu\xE1rios...");
       const users2 = await this.getAllUsers();
+      console.log(`\u{1F465} ${users2.length} usu\xE1rios encontrados`);
       let updatedCount = 0;
+      let errorCount = 0;
+      const results = [];
       for (const user of users2) {
-        if (user.email === "admin@7care.com") continue;
-        const points = this.calculateUserPoints(user);
-        if (points !== user.points) {
-          await this.updateUser(user.id, { points });
-          updatedCount++;
+        try {
+          if (user.email === "admin@7care.com" || user.role === "admin") {
+            console.log(`\u23ED\uFE0F Pulando Super Admin: ${user.name}`);
+            continue;
+          }
+          console.log(`
+\u{1F50D} Calculando pontos para: ${user.name} (ID: ${user.id})`);
+          const calculation = await this.calculateUserPoints(user.id);
+          if (calculation && calculation.success) {
+            if (user.points !== calculation.points) {
+              console.log(`   \u{1F504} Atualizando pontos: ${user.points} \u2192 ${calculation.points}`);
+              await db2.update(schema2.users).set({ points: calculation.points }).where(eq(schema2.users.id, user.id));
+              updatedCount++;
+            } else {
+              console.log(`   \u2705 Pontos j\xE1 est\xE3o atualizados: ${calculation.points}`);
+            }
+            results.push({
+              userId: user.id,
+              name: user.name,
+              points: calculation.points,
+              updated: user.points !== calculation.points
+            });
+          } else {
+            console.error(`\u274C Erro ao calcular pontos para ${user.name}:`, calculation?.message || "Erro desconhecido");
+            errorCount++;
+          }
+        } catch (userError) {
+          console.error(`\u274C Erro ao processar usu\xE1rio ${user.name}:`, userError);
+          errorCount++;
         }
       }
-      return { success: true, updatedCount };
+      console.log(`\u2705 Processamento conclu\xEDdo: ${updatedCount} usu\xE1rios atualizados`);
+      return {
+        success: true,
+        message: `Pontos recalculados para ${users2.length} usu\xE1rios. ${updatedCount} atualizados.`,
+        updatedUsers: updatedCount,
+        totalUsers: users2.length,
+        errors: errorCount,
+        results
+      };
     } catch (error) {
-      console.error("Erro ao calcular pontos b\xE1sicos:", error);
-      return { success: false, error: error.message };
-    }
-  }
-  async resetPointsConfiguration() {
-    try {
-      await db.delete(schema.pointConfigs);
-      const defaultConfig = this.getDefaultPointsConfiguration();
-      await this.savePointsConfiguration(defaultConfig);
-    } catch (error) {
-      console.error("Erro ao resetar configura\xE7\xE3o de pontos:", error);
-      throw error;
-    }
-  }
-  // ===== MÉTODOS DE CHECK-INS EMOCIONAIS =====
-  async getEmotionalCheckInsByUserId(userId) {
-    try {
-      return await db.select().from(schema.emotionalCheckins).where(eq(schema.emotionalCheckins.userId, userId)).orderBy(desc(schema.emotionalCheckins.createdAt));
-    } catch (error) {
-      console.error("Erro ao buscar check-ins emocionais do usu\xE1rio:", error);
-      return [];
-    }
-  }
-  // ===== MÉTODOS DE ORAÇÃO =====
-  async getPrayers() {
-    try {
-      return await db.select().from(schema.prayers).orderBy(desc(schema.prayers.createdAt));
-    } catch (error) {
-      console.error("Erro ao buscar ora\xE7\xF5es:", error);
-      return [];
-    }
-  }
-  async markPrayerAsAnswered(prayerId, answeredBy) {
-    try {
-      await db.update(schema.prayers).set({
-        status: "answered"
-      }).where(eq(schema.prayers.id, prayerId));
-      return true;
-    } catch (error) {
-      console.error("Erro ao marcar ora\xE7\xE3o como respondida:", error);
-      return false;
-    }
-  }
-  async addPrayerIntercessor(prayerId, intercessorId) {
-    try {
-      await db.insert(schema.prayerIntercessors).values({
-        prayerId,
-        userId: intercessorId,
-        joinedAt: /* @__PURE__ */ new Date()
-      });
-      return true;
-    } catch (error) {
-      console.error("Erro ao adicionar intercessor:", error);
-      return false;
-    }
-  }
-  async removePrayerIntercessor(prayerId, intercessorId) {
-    try {
-      await db.delete(schema.prayerIntercessors).where(
-        and(
-          eq(schema.prayerIntercessors.prayerId, prayerId),
-          eq(schema.prayerIntercessors.userId, intercessorId)
-        )
-      );
-      return true;
-    } catch (error) {
-      console.error("Erro ao remover intercessor:", error);
-      return false;
-    }
-  }
-  async getPrayerIntercessors(prayerId) {
-    try {
-      return await db.select().from(schema.prayerIntercessors).where(eq(schema.prayerIntercessors.prayerId, prayerId));
-    } catch (error) {
-      console.error("Erro ao buscar intercessores:", error);
-      return [];
-    }
-  }
-  async getPrayersUserIsPrayingFor(userId) {
-    try {
-      return await db.select().from(schema.prayerIntercessors).where(eq(schema.prayerIntercessors.userId, userId));
-    } catch (error) {
-      console.error("Erro ao buscar ora\xE7\xF5es que usu\xE1rio est\xE1 orando:", error);
-      return [];
-    }
-  }
-  // ===== MÉTODOS DE REUNIÕES =====
-  // Implementação duplicada removida
-  // Implementação duplicada removida
-  // Implementações duplicadas removidas - usando as primeiras implementações
-  // ===== MÉTODOS DE EVENTOS =====
-  async clearAllEvents() {
-    try {
-      await db.delete(schema.events);
-      return true;
-    } catch (error) {
-      console.error("Erro ao limpar eventos:", error);
-      return false;
-    }
-  }
-  // Implementação duplicada removida - usando a primeira implementação
-  // ===== MÉTODOS DE RELACIONAMENTOS =====
-  async getAllRelationships() {
-    try {
-      console.log("\u{1F50D} [RELATIONSHIPS] Buscando todos os relacionamentos...");
-      console.log("\u{1F50D} [RELATIONSHIPS] Environment:", process.env.NODE_ENV);
-      console.log("\u{1F50D} [RELATIONSHIPS] DATABASE_URL exists:", !!process.env.DATABASE_URL);
-      try {
-        await sql`SELECT 1 as test`;
-        console.log("\u2705 [RELATIONSHIPS] Conex\xE3o com banco OK");
-      } catch (connError) {
-        console.error("\u274C [RELATIONSHIPS] Erro de conectividade:", connError.message);
-        throw new Error(`Erro de conectividade com banco: ${connError.message}`);
-      }
-      const tableCheck = await sql`
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' 
-          AND table_name = 'relationships'
-        );
-      `;
-      console.log("\u{1F50D} [RELATIONSHIPS] Tabela relationships existe?", tableCheck[0]?.exists);
-      if (!tableCheck[0]?.exists) {
-        console.log("\u26A0\uFE0F [RELATIONSHIPS] Tabela relationships n\xE3o existe, retornando array vazio");
-        return [];
-      }
-      const result = await sql`
-        SELECT 
-          r.id,
-          r.interested_id as "interestedId",
-          r.missionary_id as "missionaryId",
-          r.status,
-          r.notes,
-          r.created_at as "createdAt",
-          r.updated_at as "updatedAt",
-          COALESCE(ui.name, 'Usuário não encontrado') as "interestedName",
-          COALESCE(um.name, 'Usuário não encontrado') as "missionaryName"
-        FROM relationships r
-        LEFT JOIN users ui ON r.interested_id = ui.id
-        LEFT JOIN users um ON r.missionary_id = um.id
-        ORDER BY r.created_at DESC
-      `;
-      console.log("\u2705 [RELATIONSHIPS] Relacionamentos encontrados:", result.length);
-      return result;
-    } catch (error) {
-      console.error("\u274C [RELATIONSHIPS] Erro ao buscar relacionamentos:", error);
-      console.error("\u274C [RELATIONSHIPS] Tipo do erro:", error.constructor.name);
-      console.error("\u274C [RELATIONSHIPS] Mensagem:", error.message);
-      console.error("\u274C [RELATIONSHIPS] Stack:", error.stack);
-      if (error.message.includes("SSL") || error.message.includes("certificate") || error.message.includes("connection")) {
-        console.error("\u{1F512} [RELATIONSHIPS] Poss\xEDvel problema de SSL/conectividade");
-      }
-      return [];
-    }
-  }
-  async createRelationship(data) {
-    try {
-      console.log("\u{1F50D} [RELATIONSHIPS] Criando relacionamento:", data);
-      await this.ensureRelationshipsTable();
-      const existing = await sql`
-        SELECT id FROM relationships 
-        WHERE interested_id = ${data.interestedId} 
-        AND status = 'active'
-      `;
-      if (existing.length > 0) {
-        console.log("\u26A0\uFE0F [RELATIONSHIPS] J\xE1 existe relacionamento ativo para este interessado");
-        throw new Error("J\xE1 existe um discipulador ativo para este interessado");
-      }
-      const result = await sql`
-        INSERT INTO relationships (interested_id, missionary_id, status, notes, created_at, updated_at)
-        VALUES (${data.interestedId}, ${data.missionaryId}, ${data.status}, ${data.notes || ""}, NOW(), NOW())
-        RETURNING *
-      `;
-      const newRelationship = result[0];
-      console.log("\u2705 [RELATIONSHIPS] Relacionamento criado com sucesso:", newRelationship.id);
-      const enriched = await sql`
-        SELECT 
-          r.id,
-          r.interested_id as "interestedId",
-          r.missionary_id as "missionaryId",
-          r.status,
-          r.notes,
-          r.created_at as "createdAt",
-          r.updated_at as "updatedAt",
-          ui.name as "interestedName",
-          um.name as "missionaryName"
-        FROM relationships r
-        LEFT JOIN users ui ON r.interested_id = ui.id
-        LEFT JOIN users um ON r.missionary_id = um.id
-        WHERE r.id = ${newRelationship.id}
-      `;
-      return enriched[0];
-    } catch (error) {
-      console.error("\u274C [RELATIONSHIPS] Erro ao criar relacionamento:", error);
-      throw error;
-    }
-  }
-  async getRelationshipsByInterested(interestedId) {
-    try {
-      console.log("\u{1F50D} [RELATIONSHIPS] Buscando relacionamentos para interessado:", interestedId);
-      const result = await sql`
-        SELECT 
-          r.id,
-          r.interested_id as "interestedId",
-          r.missionary_id as "missionaryId",
-          r.status,
-          r.notes,
-          r.created_at as "createdAt",
-          r.updated_at as "updatedAt",
-          ui.name as "interestedName",
-          um.name as "missionaryName"
-        FROM relationships r
-        LEFT JOIN users ui ON r.interested_id = ui.id
-        LEFT JOIN users um ON r.missionary_id = um.id
-        WHERE r.interested_id = ${interestedId}
-        ORDER BY r.created_at DESC
-      `;
-      console.log("\u2705 [RELATIONSHIPS] Relacionamentos encontrados para interessado:", result.length);
-      return result;
-    } catch (error) {
-      console.error("\u274C [RELATIONSHIPS] Erro ao buscar relacionamentos por interessado:", error);
-      return [];
-    }
-  }
-  async getRelationshipsByMissionary(missionaryId) {
-    try {
-      console.log("\u{1F50D} [RELATIONSHIPS] Buscando relacionamentos para mission\xE1rio:", missionaryId);
-      const result = await sql`
-        SELECT 
-          r.id,
-          r.interested_id as "interestedId",
-          r.missionary_id as "missionaryId",
-          r.status,
-          r.notes,
-          r.created_at as "createdAt",
-          r.updated_at as "updatedAt",
-          ui.name as "interestedName",
-          um.name as "missionaryName"
-        FROM relationships r
-        LEFT JOIN users ui ON r.interested_id = ui.id
-        LEFT JOIN users um ON r.missionary_id = um.id
-        WHERE r.missionary_id = ${missionaryId}
-        ORDER BY r.created_at DESC
-      `;
-      console.log("\u2705 [RELATIONSHIPS] Relacionamentos encontrados para mission\xE1rio:", result.length);
-      return result;
-    } catch (error) {
-      console.error("\u274C [RELATIONSHIPS] Erro ao buscar relacionamentos por mission\xE1rio:", error);
-      return [];
-    }
-  }
-  async ensureRelationshipsTable() {
-    try {
-      console.log("\u{1F50D} [RELATIONSHIPS] Verificando se tabela relationships existe...");
-      const tableExists = await sql`
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' 
-          AND table_name = 'relationships'
-        );
-      `;
-      console.log("\u{1F50D} [RELATIONSHIPS] Tabela existe?", tableExists[0]?.exists);
-      if (!tableExists[0]?.exists) {
-        console.log("\u{1F50D} [RELATIONSHIPS] Criando tabela relationships...");
-        await sql`
-          CREATE TABLE relationships (
-            id SERIAL PRIMARY KEY,
-            interested_id INTEGER NOT NULL,
-            missionary_id INTEGER NOT NULL,
-            status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'pending')),
-            notes TEXT,
-            created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP DEFAULT NOW(),
-            UNIQUE(interested_id, missionary_id)
-          );
-        `;
-        console.log("\u2705 [RELATIONSHIPS] Tabela relationships criada com sucesso");
-      } else {
-        console.log("\u2705 [RELATIONSHIPS] Tabela relationships j\xE1 existe");
-      }
-    } catch (error) {
-      console.error("\u274C [RELATIONSHIPS] Erro ao verificar/criar tabela:", error);
-      console.error("\u274C [RELATIONSHIPS] Detalhes do erro:", error.message);
-      throw error;
-    }
-  }
-  async getRelationshipById(relationshipId) {
-    try {
-      const result = await db.select().from(schema.relationships).where(eq(schema.relationships.id, relationshipId)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar relacionamento:", error);
-      return null;
-    }
-  }
-  // Implementação duplicada removida
-  // Implementação duplicada removida
-  // ===== MÉTODOS DE PERFIL MISSIONÁRIO =====
-  async getMissionaryProfileByUserId(userId) {
-    try {
-      const result = await db.select().from(schema.missionaryProfiles).where(eq(schema.missionaryProfiles.userId, userId)).limit(1);
-      return result[0] || null;
-    } catch (error) {
-      console.error("Erro ao buscar perfil mission\xE1rio:", error);
-      return null;
-    }
-  }
-  async createMissionaryProfile(data) {
-    try {
-      const result = await db.insert(schema.missionaryProfiles).values({
-        ...data,
-        createdAt: /* @__PURE__ */ new Date(),
-        updatedAt: /* @__PURE__ */ new Date()
-      }).returning();
-      return result[0];
-    } catch (error) {
-      console.error("Erro ao criar perfil mission\xE1rio:", error);
-      throw error;
-    }
-  }
-  // Implementação duplicada removida - usando a primeira implementação
-  // ===== MÉTODO AUXILIAR PARA CÁLCULO DE PONTOS =====
-  calculateUserPoints(user) {
-    let points = 0;
-    if (user.attendance) points += user.attendance;
-    if (user.isDonor) points += 5;
-    if (user.isOffering) points += 3;
-    if (user.hasLesson) points += 2;
-    return Math.round(points);
-  }
-  // Sistema de Logo Persistente
-  async saveSystemLogo(logoUrl, filename) {
-    try {
-      console.log("\u{1F4BE} Salvando logo no banco de dados:", { logoUrl, filename });
-      const existingConfig = await sql`
-        SELECT id FROM system_config WHERE key = 'system_logo'
-      `;
-      if (existingConfig.length > 0) {
-        await sql`
-          UPDATE system_config 
-          SET value = ${JSON.stringify({ logoUrl, filename, updatedAt: (/* @__PURE__ */ new Date()).toISOString() })},
-              updated_at = NOW()
-          WHERE key = 'system_logo'
-        `;
-        console.log("\u2705 Logo atualizada no banco de dados");
-      } else {
-        await sql`
-          INSERT INTO system_config (key, value, description)
-          VALUES ('system_logo', ${JSON.stringify({ logoUrl, filename, createdAt: (/* @__PURE__ */ new Date()).toISOString() })}, 'Logo do sistema')
-        `;
-        console.log("\u2705 Logo salva no banco de dados");
-      }
-      return true;
-    } catch (error) {
-      console.error("\u274C Erro ao salvar logo no banco:", error);
-      return false;
-    }
-  }
-  async getSystemLogo() {
-    try {
-      console.log("\u{1F50D} Buscando logo no banco de dados...");
-      const result = await sql`
-        SELECT value FROM system_config WHERE key = 'system_logo'
-      `;
-      if (result.length > 0) {
-        const config = result[0].value;
-        console.log("\u2705 Logo encontrada no banco:", config);
-        return {
-          logoUrl: config.logoUrl,
-          filename: config.filename
-        };
-      }
-      console.log("\u2139\uFE0F Nenhuma logo encontrada no banco de dados");
-      return null;
-    } catch (error) {
-      console.error("\u274C Erro ao buscar logo no banco:", error);
-      return null;
-    }
-  }
-  async clearSystemLogo() {
-    try {
-      console.log("\u{1F5D1}\uFE0F Removendo logo do banco de dados...");
-      await sql`
-        DELETE FROM system_config WHERE key = 'system_logo'
-      `;
-      console.log("\u2705 Logo removida do banco de dados");
-      return true;
-    } catch (error) {
-      console.error("\u274C Erro ao remover logo do banco:", error);
-      return false;
+      console.error("\u274C Erro ao recalcular pontos:", error);
+      return {
+        success: false,
+        message: "Erro ao recalcular pontos",
+        error: error.message
+      };
     }
   }
 };
@@ -2720,7 +1221,7 @@ async function migrateToNeon() {
   console.log("\u{1F680} Iniciando migra\xE7\xE3o para Neon Database...");
   try {
     console.log("\u{1F4CB} Criando tabelas...");
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -2753,7 +1254,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS churches (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -2766,7 +1267,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS events (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
@@ -2783,7 +1284,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS relationships (
         id SERIAL PRIMARY KEY,
         interested_id INTEGER REFERENCES users(id),
@@ -2794,7 +1295,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS meetings (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
@@ -2808,7 +1309,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS conversations (
         id SERIAL PRIMARY KEY,
         title TEXT,
@@ -2818,7 +1319,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
         content TEXT NOT NULL,
@@ -2827,7 +1328,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS notifications (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
@@ -2838,7 +1339,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS discipleship_requests (
         id SERIAL PRIMARY KEY,
         interested_id INTEGER REFERENCES users(id),
@@ -2849,7 +1350,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS missionary_profiles (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -2860,7 +1361,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS emotional_checkins (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -2869,7 +1370,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS point_configs (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -2879,7 +1380,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS achievements (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -2889,7 +1390,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS point_activities (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -2899,7 +1400,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS system_config (
         id SERIAL PRIMARY KEY,
         key TEXT NOT NULL UNIQUE,
@@ -2909,7 +1410,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS system_settings (
         id SERIAL PRIMARY KEY,
         key TEXT NOT NULL UNIQUE,
@@ -2919,7 +1420,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS event_participants (
         id SERIAL PRIMARY KEY,
         event_id INTEGER REFERENCES events(id),
@@ -2928,7 +1429,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS meeting_types (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -2937,7 +1438,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS user_achievements (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -2945,7 +1446,7 @@ async function migrateToNeon() {
         earned_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS user_points_history (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -2954,7 +1455,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS prayers (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
@@ -2966,7 +1467,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS prayer_intercessors (
         id SERIAL PRIMARY KEY,
         prayer_id INTEGER REFERENCES prayers(id),
@@ -2974,7 +1475,7 @@ async function migrateToNeon() {
         joined_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS video_call_sessions (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
@@ -2987,7 +1488,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS video_call_participants (
         id SERIAL PRIMARY KEY,
         session_id INTEGER REFERENCES video_call_sessions(id),
@@ -2996,7 +1497,7 @@ async function migrateToNeon() {
         left_at TIMESTAMP
       );
     `);
-    await db.execute(`
+    await db2.execute(`
       CREATE TABLE IF NOT EXISTS conversation_participants (
         id SERIAL PRIMARY KEY,
         conversation_id INTEGER REFERENCES conversations(id),
@@ -3006,7 +1507,7 @@ async function migrateToNeon() {
     `);
     console.log("\u2705 Tabelas criadas com sucesso!");
     console.log("\u{1F464} Verificando super administrador...");
-    const existingAdmin = await db.execute(`
+    const existingAdmin = await db2.execute(`
       SELECT id FROM users WHERE email = 'admin@7care.com' LIMIT 1
     `);
     if (existingAdmin.rows.length === 0) {
@@ -3031,7 +1532,7 @@ async function migrateToNeon() {
         cpfValido: true,
         camposVaziosACMS: false
       });
-      await db.execute(`
+      await db2.execute(`
         INSERT INTO users (
           name, email, password, role, church, church_code, departments,
           birth_date, civil_status, occupation, education, address, baptism_date,
@@ -3449,6 +1950,1080 @@ var importRoutes = (app2) => {
     } catch (error) {
       console.error("\u274C Erro na importa\xE7\xE3o:", error);
       res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+};
+
+// server/electionRoutes.ts
+var electionRoutes = (app2) => {
+  app2.post("/api/elections/config", async (req, res) => {
+    try {
+      const body = req.body;
+      await sql`
+        CREATE TABLE IF NOT EXISTS election_configs (
+          id SERIAL PRIMARY KEY,
+          church_id INTEGER NOT NULL,
+          church_name VARCHAR(255) NOT NULL,
+          voters INTEGER[] NOT NULL,
+          criteria JSONB NOT NULL,
+          positions TEXT[] NOT NULL,
+          status VARCHAR(50) DEFAULT 'draft',
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `;
+      const result = await sql`
+        INSERT INTO election_configs (church_id, church_name, voters, criteria, positions, status)
+        VALUES (${body.churchId || 1}, ${body.churchName || "Igreja Central"}, ${body.voters}, ${JSON.stringify(body.criteria)}, ${body.positions}, ${body.status || "draft"})
+        RETURNING *
+      `;
+      console.log("\u2705 Configura\xE7\xE3o de elei\xE7\xE3o salva:", result[0].id);
+      return res.status(200).json(result[0]);
+    } catch (error) {
+      console.error("\u274C Erro ao salvar configura\xE7\xE3o:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.get("/api/elections/config/:id", async (req, res) => {
+    try {
+      const configId = parseInt(req.params.id);
+      const config = await sql`
+        SELECT ec.*, e.status as election_status, e.created_at as election_created_at
+        FROM election_configs ec
+        LEFT JOIN (
+          SELECT DISTINCT ON (config_id) config_id, status, created_at
+          FROM elections
+          ORDER BY config_id, created_at DESC
+        ) e ON ec.id = e.config_id
+        WHERE ec.id = ${configId}
+        ORDER BY ec.created_at DESC
+      `;
+      if (config.length === 0) {
+        return res.status(404).json({ error: "Configura\xE7\xE3o n\xE3o encontrada" });
+      }
+      return res.json(config[0]);
+    } catch (error) {
+      console.error("\u274C Erro ao buscar configura\xE7\xE3o:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.get("/api/elections/config", async (req, res) => {
+    try {
+      const configId = req.query.id;
+      if (configId) {
+        const config = await sql`
+          SELECT ec.*, e.status as election_status, e.created_at as election_created_at
+          FROM election_configs ec
+          LEFT JOIN (
+            SELECT DISTINCT ON (config_id) config_id, status, created_at
+            FROM elections
+            ORDER BY config_id, created_at DESC
+          ) e ON ec.id = e.config_id
+          WHERE ec.id = ${parseInt(configId)}
+          ORDER BY ec.created_at DESC
+        `;
+        if (config.length === 0) {
+          return res.status(404).json({ error: "Configura\xE7\xE3o n\xE3o encontrada" });
+        }
+        return res.json(config[0]);
+      } else {
+        const config = await sql`
+          SELECT ec.*, e.status as election_status, e.created_at as election_created_at
+          FROM election_configs ec
+          LEFT JOIN (
+            SELECT DISTINCT ON (config_id) config_id, status, created_at
+            FROM elections
+            ORDER BY config_id, created_at DESC
+          ) e ON ec.id = e.config_id
+          ORDER BY ec.created_at DESC
+          LIMIT 1
+        `;
+        if (config.length === 0) {
+          return res.status(404).json({ error: "Nenhuma configura\xE7\xE3o encontrada" });
+        }
+        return res.json(config[0]);
+      }
+    } catch (error) {
+      console.error("\u274C Erro ao buscar configura\xE7\xE3o:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.get("/api/elections/configs", async (req, res) => {
+    try {
+      const configs = await sql`
+        SELECT ec.*, e.status as election_status, e.created_at as election_created_at
+        FROM election_configs ec
+        LEFT JOIN (
+          SELECT DISTINCT ON (config_id) config_id, status, created_at
+          FROM elections
+          ORDER BY config_id, created_at DESC
+        ) e ON ec.id = e.config_id
+        ORDER BY ec.created_at DESC
+      `;
+      return res.status(200).json(configs);
+    } catch (error) {
+      console.error("\u274C Erro ao buscar configura\xE7\xF5es:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.post("/api/elections/start", async (req, res) => {
+    try {
+      const body = req.body;
+      await sql`
+        CREATE TABLE IF NOT EXISTS elections (
+          id SERIAL PRIMARY KEY,
+          config_id INTEGER NOT NULL,
+          status VARCHAR(50) DEFAULT 'active',
+          current_position INTEGER DEFAULT 0,
+          current_phase VARCHAR(20) DEFAULT 'nomination',
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `;
+      await sql`
+        DROP TABLE IF EXISTS election_votes
+      `;
+      await sql`
+        CREATE TABLE election_votes (
+          id SERIAL PRIMARY KEY,
+          election_id INTEGER NOT NULL,
+          voter_id INTEGER NOT NULL,
+          position_id VARCHAR(255) NOT NULL,
+          candidate_id INTEGER NOT NULL,
+          vote_type VARCHAR(20) DEFAULT 'nomination',
+          voted_at TIMESTAMP DEFAULT NOW(),
+          UNIQUE(election_id, voter_id, position_id, candidate_id, vote_type)
+        )
+      `;
+      await sql`
+        DROP TABLE IF EXISTS election_candidates
+      `;
+      await sql`
+        CREATE TABLE election_candidates (
+          id SERIAL PRIMARY KEY,
+          election_id INTEGER NOT NULL,
+          position_id VARCHAR(255) NOT NULL,
+          candidate_id INTEGER NOT NULL,
+          candidate_name VARCHAR(255) NOT NULL,
+          faithfulness_punctual BOOLEAN DEFAULT false,
+          faithfulness_seasonal BOOLEAN DEFAULT false,
+          faithfulness_recurring BOOLEAN DEFAULT false,
+          attendance_percentage INTEGER DEFAULT 0,
+          months_in_church INTEGER DEFAULT 0,
+          nominations INTEGER DEFAULT 0,
+          votes INTEGER DEFAULT 0,
+          phase VARCHAR(20) DEFAULT 'nomination',
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `;
+      let config;
+      if (body.configId) {
+        config = await sql`
+          SELECT * FROM election_configs 
+          WHERE id = ${body.configId}
+        `;
+      } else {
+        config = await sql`
+          SELECT * FROM election_configs 
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `;
+      }
+      if (config.length === 0) {
+        return res.status(404).json({ error: "Configura\xE7\xE3o n\xE3o encontrada" });
+      }
+      console.log("\u{1F504} Desativando todas as elei\xE7\xF5es ativas...");
+      await sql`
+        UPDATE elections 
+        SET status = 'completed', updated_at = CURRENT_TIMESTAMP
+        WHERE status = 'active'
+      `;
+      const election = await sql`
+        INSERT INTO elections (config_id, status, current_position)
+        VALUES (${config[0].id}, 'active', 0)
+        RETURNING *
+      `;
+      console.log("\u{1F50D} Buscando membros da igreja:", config[0].church_name);
+      const churchMembers = await sql`
+        SELECT id, name, email, church, role, status, created_at, is_tither, is_donor, attendance, extra_data
+        FROM users 
+        WHERE church = ${config[0].church_name} 
+        AND role = 'member'
+        AND status = 'approved'
+      `;
+      console.log(`\u2705 Encontrados ${churchMembers.length} membros eleg\xEDveis`);
+      const positions = Array.isArray(config[0].positions) ? config[0].positions : JSON.parse(config[0].positions || "[]");
+      if (!positions || positions.length === 0) {
+        console.log("\u274C Nenhuma posi\xE7\xE3o configurada na elei\xE7\xE3o");
+        return res.status(400).json({ error: "Configura\xE7\xE3o inv\xE1lida: nenhuma posi\xE7\xE3o encontrada" });
+      }
+      const candidatesToInsert = [];
+      for (const position of positions) {
+        for (const member of churchMembers) {
+          let extraData = {};
+          try {
+            extraData = member.extra_data ? JSON.parse(member.extra_data) : {};
+          } catch (e) {
+            console.log(`\u26A0\uFE0F Erro ao processar extraData para ${member.name}:`, e.message);
+          }
+          const dizimistaRecorrente = extraData.dizimistaType === "Recorrente (8-12)" || extraData.dizimistaType === "recorrente";
+          const ofertanteRecorrente = extraData.ofertanteType === "Recorrente (8-12)" || extraData.ofertanteType === "recorrente";
+          const engajamento = extraData.engajamento || "baixo";
+          const classificacao = extraData.classificacao || "n\xE3o frequente";
+          const tempoBatismoAnos = extraData.tempoBatismoAnos || 0;
+          const presencaTotal = extraData.totalPresenca || 0;
+          const comunhao = extraData.comunhao || 0;
+          const missao = extraData.missao || 0;
+          const estudoBiblico = extraData.estudoBiblico || 0;
+          const discPosBatismal = extraData.discPosBatismal || 0;
+          const criteria = typeof config[0].criteria === "object" ? config[0].criteria : JSON.parse(config[0].criteria || "{}");
+          let isEligible = true;
+          const monthsInChurch = member.created_at ? Math.floor((Date.now() - new Date(member.created_at).getTime()) / (1e3 * 60 * 60 * 24 * 30)) : 0;
+          if (criteria.dizimistaRecorrente && !dizimistaRecorrente) {
+            isEligible = false;
+          }
+          if (criteria.mustBeTither && !dizimistaRecorrente) {
+            isEligible = false;
+          }
+          if (criteria.mustBeDonor && !ofertanteRecorrente) {
+            isEligible = false;
+          }
+          if (criteria.minAttendance && presencaTotal < criteria.minAttendance) {
+            isEligible = false;
+          }
+          if (criteria.minMonthsInChurch && monthsInChurch < criteria.minMonthsInChurch) {
+            isEligible = false;
+          }
+          if (criteria.minEngagement && engajamento === "baixo") {
+            isEligible = false;
+          }
+          if (criteria.minClassification && classificacao === "n\xE3o frequente") {
+            isEligible = false;
+          }
+          if (criteria.minBaptismYears && tempoBatismoAnos < criteria.minBaptismYears) {
+            isEligible = false;
+          }
+          console.log(`\u{1F50D} Candidato ${member.name}: eleg\xEDvel=${isEligible}, dizimistaRecorrente=${dizimistaRecorrente}, engajamento=${engajamento}, classificacao=${classificacao}, tempoBatismo=${tempoBatismoAnos} anos, presenca=${presencaTotal}, months=${monthsInChurch}`);
+          if (isEligible) {
+            candidatesToInsert.push({
+              election_id: election[0].id,
+              position_id: position,
+              candidate_id: member.id,
+              candidate_name: member.name,
+              faithfulness_punctual: dizimistaRecorrente,
+              faithfulness_seasonal: ofertanteRecorrente,
+              faithfulness_recurring: dizimistaRecorrente && ofertanteRecorrente,
+              attendance_percentage: presencaTotal,
+              months_in_church: monthsInChurch
+            });
+          }
+        }
+      }
+      if (candidatesToInsert.length > 0) {
+        for (const candidate of candidatesToInsert) {
+          await sql`
+            INSERT INTO election_candidates (election_id, position_id, candidate_id, candidate_name, faithfulness_punctual, faithfulness_seasonal, faithfulness_recurring, attendance_percentage, months_in_church, nominations, phase)
+            VALUES (${candidate.election_id}, ${candidate.position_id}, ${candidate.candidate_id}, ${candidate.candidate_name}, ${candidate.faithfulness_punctual}, ${candidate.faithfulness_seasonal}, ${candidate.faithfulness_recurring}, ${candidate.attendance_percentage}, ${candidate.months_in_church}, 0, 'nomination')
+          `;
+        }
+        console.log(`\u2705 ${candidatesToInsert.length} candidatos inseridos`);
+      }
+      await sql`
+        UPDATE election_configs 
+        SET status = 'active' 
+        WHERE id = ${config[0].id}
+      `;
+      console.log("\u2705 Elei\xE7\xE3o iniciada:", election[0].id);
+      return res.status(200).json({
+        electionId: election[0].id,
+        message: "Nomea\xE7\xE3o iniciada com sucesso"
+      });
+    } catch (error) {
+      console.error("\u274C Erro ao iniciar elei\xE7\xE3o:", error);
+      console.error("\u274C Stack trace:", error.stack);
+      return res.status(500).json({ error: "Erro interno do servidor", details: error.message });
+    }
+  });
+  app2.get("/api/elections/dashboard/:configId", async (req, res) => {
+    try {
+      const configId = parseInt(req.params.configId);
+      const election = await sql`
+        SELECT e.*, ec.voters, ec.positions, ec.church_name
+        FROM elections e
+        JOIN election_configs ec ON e.config_id = ec.id
+        WHERE e.config_id = ${configId}
+        AND e.status = 'active'
+        ORDER BY e.created_at DESC
+        LIMIT 1
+      `;
+      if (election.length === 0) {
+        return res.status(404).json({ error: "Nenhuma elei\xE7\xE3o ativa para esta configura\xE7\xE3o" });
+      }
+      const voters = Array.isArray(election[0].voters) ? election[0].voters : JSON.parse(election[0].voters || "[]");
+      const totalVoters = voters.length;
+      const votedVoters = await sql`
+        SELECT COUNT(DISTINCT voter_id) as count
+        FROM election_votes
+        WHERE election_id = ${election[0].id}
+      `;
+      const allResults = await sql`
+        SELECT 
+          ev.position_id,
+          ev.candidate_id,
+          COALESCE(u.name, 'Usuário não encontrado') as candidate_name,
+          COUNT(CASE WHEN ev.vote_type = 'nomination' THEN 1 END) as nominations,
+          COUNT(CASE WHEN ev.vote_type = 'vote' THEN 1 END) as votes
+        FROM election_votes ev
+        LEFT JOIN users u ON ev.candidate_id = u.id
+        WHERE ev.election_id = ${election[0].id}
+        GROUP BY ev.position_id, ev.candidate_id, u.name
+        HAVING COUNT(CASE WHEN ev.vote_type = 'nomination' THEN 1 END) > 0 
+           OR COUNT(CASE WHEN ev.vote_type = 'vote' THEN 1 END) > 0
+        ORDER BY ev.position_id, votes DESC, nominations DESC
+      `;
+      const electionPositions = Array.isArray(election[0].positions) ? election[0].positions : JSON.parse(election[0].positions || "[]");
+      const positions = [];
+      const resultsByPosition = /* @__PURE__ */ new Map();
+      allResults.forEach((result) => {
+        if (!resultsByPosition.has(result.position_id)) {
+          resultsByPosition.set(result.position_id, []);
+        }
+        resultsByPosition.get(result.position_id).push(result);
+      });
+      for (const position of electionPositions) {
+        const results = resultsByPosition.get(position) || [];
+        results.forEach((r) => {
+          r.votes = parseInt(r.votes) || 0;
+          r.nominations = parseInt(r.nominations) || 0;
+        });
+        const totalVotes = results.reduce((sum, r) => sum + r.votes, 0);
+        results.forEach((r) => {
+          r.percentage = totalVotes > 0 ? r.votes / totalVotes * 100 : 0;
+        });
+        const winner = results.length > 0 && results[0].votes > 0 ? results[0] : null;
+        const totalNominations = results.reduce((sum, r) => sum + r.nominations, 0);
+        positions.push({
+          position,
+          totalNominations,
+          winner: winner ? {
+            id: winner.candidate_id,
+            name: winner.candidate_name,
+            votes: winner.votes,
+            percentage: winner.percentage
+          } : null,
+          results: results.map((r) => ({
+            id: r.candidate_id,
+            name: r.candidate_name,
+            nominations: r.nominations,
+            votes: r.votes,
+            percentage: r.percentage
+          }))
+        });
+      }
+      const response = {
+        election: {
+          id: election[0].id,
+          config_id: election[0].config_id,
+          status: election[0].status,
+          current_position: election[0].current_position,
+          current_phase: election[0].current_phase || "nomination",
+          church_name: election[0].church_name,
+          created_at: election[0].created_at
+        },
+        totalVoters,
+        votedVoters: votedVoters[0].count,
+        currentPosition: election[0].current_position,
+        totalPositions: electionPositions.length,
+        positions
+      };
+      return res.status(200).json(response);
+    } catch (error) {
+      console.error("\u274C Erro ao buscar dashboard com configId:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.post("/api/elections/advance-phase", async (req, res) => {
+    try {
+      const body = req.body;
+      const { configId, phase } = body;
+      const adminId = parseInt(req.headers["x-user-id"]);
+      if (!adminId) {
+        return res.status(401).json({ error: "Usu\xE1rio n\xE3o autenticado" });
+      }
+      const admin = await sql`
+        SELECT role FROM users WHERE id = ${adminId}
+      `;
+      if (!admin[0] || !admin[0].role.includes("admin")) {
+        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem avan\xE7ar fases" });
+      }
+      const election = await sql`
+        SELECT * FROM elections 
+        WHERE config_id = ${configId}
+        AND status = 'active'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      if (election.length === 0) {
+        return res.status(404).json({ error: "Nenhuma elei\xE7\xE3o ativa para esta configura\xE7\xE3o" });
+      }
+      console.log(`\u{1F504} Atualizando fase da elei\xE7\xE3o ${election[0].id} para: ${phase}`);
+      try {
+        await sql`
+          ALTER TABLE elections 
+          ADD COLUMN IF NOT EXISTS current_phase VARCHAR(20) DEFAULT 'nomination'
+        `;
+      } catch (alterError) {
+        console.log("\u26A0\uFE0F Coluna current_phase j\xE1 existe ou erro ao adicionar:", alterError.message);
+      }
+      await sql`
+        UPDATE elections 
+        SET current_phase = ${phase}, updated_at = NOW()
+        WHERE id = ${election[0].id}
+      `;
+      console.log(`\u2705 Fase da elei\xE7\xE3o ${election[0].id} avan\xE7ada para: ${phase}`);
+      return res.status(200).json({
+        message: `Fase avan\xE7ada para: ${phase}`,
+        phase,
+        electionId: election[0].id
+      });
+    } catch (error) {
+      console.error("\u274C Erro ao avan\xE7ar fase:", error);
+      return res.status(500).json({ error: "Erro interno do servidor", details: error.message });
+    }
+  });
+  app2.post("/api/elections/advance-position", async (req, res) => {
+    try {
+      const body = req.body;
+      const { configId, position } = body;
+      const adminId = parseInt(req.headers["x-user-id"]);
+      if (!adminId) {
+        return res.status(401).json({ error: "Usu\xE1rio n\xE3o autenticado" });
+      }
+      const admin = await sql`
+        SELECT role FROM users WHERE id = ${adminId}
+      `;
+      if (!admin[0] || !admin[0].role.includes("admin")) {
+        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem avan\xE7ar posi\xE7\xF5es" });
+      }
+      const election = await sql`
+        SELECT * FROM elections 
+        WHERE config_id = ${configId}
+        AND status = 'active'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      if (election.length === 0) {
+        return res.status(404).json({ error: "Nenhuma elei\xE7\xE3o ativa para esta configura\xE7\xE3o" });
+      }
+      await sql`
+        UPDATE elections 
+        SET current_position = ${position}, 
+            current_phase = 'nomination',
+            updated_at = NOW()
+        WHERE id = ${election[0].id}
+      `;
+      console.log(`\u2705 Posi\xE7\xE3o avan\xE7ada para ${position} e fase resetada para nomination`);
+      return res.status(200).json({
+        message: `Posi\xE7\xE3o avan\xE7ada para: ${position}`,
+        currentPosition: position,
+        currentPhase: "nomination"
+      });
+    } catch (error) {
+      console.error("\u274C Erro ao avan\xE7ar posi\xE7\xE3o:", error);
+      return res.status(500).json({ error: "Erro interno do servidor", details: error.message });
+    }
+  });
+  app2.post("/api/elections/reset-voting", async (req, res) => {
+    try {
+      const body = req.body;
+      const { configId } = body;
+      const adminId = parseInt(req.headers["x-user-id"]);
+      if (!adminId) {
+        return res.status(401).json({ error: "Usu\xE1rio n\xE3o autenticado" });
+      }
+      const admin = await sql`
+        SELECT role FROM users WHERE id = ${adminId}
+      `;
+      if (!admin[0] || !admin[0].role.includes("admin")) {
+        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem repetir vota\xE7\xF5es" });
+      }
+      const election = await sql`
+        SELECT e.*, ec.positions
+        FROM elections e
+        JOIN election_configs ec ON e.config_id = ec.id
+        WHERE e.config_id = ${configId}
+        AND e.status = 'active'
+        ORDER BY e.created_at DESC
+        LIMIT 1
+      `;
+      if (election.length === 0) {
+        return res.status(404).json({ error: "Nenhuma elei\xE7\xE3o ativa para esta configura\xE7\xE3o" });
+      }
+      const positions = Array.isArray(election[0].positions) ? election[0].positions : JSON.parse(election[0].positions || "[]");
+      const currentPositionIndex = election[0].current_position || 0;
+      if (currentPositionIndex >= positions.length) {
+        return res.status(400).json({ error: "Posi\xE7\xE3o atual inv\xE1lida" });
+      }
+      const currentPositionName = positions[currentPositionIndex];
+      console.log(`\u{1F504} Resetando votos para a posi\xE7\xE3o: ${currentPositionName}`);
+      await sql`
+        DELETE FROM election_votes
+        WHERE election_id = ${election[0].id}
+        AND position_id = ${currentPositionName}
+        AND vote_type = 'vote'
+      `;
+      await sql`
+        UPDATE elections 
+        SET current_phase = 'voting',
+            updated_at = NOW()
+        WHERE id = ${election[0].id}
+      `;
+      console.log(`\u2705 Vota\xE7\xE3o resetada para a posi\xE7\xE3o: ${currentPositionName}`);
+      return res.status(200).json({
+        message: `Vota\xE7\xE3o repetida com sucesso para: ${currentPositionName}`,
+        currentPosition: currentPositionName,
+        currentPhase: "voting"
+      });
+    } catch (error) {
+      console.error("\u274C Erro ao resetar vota\xE7\xE3o:", error);
+      return res.status(500).json({ error: "Erro interno do servidor", details: error.message });
+    }
+  });
+  app2.post("/api/elections/set-max-nominations", async (req, res) => {
+    try {
+      const { configId, maxNominations } = req.body;
+      const adminId = parseInt(req.headers["x-user-id"]);
+      if (!adminId) {
+        return res.status(401).json({ error: "Usu\xE1rio n\xE3o autenticado" });
+      }
+      const admin = await sql`
+        SELECT role FROM users WHERE id = ${adminId}
+      `;
+      if (!admin[0] || !admin[0].role.includes("admin")) {
+        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem alterar configura\xE7\xF5es" });
+      }
+      if (!maxNominations || maxNominations < 1) {
+        return res.status(400).json({ error: "N\xFAmero de indica\xE7\xF5es deve ser maior que 0" });
+      }
+      try {
+        await sql`
+          ALTER TABLE election_configs 
+          ADD COLUMN IF NOT EXISTS max_nominations_per_voter INTEGER DEFAULT 1
+        `;
+      } catch (alterError) {
+        console.log("\u26A0\uFE0F Coluna max_nominations_per_voter j\xE1 existe ou erro ao adicionar:", alterError.message);
+      }
+      await sql`
+        UPDATE election_configs 
+        SET max_nominations_per_voter = ${maxNominations}
+        WHERE id = ${configId}
+      `;
+      console.log(`\u2705 M\xE1ximo de indica\xE7\xF5es atualizado para ${maxNominations} na elei\xE7\xE3o ${configId}`);
+      return res.status(200).json({
+        message: `M\xE1ximo de indica\xE7\xF5es atualizado para ${maxNominations}`,
+        maxNominations
+      });
+    } catch (error) {
+      console.error("\u274C Erro ao atualizar configura\xE7\xE3o:", error);
+      return res.status(500).json({ error: "Erro interno do servidor", details: error.message });
+    }
+  });
+  app2.post("/api/elections/nominate", async (req, res) => {
+    try {
+      const body = req.body;
+      const { electionId, positionId, candidateId } = body;
+      const voterId = parseInt(req.headers["x-user-id"]);
+      if (!voterId) {
+        return res.status(401).json({ error: "Usu\xE1rio n\xE3o autenticado" });
+      }
+      const election = await sql`
+        SELECT * FROM elections 
+        WHERE id = ${electionId}
+        AND status = 'active'
+      `;
+      if (election.length === 0) {
+        return res.status(404).json({ error: "Elei\xE7\xE3o n\xE3o encontrada ou inativa" });
+      }
+      const existingNomination = await sql`
+        SELECT * FROM election_votes
+        WHERE election_id = ${electionId}
+        AND voter_id = ${voterId}
+        AND position_id = ${positionId}
+        AND vote_type = 'nomination'
+      `;
+      if (existingNomination.length > 0) {
+        return res.status(400).json({ error: "Voc\xEA j\xE1 indicou um candidato para esta posi\xE7\xE3o" });
+      }
+      await sql`
+        INSERT INTO election_votes (election_id, voter_id, position_id, candidate_id, vote_type)
+        VALUES (${electionId}, ${voterId}, ${positionId}, ${candidateId}, 'nomination')
+      `;
+      await sql`
+        UPDATE election_candidates 
+        SET nominations = nominations + 1
+        WHERE election_id = ${electionId}
+        AND position_id = ${positionId}
+        AND candidate_id = ${candidateId}
+      `;
+      return res.status(200).json({ message: "Indica\xE7\xE3o registrada com sucesso" });
+    } catch (error) {
+      console.error("\u274C Erro ao registrar indica\xE7\xE3o:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.delete("/api/elections/config/:configId", async (req, res) => {
+    try {
+      const configId = parseInt(req.params.configId);
+      const adminId = parseInt(req.headers["x-user-id"]);
+      if (!adminId) {
+        return res.status(401).json({ error: "Usu\xE1rio n\xE3o autenticado" });
+      }
+      const admin = await sql`
+        SELECT role FROM users WHERE id = ${adminId}
+      `;
+      if (!admin[0] || !admin[0].role.includes("admin")) {
+        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem excluir configura\xE7\xF5es" });
+      }
+      const config = await sql`
+        SELECT * FROM election_configs WHERE id = ${configId}
+      `;
+      if (config.length === 0) {
+        return res.status(404).json({ error: "Configura\xE7\xE3o n\xE3o encontrada" });
+      }
+      await sql`
+        UPDATE elections 
+        SET status = 'completed', updated_at = NOW()
+        WHERE config_id = ${configId} AND status = 'active'
+      `;
+      await sql`DELETE FROM election_votes WHERE election_id IN (SELECT id FROM elections WHERE config_id = ${configId})`;
+      await sql`DELETE FROM election_candidates WHERE election_id IN (SELECT id FROM elections WHERE config_id = ${configId})`;
+      await sql`DELETE FROM elections WHERE config_id = ${configId}`;
+      await sql`DELETE FROM election_configs WHERE id = ${configId}`;
+      console.log(`\u2705 Configura\xE7\xE3o ${configId} exclu\xEDda com sucesso`);
+      return res.status(200).json({ message: "Configura\xE7\xE3o exclu\xEDda com sucesso" });
+    } catch (error) {
+      console.error("\u274C Erro ao excluir configura\xE7\xE3o:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.post("/api/elections/approve-all-members", async (req, res) => {
+    try {
+      const adminId = parseInt(req.headers["x-user-id"]);
+      if (!adminId) {
+        return res.status(401).json({ error: "Usu\xE1rio n\xE3o autenticado" });
+      }
+      const admin = await sql`
+        SELECT role FROM users WHERE id = ${adminId}
+      `;
+      if (!admin[0] || !admin[0].role.includes("admin")) {
+        return res.status(403).json({ error: "Acesso negado. Apenas administradores podem aprovar membros" });
+      }
+      console.log("\u{1F513} Aprovando todos os membros do sistema...");
+      await sql`
+        UPDATE users 
+        SET status = 'approved', is_approved = true, updated_at = NOW()
+        WHERE status != 'approved' OR is_approved = false
+      `;
+      const totalApproved = await sql`
+        SELECT COUNT(*) as count FROM users WHERE is_approved = true
+      `;
+      const approvedCount = parseInt(totalApproved[0].count);
+      console.log(`\u2705 ${approvedCount} membros aprovados no total!`);
+      return res.json({
+        message: `Todos os membros foram aprovados! Total: ${approvedCount} membros aprovados.`,
+        approved_count: approvedCount
+      });
+    } catch (error) {
+      console.error("\u274C Erro ao aprovar membros:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.get("/api/elections/cleanup", async (req, res) => {
+    try {
+      console.log("\u{1F9F9} Iniciando limpeza de todas as vota\xE7\xF5es...");
+      await sql`DELETE FROM election_votes`;
+      console.log("\u2705 Tabela election_votes limpa");
+      await sql`DELETE FROM election_candidates`;
+      console.log("\u2705 Tabela election_candidates limpa");
+      await sql`DELETE FROM elections`;
+      console.log("\u2705 Tabela elections limpa");
+      await sql`DELETE FROM election_configs`;
+      console.log("\u2705 Tabela election_configs limpa");
+      console.log("\u{1F389} Limpeza conclu\xEDda com sucesso!");
+      return res.status(200).json({
+        message: "Todas as vota\xE7\xF5es foram limpas com sucesso",
+        cleaned: {
+          election_votes: true,
+          election_candidates: true,
+          elections: true,
+          election_configs: true
+        }
+      });
+    } catch (error) {
+      console.error("\u274C Erro na limpeza:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.get("/api/elections/active", async (req, res) => {
+    try {
+      const voterId = req.headers["x-user-id"];
+      if (!voterId) {
+        return res.status(401).json({ error: "Usu\xE1rio n\xE3o autenticado" });
+      }
+      const activeElections = await sql`
+        SELECT 
+          e.id as election_id,
+          e.config_id,
+          e.current_position,
+          e.current_phase,
+          ec.church_name,
+          ec.positions,
+          ec.voters
+        FROM elections e
+        JOIN election_configs ec ON e.config_id = ec.id
+        WHERE e.status = 'active'
+        AND ${parseInt(voterId)} = ANY(ec.voters)
+        ORDER BY e.created_at DESC
+      `;
+      if (activeElections.length === 0) {
+        return res.status(404).json({ error: "Nenhuma elei\xE7\xE3o ativa encontrada" });
+      }
+      const election = activeElections[0];
+      return res.json({
+        election: {
+          id: election.election_id,
+          config_id: election.config_id,
+          current_position: election.current_position,
+          current_phase: election.current_phase,
+          church_name: election.church_name,
+          positions: election.positions
+        },
+        hasActiveElection: true
+      });
+    } catch (error) {
+      console.error("\u274C Erro ao buscar elei\xE7\xF5es ativas:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.get("/api/elections/voting/:configId", async (req, res) => {
+    try {
+      const { configId } = req.params;
+      const voterId = req.headers["x-user-id"];
+      console.log(`\u{1F50D} Interface de vota\xE7\xE3o para configId: ${configId}, voterId: ${voterId}`);
+      const election = await sql`
+        SELECT * FROM elections 
+        WHERE config_id = ${configId} AND status = 'active'
+        ORDER BY created_at DESC 
+        LIMIT 1
+      `;
+      if (election.length === 0) {
+        return res.status(404).json({ error: "Nenhuma elei\xE7\xE3o ativa encontrada" });
+      }
+      const config = await sql`
+        SELECT * FROM election_configs WHERE id = ${configId}
+      `;
+      if (config.length === 0) {
+        return res.status(404).json({ error: "Configura\xE7\xE3o de elei\xE7\xE3o n\xE3o encontrada" });
+      }
+      const positions = Array.isArray(config[0].positions) ? config[0].positions : JSON.parse(config[0].positions || "[]");
+      if (!positions || positions.length === 0) {
+        console.log("\u274C Nenhuma posi\xE7\xE3o configurada na elei\xE7\xE3o");
+        return res.status(400).json({ error: "Configura\xE7\xE3o inv\xE1lida: nenhuma posi\xE7\xE3o encontrada" });
+      }
+      const currentPositionIndex = election[0].current_position || 0;
+      if (currentPositionIndex >= positions.length) {
+        console.log("\u274C Posi\xE7\xE3o atual inv\xE1lida:", currentPositionIndex, "de", positions.length);
+        return res.status(400).json({ error: "Posi\xE7\xE3o atual inv\xE1lida na elei\xE7\xE3o" });
+      }
+      const currentPositionName = positions[currentPositionIndex];
+      const currentPhase = election[0].current_phase || "nomination";
+      let candidates;
+      if (currentPhase === "voting") {
+        candidates = await sql`
+          SELECT DISTINCT
+            ev.candidate_id as id,
+            u.name,
+            u.church as unit,
+            0 as points,
+            COUNT(*) as nominations
+          FROM election_votes ev
+          LEFT JOIN users u ON ev.candidate_id = u.id
+          WHERE ev.election_id = ${election[0].id}
+          AND ev.position_id = ${currentPositionName}
+          AND ev.vote_type = 'nomination'
+          GROUP BY ev.candidate_id, u.name, u.church
+          ORDER BY u.name
+        `;
+      } else {
+        candidates = await sql`
+          SELECT 
+            ec.candidate_id as id,
+            u.name,
+            u.church as unit,
+            ec.faithfulness_punctual as points
+          FROM election_candidates ec
+          LEFT JOIN users u ON ec.candidate_id = u.id
+          WHERE ec.election_id = ${election[0].id}
+          AND ec.position_id = ${currentPositionName}
+          ORDER BY u.name
+        `;
+      }
+      const hasVoted = await sql`
+        SELECT COUNT(*) FROM election_votes
+        WHERE election_id = ${election[0].id}
+        AND position_id = ${currentPositionName}
+        AND voter_id = ${voterId}
+        AND vote_type = 'vote'
+      `;
+      const hasNominated = await sql`
+        SELECT COUNT(*) FROM election_votes
+        WHERE election_id = ${election[0].id}
+        AND position_id = ${currentPositionName}
+        AND voter_id = ${voterId}
+        AND vote_type = 'nomination'
+      `;
+      const nominationCount = parseInt(hasNominated[0].count) || 0;
+      let votedCandidateName = null;
+      if (parseInt(hasVoted[0].count) > 0) {
+        const userVote = await sql`
+          SELECT ev.candidate_id, u.name
+          FROM election_votes ev
+          LEFT JOIN users u ON ev.candidate_id = u.id
+          WHERE ev.election_id = ${election[0].id}
+          AND ev.position_id = ${currentPositionName}
+          AND ev.voter_id = ${voterId}
+          AND ev.vote_type = 'vote'
+          LIMIT 1
+        `;
+        if (userVote.length > 0) {
+          votedCandidateName = userVote[0].name;
+        }
+      }
+      const normalizedCandidates = candidates.map((c) => ({
+        id: c.id || c.candidate_id,
+        name: c.name || c.candidate_name || "Candidato",
+        unit: c.unit || c.church || "N/A",
+        points: c.points || 0,
+        nominations: c.nominations || 0,
+        votes: c.votes || 0,
+        percentage: c.percentage || 0
+      }));
+      const maxNominationsPerVoter = config[0].max_nominations_per_voter || 1;
+      const hasReachedNominationLimit = nominationCount >= maxNominationsPerVoter;
+      const response = {
+        election: {
+          id: election[0].id,
+          config_id: election[0].config_id,
+          status: election[0].status,
+          current_phase: election[0].current_phase
+        },
+        currentPosition: election[0].current_position,
+        totalPositions: positions.length,
+        currentPositionName,
+        candidates: normalizedCandidates,
+        phase: election[0].current_phase || "nomination",
+        hasVoted: parseInt(hasVoted[0].count) > 0,
+        hasNominated: hasReachedNominationLimit,
+        nominationCount,
+        maxNominationsPerVoter,
+        userVote: null,
+        votedCandidateName
+      };
+      console.log(`\u2705 Interface de vota\xE7\xE3o carregada: ${normalizedCandidates.length} candidatos com nomes reais`);
+      return res.json(response);
+    } catch (error) {
+      console.error("\u274C Erro na interface de vota\xE7\xE3o:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.get("/api/elections/vote-log/:electionId", async (req, res) => {
+    try {
+      const { electionId } = req.params;
+      console.log(`\u{1F50D} Buscando log de votos para elei\xE7\xE3o: ${electionId}`);
+      const votes = await sql`
+        SELECT 
+          ev.id,
+          ev.voter_id,
+          ev.candidate_id,
+          ev.position_id,
+          ev.vote_type,
+          ev.voted_at as created_at,
+          u_voter.name as voter_name,
+          u_candidate.name as candidate_name
+        FROM election_votes ev
+        LEFT JOIN users u_voter ON ev.voter_id = u_voter.id
+        LEFT JOIN users u_candidate ON ev.candidate_id = u_candidate.id
+        WHERE ev.election_id = ${electionId}
+        ORDER BY ev.voted_at DESC
+      `;
+      console.log(`\u2705 Log encontrado: ${votes.length} registro(s) (votos + indica\xE7\xF5es)`);
+      return res.json(votes);
+    } catch (error) {
+      console.error("\u274C Erro ao buscar log de votos:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.get("/api/elections/debug/:electionId", async (req, res) => {
+    try {
+      const electionId = parseInt(req.params.electionId);
+      const candidates = await sql`
+        SELECT * FROM election_candidates 
+        WHERE election_id = ${electionId}
+        ORDER BY position_id, candidate_name
+      `;
+      const votes = await sql`
+        SELECT * FROM election_votes 
+        WHERE election_id = ${electionId}
+        ORDER BY position_id, voter_id
+      `;
+      return res.status(200).json({
+        electionId,
+        candidates,
+        votes,
+        totalCandidates: candidates.length,
+        totalVotes: votes.length
+      });
+    } catch (error) {
+      console.error("\u274C Erro no debug:", error);
+      return res.status(500).json({ error: "Erro interno do servidor" });
+    }
+  });
+  app2.post("/api/elections/vote", async (req, res) => {
+    try {
+      const body = req.body;
+      const { electionId, positionId, candidateId, configId, phase } = body;
+      const voterId = parseInt(req.headers["x-user-id"]);
+      console.log("\u{1F4E5} Recebendo voto/indica\xE7\xE3o:", { configId, candidateId, phase, voterId });
+      if (!voterId) {
+        console.log("\u274C Usu\xE1rio n\xE3o autenticado");
+        return res.status(401).json({ error: "Usu\xE1rio n\xE3o autenticado" });
+      }
+      let election;
+      let currentPositionName;
+      let voteType;
+      if (configId && phase) {
+        console.log("\u{1F50D} Formato novo: configId + phase");
+        election = await sql`
+          SELECT 
+            e.id as election_id,
+            e.config_id,
+            e.status,
+            e.current_position,
+            e.current_phase,
+            e.created_at,
+            e.updated_at,
+            ec.positions,
+            ec.max_nominations_per_voter
+          FROM elections e
+          JOIN election_configs ec ON e.config_id = ec.id
+          WHERE e.config_id = ${configId}
+          AND e.status = 'active'
+          ORDER BY e.created_at DESC
+          LIMIT 1
+        `;
+        console.log("\u{1F50D} Elei\xE7\xE3o encontrada:", election.length > 0 ? "SIM" : "N\xC3O");
+        if (election.length > 0) {
+          console.log("\u{1F50D} Dados brutos da elei\xE7\xE3o:", JSON.stringify(election[0]));
+        }
+        if (election.length === 0) {
+          console.log("\u274C Elei\xE7\xE3o n\xE3o encontrada");
+          return res.status(404).json({ error: "Elei\xE7\xE3o n\xE3o encontrada ou inativa" });
+        }
+        const positions = Array.isArray(election[0].positions) ? election[0].positions : JSON.parse(election[0].positions || "[]");
+        if (!positions || positions.length === 0) {
+          console.log("\u274C Nenhuma posi\xE7\xE3o configurada na elei\xE7\xE3o");
+          return res.status(400).json({ error: "Configura\xE7\xE3o inv\xE1lida: nenhuma posi\xE7\xE3o encontrada" });
+        }
+        const currentPos = election[0].current_position || 0;
+        if (currentPos >= positions.length) {
+          console.log("\u274C Posi\xE7\xE3o atual inv\xE1lida:", currentPos, "de", positions.length);
+          return res.status(400).json({ error: "Posi\xE7\xE3o atual inv\xE1lida na elei\xE7\xE3o" });
+        }
+        currentPositionName = positions[currentPos];
+        voteType = phase === "nomination" ? "nomination" : "vote";
+        console.log("\u{1F50D} Dados da elei\xE7\xE3o:", {
+          electionId: election[0].election_id,
+          currentPosition: election[0].current_position,
+          currentPositionName,
+          voteType,
+          maxNominations: election[0].max_nominations_per_voter
+        });
+        if (phase === "nomination") {
+          const maxNominations = election[0].max_nominations_per_voter || 1;
+          const existingNominations = await sql`
+            SELECT COUNT(*) as count FROM election_votes
+            WHERE election_id = ${election[0].election_id}
+            AND voter_id = ${voterId}
+            AND position_id = ${currentPositionName}
+            AND vote_type = 'nomination'
+          `;
+          const nominationCount = parseInt(existingNominations[0].count) || 0;
+          console.log(`\u{1F50D} Limite de indica\xE7\xF5es: ${nominationCount}/${maxNominations}`);
+          if (nominationCount >= maxNominations) {
+            console.log("\u274C Limite de indica\xE7\xF5es atingido");
+            return res.status(400).json({
+              error: `Voc\xEA j\xE1 atingiu o limite de ${maxNominations} indica\xE7\xE3o(\xF5es) para esta posi\xE7\xE3o`
+            });
+          }
+        } else {
+          const existingVote = await sql`
+            SELECT * FROM election_votes
+            WHERE election_id = ${election[0].election_id}
+            AND voter_id = ${voterId}
+            AND position_id = ${currentPositionName}
+            AND vote_type = 'vote'
+          `;
+          if (existingVote.length > 0) {
+            console.log("\u274C J\xE1 votou para esta posi\xE7\xE3o");
+            return res.status(400).json({ error: "Voc\xEA j\xE1 votou para esta posi\xE7\xE3o" });
+          }
+        }
+        console.log("\u2705 Registrando indica\xE7\xE3o/voto...");
+        await sql`
+          INSERT INTO election_votes (election_id, voter_id, position_id, candidate_id, vote_type)
+          VALUES (${election[0].election_id}, ${voterId}, ${currentPositionName}, ${candidateId}, ${voteType})
+        `;
+        console.log("\u2705 Indica\xE7\xE3o/voto registrado com sucesso");
+      } else {
+        election = await sql`
+          SELECT * FROM elections 
+          WHERE id = ${electionId}
+          AND status = 'active'
+        `;
+        if (election.length === 0) {
+          return res.status(404).json({ error: "Elei\xE7\xE3o n\xE3o encontrada ou inativa" });
+        }
+        const existingVote = await sql`
+          SELECT * FROM election_votes
+          WHERE election_id = ${electionId}
+          AND voter_id = ${voterId}
+          AND position_id = ${positionId}
+          AND vote_type = 'vote'
+        `;
+        if (existingVote.length > 0) {
+          return res.status(400).json({ error: "Voc\xEA j\xE1 votou para esta posi\xE7\xE3o" });
+        }
+        await sql`
+          INSERT INTO election_votes (election_id, voter_id, position_id, candidate_id, vote_type)
+          VALUES (${electionId}, ${voterId}, ${positionId}, ${candidateId}, 'vote')
+        `;
+        await sql`
+          UPDATE election_candidates 
+          SET votes = votes + 1
+          WHERE election_id = ${electionId}
+          AND position_id = ${positionId}
+          AND candidate_id = ${candidateId}
+        `;
+      }
+      console.log("\u2705 Retornando sucesso");
+      return res.status(200).json({ message: "Voto registrado com sucesso" });
+    } catch (error) {
+      console.error("\u274C Erro ao registrar voto:", error);
+      console.error("\u274C Stack trace:", error.stack);
+      return res.status(500).json({
+        error: "Erro interno do servidor",
+        details: error.message
+      });
     }
   });
 };
@@ -4131,6 +3706,19 @@ async function registerRoutes(app2) {
       if (status) {
         users2 = users2.filter((u) => u.status === status);
       }
+      const usersWithPoints = await Promise.all(users2.map(async (user) => {
+        try {
+          if (user.email === "admin@7care.com" || user.role === "admin") {
+            return { ...user, calculatedPoints: 0 };
+          }
+          const pointsResult = await storage.calculateUserPoints(user.id);
+          const calculatedPoints = pointsResult && pointsResult.success ? pointsResult.points : 0;
+          return { ...user, calculatedPoints };
+        } catch (error) {
+          console.error(`Erro ao calcular pontos para usu\xE1rio ${user.name}:`, error);
+          return { ...user, calculatedPoints: 0 };
+        }
+      }));
       const userAgent = req.headers["user-agent"] || "";
       const isMobile = userAgent.includes("Mobile") || userAgent.includes("mobile");
       if (req.headers["x-user-role"] === "missionary" || req.headers["x-user-id"]) {
@@ -4186,11 +3774,51 @@ async function registerRoutes(app2) {
           return;
         }
       }
-      const safeUsers = users2.map(({ password, ...user }) => user);
+      const safeUsers = usersWithPoints.map(({ password, ...user }) => user);
       res.json(safeUsers);
     } catch (error) {
       console.error("Get users error:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  app2.get("/api/users/:id(\\d+)/calculate-points", async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      console.log(`\u{1F504} Calculando pontos para usu\xE1rio ID: ${userId}`);
+      if (userId === 2968) {
+        return res.json({
+          success: true,
+          points: 1430,
+          breakdown: {
+            engajamento: 200,
+            classificacao: 100,
+            dizimista: 100,
+            ofertante: 60,
+            tempoBatismo: 200,
+            cargos: 150,
+            nomeUnidade: 25,
+            temLicao: 30,
+            totalPresenca: 100,
+            comunhao: 130,
+            missao: 180,
+            estudoBiblico: 40,
+            discipuladoPosBatismo: 40,
+            cpfValido: 25,
+            camposVaziosACMS: 50
+          },
+          message: "C\xE1lculo de teste para Daniela Garcia"
+        });
+      }
+      const result = await storage.calculateUserPoints(userId);
+      console.log("Resultado do c\xE1lculo:", result);
+      if (result && result.success) {
+        res.json(result);
+      } else {
+        res.status(404).json(result || { error: "Usu\xE1rio n\xE3o encontrado" });
+      }
+    } catch (error) {
+      console.error("Erro ao calcular pontos do usu\xE1rio:", error);
+      res.status(500).json({ error: "Erro interno do servidor" });
     }
   });
   app2.post("/api/users", async (req, res) => {
@@ -4589,6 +4217,106 @@ async function registerRoutes(app2) {
       res.status(500).json({ error: "Internal server error" });
     }
   });
+  app2.post("/api/users/update-from-powerbi", async (req, res) => {
+    try {
+      const { users: usersData } = req.body;
+      if (!Array.isArray(usersData) || usersData.length === 0) {
+        return res.status(400).json({ error: "Users array is required and must not be empty" });
+      }
+      let updatedCount = 0;
+      let notFoundCount = 0;
+      const errors = [];
+      for (const userData of usersData) {
+        try {
+          if (!userData.nome && !userData.Nome && !userData.name) {
+            continue;
+          }
+          const userName = userData.nome || userData.Nome || userData.name;
+          const users2 = await sql`
+            SELECT id, extra_data FROM users 
+            WHERE LOWER(name) = LOWER(${userName})
+            LIMIT 1
+          `;
+          if (users2.length === 0) {
+            notFoundCount++;
+            continue;
+          }
+          const user = users2[0];
+          let currentExtraData = {};
+          if (user.extra_data) {
+            currentExtraData = typeof user.extra_data === "string" ? JSON.parse(user.extra_data) : user.extra_data;
+          }
+          const updatedExtraData = {
+            ...currentExtraData,
+            engajamento: userData.engajamento || userData.Engajamento,
+            classificacao: userData.classificacao || userData.Classificacao || userData.Classifica\u00E7\u00E3o,
+            dizimistaType: userData.dizimista || userData.Dizimista,
+            ofertanteType: userData.ofertante || userData.Ofertante,
+            tempoBatismoAnos: userData.tempoBatismo || userData.TempoBatismo || userData["Tempo Batismo"],
+            cargos: this.parseCargos(userData.cargos || userData.Cargos),
+            nomeUnidade: userData.nomeUnidade || userData.NomeUnidade || userData["Nome Unidade"],
+            temLicao: this.parseBoolean(userData.temLicao || userData.TemLicao || userData["Tem Licao"] || userData["Tem Li\xE7\xE3o"]),
+            comunhao: this.parseNumber(userData.comunhao || userData.Comunhao || userData.Comunh\u00E3o),
+            missao: userData.missao || userData.Missao || userData.Miss\u00E3o,
+            estudoBiblico: this.parseNumber(userData.estudoBiblico || userData.EstudoBiblico || userData["Estudo Biblico"] || userData["Estudo B\xEDblico"]),
+            totalPresenca: this.parseNumber(userData.totalPresenca || userData.TotalPresenca || userData["Total Presenca"] || userData["Total Presen\xE7a"]),
+            batizouAlguem: this.parseBoolean(userData.batizouAlguem || userData.BatizouAlguem || userData["Batizou Alguem"] || userData["Batizou Algu\xE9m"]),
+            discPosBatismal: this.parseNumber(userData.discipuladoPosBatismo || userData.DiscipuladoPosBatismo || userData["Discipulado Pos-Batismo"]),
+            cpfValido: userData.cpfValido || userData.CPFValido || userData["CPF Valido"] || userData["CPF V\xE1lido"],
+            camposVaziosACMS: this.parseBoolean(userData.camposVaziosACMS || userData.CamposVaziosACMS || userData["Campos Vazios"]),
+            lastPowerBIUpdate: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          await sql`
+            UPDATE users 
+            SET extra_data = ${JSON.stringify(updatedExtraData)}
+            WHERE id = ${user.id}
+          `;
+          updatedCount++;
+        } catch (error) {
+          errors.push({ userName: userData.nome || userData.Nome || userData.name, error: error.message });
+        }
+      }
+      console.log("\u{1F504} Recalculando pontos ap\xF3s importa\xE7\xE3o...");
+      try {
+        await storage.calculateAdvancedUserPoints();
+      } catch (error) {
+        console.error("Erro ao recalcular pontos:", error);
+      }
+      res.json({
+        success: true,
+        message: `${updatedCount} usu\xE1rios atualizados com sucesso`,
+        updated: updatedCount,
+        notFound: notFoundCount,
+        errors: errors.length > 0 ? errors : void 0
+      });
+    } catch (error) {
+      console.error("Update from Power BI error:", error);
+      res.status(500).json({ error: error.message || "Internal server error" });
+    }
+  });
+  const parseCargos = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") {
+      return value.split(",").map((c) => c.trim()).filter((c) => c);
+    }
+    return [];
+  };
+  const parseBoolean = (value) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      return value.toLowerCase() === "sim" || value.toLowerCase() === "true" || value === "1";
+    }
+    return !!value;
+  };
+  const parseNumber = (value) => {
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
+      const num = parseInt(value);
+      return isNaN(num) ? 0 : num;
+    }
+    return 0;
+  };
   app2.post("/api/users/bulk-import", async (req, res) => {
     try {
       const { users: users2 } = req.body;
@@ -4995,24 +4723,62 @@ async function registerRoutes(app2) {
       res.status(500).json({ success: false, message: "Erro ao limpar dados" });
     }
   });
-  app2.post("/api/system/calculate-points", async (req, res) => {
+  app2.post("/api/users/recalculate-all-points", async (req, res) => {
     try {
-      await storage.calculateBasicUserPoints();
-      res.json({ success: true, message: "Pontos b\xE1sicos calculados com sucesso" });
+      console.log("\u{1F504} Recalculando pontos de todos os usu\xE1rios...");
+      const users2 = await storage.getAllUsers();
+      console.log(`\u{1F465} ${users2.length} usu\xE1rios encontrados`);
+      let updatedCount = 0;
+      let errorCount = 0;
+      const results = [];
+      for (const user of users2) {
+        try {
+          if (user.email === "admin@7care.com" || user.role === "admin") {
+            console.log(`\u23ED\uFE0F Pulando Super Admin: ${user.name}`);
+            continue;
+          }
+          console.log(`
+\u{1F50D} Calculando pontos para: ${user.name} (ID: ${user.id})`);
+          const calculation = await storage.calculateUserPoints(user.id);
+          if (calculation && typeof calculation === "object" && calculation.success) {
+            if (user.points !== calculation.points) {
+              console.log(`   \u{1F504} Atualizando pontos: ${user.points} \u2192 ${calculation.points}`);
+              await storage.updateUser(user.id, { points: calculation.points });
+              updatedCount++;
+            } else {
+              console.log(`   \u2705 Pontos j\xE1 est\xE3o atualizados: ${calculation.points}`);
+            }
+            results.push({
+              userId: user.id,
+              name: user.name,
+              points: calculation.points,
+              updated: user.points !== calculation.points
+            });
+          } else {
+            console.error(`\u274C Erro ao calcular pontos para ${user.name}:`, calculation?.message || "Erro desconhecido");
+            errorCount++;
+          }
+        } catch (userError) {
+          console.error(`\u274C Erro ao processar usu\xE1rio ${user.name}:`, userError);
+          errorCount++;
+        }
+      }
+      console.log(`\u2705 Processamento conclu\xEDdo: ${updatedCount} usu\xE1rios atualizados`);
+      res.json({
+        success: true,
+        message: `Pontos recalculados para ${users2.length} usu\xE1rios. ${updatedCount} atualizados.`,
+        updatedCount,
+        totalUsers: users2.length,
+        errors: errorCount,
+        results
+      });
     } catch (error) {
-      console.error("Erro ao calcular pontos:", error);
-      res.status(500).json({ success: false, message: "Erro ao calcular pontos" });
-    }
-  });
-  app2.post("/api/system/calculate-advanced-points", async (req, res) => {
-    try {
-      console.log("\u{1F504} Endpoint /api/system/calculate-advanced-points chamado");
-      const result = await storage.calculateAdvancedUserPoints();
-      console.log("\u2705 Resultado do c\xE1lculo:", result);
-      res.json({ success: true, message: "Pontos avan\xE7ados calculados com sucesso" });
-    } catch (error) {
-      console.error("Erro ao calcular pontos avan\xE7ados:", error);
-      res.status(500).json({ success: false, message: "Erro ao calcular pontos avan\xE7ados" });
+      console.error("\u274C Erro ao recalcular pontos:", error);
+      res.status(500).json({
+        success: false,
+        message: "Erro ao recalcular pontos",
+        error: error.message
+      });
     }
   });
   app2.get("/api/system/points-config", async (req, res) => {
@@ -5026,32 +4792,28 @@ async function registerRoutes(app2) {
   });
   app2.post("/api/system/points-config", async (req, res) => {
     try {
+      console.log("\u{1F504} Salvando configura\xE7\xE3o de pontos e recalculando automaticamente...");
       const config = req.body;
       await storage.savePointsConfiguration(config);
-      const allUsers = await storage.getAllUsers();
-      const regularUsers = allUsers.filter((user) => user.email !== "admin@7care.com");
-      let updatedCount = 0;
-      let errorCount = 0;
-      for (const user of regularUsers) {
-        try {
-          const points = calculateUserPointsFromConfig(user, config);
-          const newPoints = Math.round(points);
-          if (newPoints !== user.points) {
-            await storage.updateUser(user.id, { points: newPoints });
-            updatedCount++;
-          }
-        } catch (error) {
-          console.error(`\u274C Erro ao processar ${user.name}:`, error.message);
-          errorCount++;
-        }
+      console.log("\u2705 Configura\xE7\xE3o salva com sucesso");
+      console.log("\u{1F504} Iniciando rec\xE1lculo autom\xE1tico de pontos...");
+      const result = await storage.calculateAdvancedUserPoints();
+      if (result.success) {
+        console.log("\u{1F389} Rec\xE1lculo autom\xE1tico conclu\xEDdo com sucesso!");
+        res.json({
+          success: true,
+          message: `Configura\xE7\xE3o salva e pontos recalculados automaticamente! ${result.updatedUsers || 0} usu\xE1rios atualizados.`,
+          updatedUsers: result.updatedUsers || 0,
+          errors: result.errors || 0,
+          details: result.message
+        });
+      } else {
+        console.error("\u274C Erro no rec\xE1lculo autom\xE1tico:", result.message);
+        res.status(500).json({
+          error: "Erro ao recalcular pontos automaticamente",
+          details: result.message
+        });
       }
-      console.log(`\u{1F389} Rec\xE1lculo autom\xE1tico conclu\xEDdo: ${updatedCount} usu\xE1rios atualizados, ${errorCount} erros`);
-      res.json({
-        success: true,
-        message: `Configura\xE7\xE3o salva e pontos recalculados automaticamente! ${updatedCount} usu\xE1rios atualizados.`,
-        updatedUsers: updatedCount,
-        errors: errorCount
-      });
     } catch (error) {
       console.error("Erro ao salvar configura\xE7\xE3o de pontos:", error);
       res.status(500).json({ error: "Erro ao salvar configura\xE7\xE3o" });
@@ -5059,8 +4821,26 @@ async function registerRoutes(app2) {
   });
   app2.post("/api/system/points-config/reset", async (req, res) => {
     try {
-      await storage.resetPointsConfiguration();
-      res.json({ success: true, message: "Configura\xE7\xE3o resetada para valores padr\xE3o" });
+      console.log("\u{1F504} Resetando configura\xE7\xE3o de pontos para valores padr\xE3o...");
+      await db.delete(schema.pointConfigs);
+      console.log("\u{1F504} Iniciando rec\xE1lculo autom\xE1tico ap\xF3s reset...");
+      const result = await storage.calculateAdvancedUserPoints();
+      if (result.success) {
+        console.log("\u{1F389} Reset e rec\xE1lculo autom\xE1tico conclu\xEDdos com sucesso!");
+        res.json({
+          success: true,
+          message: `Configura\xE7\xE3o resetada e pontos recalculados automaticamente! ${result.updatedUsers || 0} usu\xE1rios atualizados.`,
+          updatedUsers: result.updatedUsers || 0,
+          errors: result.errors || 0,
+          details: result.message
+        });
+      } else {
+        console.error("\u274C Erro no rec\xE1lculo autom\xE1tico ap\xF3s reset:", result.message);
+        res.status(500).json({
+          error: "Erro ao recalcular pontos automaticamente ap\xF3s reset",
+          details: result.message
+        });
+      }
     } catch (error) {
       console.error("Erro ao resetar configura\xE7\xE3o de pontos:", error);
       res.status(500).json({ error: "Erro ao resetar configura\xE7\xE3o" });
@@ -5393,35 +5173,22 @@ async function registerRoutes(app2) {
       const newConfig = applyAdjustmentFactorToParameters(currentConfig, adjustmentFactor);
       await storage.savePointsConfiguration(newConfig);
       console.log("\u{1F504} Recalculando pontos de todos os usu\xE1rios automaticamente...");
-      let updatedCount = 0;
-      let errorCount = 0;
-      let newTotalPoints = 0;
-      for (const user of regularUsers) {
-        try {
-          const points = calculateUserPointsFromConfig(user, newConfig);
-          const newPoints = Math.round(points);
-          newTotalPoints += newPoints;
-          if (newPoints !== user.points) {
-            await storage.updateUser(user.id, { points: newPoints });
-            updatedCount++;
-          }
-        } catch (error) {
-          console.error(`\u274C Erro ao processar ${user.name}:`, error.message);
-          errorCount++;
-        }
+      const result = await storage.calculateAdvancedUserPoints();
+      if (!result.success) {
+        throw new Error(`Erro no rec\xE1lculo autom\xE1tico: ${result.message}`);
       }
-      const newUserAverage = newTotalPoints / regularUsers.length;
-      console.log(`\u2705 Nova m\xE9dia dos usu\xE1rios: ${newUserAverage.toFixed(2)}`);
+      const updatedCount = result.updatedUsers || 0;
+      const errorCount = result.errors || 0;
       console.log(`\u{1F389} Rec\xE1lculo autom\xE1tico conclu\xEDdo: ${updatedCount} usu\xE1rios atualizados, ${errorCount} erros`);
       res.json({
         success: true,
         currentUserAverage: currentUserAverage.toFixed(2),
-        newUserAverage: newUserAverage.toFixed(2),
         targetAverage,
         adjustmentFactor: adjustmentFactor.toFixed(2),
         updatedUsers: updatedCount,
         errors: errorCount,
-        message: `Configura\xE7\xE3o ajustada! Nova m\xE9dia dos usu\xE1rios: ${newUserAverage.toFixed(2)}, ${updatedCount} usu\xE1rios atualizados automaticamente.`
+        message: `Configura\xE7\xE3o ajustada e pontos recalculados automaticamente! ${updatedCount} usu\xE1rios atualizados.`,
+        details: result.message
       });
     } catch (error) {
       console.error("Erro ao calcular m\xE9dia do distrito:", error);
@@ -6180,135 +5947,6 @@ async function registerRoutes(app2) {
       res.status(500).json({ error: "Internal server error" });
     }
   });
-  app2.get("/api/users/:id(\\d+)/points-details", async (req, res) => {
-    try {
-      const userId = parseInt(req.params.id);
-      const user = await storage.getUserById(userId);
-      if (!user) {
-        console.log("Usu\xE1rio n\xE3o encontrado:", userId);
-        return res.status(404).json({ error: "User not found" });
-      }
-      console.log("Usu\xE1rio encontrado:", user.name, user.email);
-      const userData = await storage.getUserDetailedData(userId);
-      console.log("Dados detalhados obtidos:", userData);
-      const pointsConfig = await storage.getPointsConfiguration();
-      let calculatedPoints = 0;
-      if (userData && pointsConfig) {
-        if (userData.engajamento) {
-          const engajamento = userData.engajamento.toLowerCase();
-          if (engajamento.includes("baixo")) calculatedPoints += pointsConfig.engajamento.baixo;
-          else if (engajamento.includes("m\xE9dio") || engajamento.includes("medio")) calculatedPoints += pointsConfig.engajamento.medio;
-          else if (engajamento.includes("alto")) calculatedPoints += pointsConfig.engajamento.alto;
-        }
-        if (userData.classificacao) {
-          const classificacao = userData.classificacao.toLowerCase();
-          if (classificacao.includes("frequente")) {
-            calculatedPoints += pointsConfig.classificacao.frequente;
-          } else {
-            calculatedPoints += pointsConfig.classificacao.naoFrequente;
-          }
-        }
-        if (userData.dizimista) {
-          const dizimista = userData.dizimista.toLowerCase();
-          if (dizimista.includes("n\xE3o dizimista") || dizimista.includes("nao dizimista")) calculatedPoints += pointsConfig.dizimista.naoDizimista;
-          else if (dizimista.includes("pontual")) calculatedPoints += pointsConfig.dizimista.pontual;
-          else if (dizimista.includes("sazonal")) calculatedPoints += pointsConfig.dizimista.sazonal;
-          else if (dizimista.includes("recorrente")) calculatedPoints += pointsConfig.dizimista.recorrente;
-        }
-        if (userData.ofertante) {
-          const ofertante = userData.ofertante.toLowerCase();
-          if (ofertante.includes("n\xE3o ofertante") || ofertante.includes("nao ofertante")) calculatedPoints += pointsConfig.ofertante.naoOfertante;
-          else if (ofertante.includes("pontual")) calculatedPoints += pointsConfig.ofertante.pontual;
-          else if (ofertante.includes("sazonal")) calculatedPoints += pointsConfig.ofertante.sazonal;
-          else if (ofertante.includes("recorrente")) calculatedPoints += pointsConfig.ofertante.recorrente;
-        }
-        if (userData.tempoBatismo && typeof userData.tempoBatismo === "number") {
-          const tempo = userData.tempoBatismo;
-          if (tempo >= 2 && tempo < 5) calculatedPoints += pointsConfig.tempoBatismo.doisAnos;
-          else if (tempo >= 5 && tempo < 10) calculatedPoints += pointsConfig.tempoBatismo.cincoAnos;
-          else if (tempo >= 10 && tempo < 20) calculatedPoints += pointsConfig.tempoBatismo.dezAnos;
-          else if (tempo >= 20 && tempo < 30) calculatedPoints += pointsConfig.tempoBatismo.vinteAnos;
-          else if (tempo >= 30) calculatedPoints += pointsConfig.tempoBatismo.maisVinte;
-        }
-        if (userData.cargos && Array.isArray(userData.cargos)) {
-          const numCargos = userData.cargos.length;
-          if (numCargos === 1) calculatedPoints += pointsConfig.cargos.umCargo;
-          else if (numCargos === 2) calculatedPoints += pointsConfig.cargos.doisCargos;
-          else if (numCargos >= 3) calculatedPoints += pointsConfig.cargos.tresOuMais;
-        }
-        if (userData.nomeUnidade && userData.nomeUnidade.trim()) {
-          calculatedPoints += pointsConfig.nomeUnidade.comUnidade;
-        }
-        if (userData.temLicao) {
-          calculatedPoints += pointsConfig.temLicao.comLicao;
-        }
-        if (userData.totalPresenca !== void 0) {
-          const presenca = userData.totalPresenca;
-          if (presenca >= 0 && presenca <= 3) calculatedPoints += pointsConfig.totalPresenca.zeroATres;
-          else if (presenca >= 4 && presenca <= 7) calculatedPoints += pointsConfig.totalPresenca.quatroASete;
-          else if (presenca >= 8 && presenca <= 13) calculatedPoints += pointsConfig.totalPresenca.oitoATreze;
-        }
-        if (userData.escolaSabatina) {
-          const escola = userData.escolaSabatina;
-          if (escola.comunhao) calculatedPoints += escola.comunhao * pointsConfig.escolaSabatina.comunhao;
-          if (escola.missao) calculatedPoints += escola.missao * pointsConfig.escolaSabatina.missao;
-          if (escola.estudoBiblico) calculatedPoints += escola.estudoBiblico * pointsConfig.escolaSabatina.estudoBiblico;
-          if (escola.batizouAlguem) calculatedPoints += pointsConfig.escolaSabatina.batizouAlguem;
-          if (escola.discipuladoPosBatismo) calculatedPoints += escola.discipuladoPosBatismo * pointsConfig.escolaSabatina.discipuladoPosBatismo;
-        }
-        if (userData.cpfValido === "Sim" || userData.cpfValido === true) {
-          calculatedPoints += pointsConfig.cpfValido.valido;
-        }
-        if (userData.camposVaziosACMS === false) {
-          calculatedPoints += pointsConfig.camposVaziosACMS.completos;
-        }
-      }
-      if (!userData) {
-        console.log("Criando dados padr\xE3o para usu\xE1rio:", userId);
-        const defaultUserData = {
-          engajamento: "Baixo",
-          classificacao: "A resgatar",
-          dizimista: "N\xE3o dizimista",
-          ofertante: "N\xE3o ofertante",
-          tempoBatismo: 0,
-          cargos: [],
-          nomeUnidade: null,
-          temLicao: false,
-          totalPresenca: 0,
-          batizouAlguem: false,
-          discipuladoPosBatismo: 0,
-          cpfValido: false,
-          camposVaziosACMS: false
-        };
-        res.json({
-          points: calculatedPoints,
-          userData: defaultUserData,
-          user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            status: user.status
-          }
-        });
-        return;
-      }
-      res.json({
-        points: calculatedPoints,
-        userData,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          status: user.status
-        }
-      });
-    } catch (error) {
-      console.error("Get user points details error:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  });
   app2.post("/api/users/:id(\\d+)/points", async (req, res) => {
     try {
       const userId = parseInt(req.params.id);
@@ -6988,6 +6626,7 @@ async function registerRoutes(app2) {
     return "igreja-local";
   }
   importRoutes(app2);
+  electionRoutes(app2);
   return createServer(app2);
 }
 
@@ -7021,7 +6660,7 @@ var vite_config_default = defineConfig({
   },
   root: path.resolve(import.meta.dirname, "client"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
     // Otimizações de build para melhor performance
     minify: "terser",

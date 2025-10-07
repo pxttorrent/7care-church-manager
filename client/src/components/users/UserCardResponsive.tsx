@@ -171,7 +171,7 @@ export function UserCardResponsive({
 
   const handleVisitButtonClick = () => {
     if (isVisited()) {
-      // Se já foi visitado, duplo clique para zerar
+      // Se já foi visitado, abrir modal para atualizar data
       setShowMarkVisitModal(true);
     } else {
       // Se não foi visitado, marcar visita
@@ -184,21 +184,26 @@ export function UserCardResponsive({
     
     setIsMarkingVisit(true);
     try {
-      const response = await fetch('/api/visits', {
+      const response = await fetch(`/api/users/${localUser.id}/visit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: localUser.id,
-          visitDate: new Date().toISOString(),
-          notes: 'Visita marcada via card do usuário'
+          visitDate: new Date().toISOString().split('T')[0]
         }),
       });
 
       if (response.ok) {
-        const updatedUser = await response.json();
-        setLocalUser(updatedUser);
+        const result = await response.json();
+        // Atualizar o usuário local com os dados da resposta
+        setLocalUser(prev => ({
+          ...prev,
+          extraData: {
+            ...prev.extraData,
+            ...result.extraData
+          }
+        }));
         toast({
           title: "Visita marcada!",
           description: `Visita registrada para ${localUser.name}`,
@@ -218,23 +223,28 @@ export function UserCardResponsive({
     }
   };
 
-  const handleConfirmVisit = async (notes: string) => {
+  const handleConfirmVisit = async (visitDate: string) => {
     try {
-      const response = await fetch('/api/visits', {
+      const response = await fetch(`/api/users/${localUser.id}/visit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId: localUser.id,
-          visitDate: new Date().toISOString(),
-          notes: notes
+          visitDate: visitDate
         }),
       });
 
       if (response.ok) {
-        const updatedUser = await response.json();
-        setLocalUser(updatedUser);
+        const result = await response.json();
+        // Atualizar o usuário local com os dados da resposta
+        setLocalUser(prev => ({
+          ...prev,
+          extraData: {
+            ...prev.extraData,
+            ...result.extraData
+          }
+        }));
         setShowMarkVisitModal(false);
         toast({
           title: "Visita marcada!",
@@ -254,15 +264,15 @@ export function UserCardResponsive({
   };
 
   const isVisited = () => {
-    return localUser.lastVisitDate && new Date(localUser.lastVisitDate) > new Date('2024-01-01');
+    return localUser.extraData?.visited || false;
   };
 
   const getVisitCount = () => {
-    return localUser.visitCount || 0;
+    return localUser.extraData?.visitCount || 0;
   };
 
   const getLastVisitDate = () => {
-    return localUser.lastVisitDate;
+    return localUser.extraData?.lastVisitDate;
   };
 
   const formatVisitDate = (dateString: string) => {
@@ -276,7 +286,7 @@ export function UserCardResponsive({
 
   const loadVisitHistory = async (userId: number) => {
     try {
-      const response = await fetch(`/api/visits/${userId}`);
+      const response = await fetch(`/api/visits/user/${userId}`);
       if (response.ok) {
         const history = await response.json();
         setVisitHistory(history);
@@ -410,41 +420,34 @@ export function UserCardResponsive({
                       size="sm"
                       variant="ghost"
                       disabled={isMarkingVisit}
-                      className={`h-7 w-7 p-0 transition-all duration-200 rounded-full ${
+                      className={`h-7 transition-all duration-200 rounded-full ${
                         isVisited() 
                           ? "text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 border border-green-200" 
                           : "text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200"
-                      } ${isMarkingVisit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      } ${isMarkingVisit ? 'opacity-50 cursor-not-allowed' : ''} ${
+                        isVisited() && getVisitCount() > 1 ? 'px-2' : 'w-7 px-0'
+                      }`}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleVisitButtonClick();
                       }}
-                      title={isVisited() ? "🖱️ Clique: nova visita | ⚡ Duplo clique: zerar contador" : "Marcar visita como realizada"}
+                      title={isVisited() ? "🖱️ Clique: atualizar data da visita" : "Marcar visita como realizada"}
                     >
                       {isMarkingVisit ? (
                         <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current" />
                       ) : isVisited() ? (
-                        <CheckSquare className="h-3 w-3" />
+                        <div className="flex items-center gap-1">
+                          <CheckSquare className="h-3 w-3" />
+                          {getVisitCount() > 1 && (
+                            <span className="text-[10px] font-medium">
+                              {getVisitCount()}x
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <Square className="h-3 w-3" />
                       )}
                     </Button>
-
-                    {/* Indicador discreto de múltiplas visitas - clicável para ver histórico */}
-                    {getVisitCount() > 1 && (
-                      <Badge 
-                        variant="secondary" 
-                        className="text-[10px] px-1 py-0 bg-green-100 text-green-700 border border-green-200 cursor-pointer hover:bg-green-200 transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          loadVisitHistory(localUser.id);
-                          setShowVisitHistory(true);
-                        }}
-                        title="Clique para ver histórico de visitas"
-                      >
-                        {getVisitCount()}x
-                      </Badge>
-                    )}
 
                     <Button
                       size="sm"
@@ -717,17 +720,25 @@ export function UserCardResponsive({
           )}
           
           {/* Informações de Gamificação - Monte e Pontuação */}
-          {localUser.points !== undefined && (
+          {true && (
             <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-gray-100">
               <div className="flex items-center gap-1">
                 <Star className="h-3 w-3 text-yellow-500" />
-                <span className="text-[10px] sm:text-xs font-medium">{localUser.points || 0} pts</span>
+                <span className="text-[10px] sm:text-xs font-medium">
+                  {localUser.calculatedPoints !== undefined ? localUser.calculatedPoints : (localUser.points || 0)} pts
+                </span>
               </div>
               
               <div className="flex items-center gap-1">
-                <MountIcon iconType={getLevelIcon(localUser.points || 0)} className="h-3 w-3" />
-                <span className="text-[10px] sm:text-xs font-medium" title={getLevelName(localUser.points || 0)}>
-                  {getMountName(localUser.points || 0)}
+                <MountIcon 
+                  iconType={getLevelIcon(localUser.calculatedPoints !== undefined ? localUser.calculatedPoints : (localUser.points || 0))} 
+                  className="h-3 w-3" 
+                />
+                <span 
+                  className="text-[10px] sm:text-xs font-medium" 
+                  title={getLevelName(localUser.calculatedPoints !== undefined ? localUser.calculatedPoints : (localUser.points || 0))}
+                >
+                  {getMountName(localUser.calculatedPoints !== undefined ? localUser.calculatedPoints : (localUser.points || 0))}
                 </span>
               </div>
             </div>
@@ -799,6 +810,9 @@ export function UserCardResponsive({
         onClose={() => setShowMarkVisitModal(false)}
         onConfirm={handleConfirmVisit}
         userName={localUser.name}
+        isLoading={isMarkingVisit}
+        visitCount={getVisitCount()}
+        lastVisitDate={getLastVisitDate()}
       />
 
       {/* Modal para visualizar foto */}
