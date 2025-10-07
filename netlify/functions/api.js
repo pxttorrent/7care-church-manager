@@ -2263,92 +2263,46 @@ exports.handler = async (event, context) => {
 
         const userData = user[0];
         
-        // Calcular pontos baseado no role do usuário
-        let points = 0;
-        let breakdown = {};
-        
-        if (userData.role.includes('admin')) {
-          points = 1000;
-          breakdown = {
-            engajamento: 200,
-            classificacao: 150,
-            dizimista: 100,
-            ofertante: 100,
-            tempoBatismo: 200,
-            cargos: 150,
-            nomeUnidade: 50,
-            temLicao: 50
-          };
-        } else if (userData.role.includes('missionary')) {
-          points = 750;
-          breakdown = {
-            engajamento: 150,
-            classificacao: 100,
-            dizimista: 100,
-            ofertante: 100,
-            tempoBatismo: 150,
-            cargos: 100,
-            nomeUnidade: 50
-          };
-        } else if (userData.role.includes('member')) {
-          points = 500;
-          breakdown = {
-            engajamento: 100,
-            classificacao: 100,
-            dizimista: 100,
-            ofertante: 50,
-            tempoBatismo: 100,
-            cargos: 50
-          };
-        } else {
-          points = 300;
-          breakdown = {
-            engajamento: 50,
-            classificacao: 50,
-            dizimista: 50,
-            ofertante: 50,
-            tempoBatismo: 50,
-            cargos: 50
-          };
-        }
+        // USAR PONTOS REAIS DO BANCO (calculados pela função calculateUserPoints)
+        const points = userData.points || 0;
 
         return {
           statusCode: 200,
           headers,
           body: JSON.stringify({
             points: points,
+            total: points,
+            breakdown: {},
             userData: {
               id: userData.id,
               name: userData.name,
               email: userData.email,
               role: userData.role,
               church: userData.church,
-              engajamento: userData.engajamento || 'Baixo',
-              classificacao: userData.classificacao || 'A resgatar',
-              dizimista: userData.dizimistaType || 'Não dizimista',
-              ofertante: userData.ofertanteType || 'Não ofertante',
-              tempoBatismo: userData.tempoBatismo || 0,
-              cargos: userData.cargos || [],
-              nomeUnidade: userData.nomeUnidade || null,
-              temLicao: userData.temLicao || false,
+              engajamento: userData.engajamento || null,
+              classificacao: userData.classificacao || null,
+              dizimista: userData.dizimista_type || null,
+              ofertante: userData.ofertante_type || null,
+              tempoBatismo: userData.tempo_batismo_anos || 0,
+              cargos: userData.departamentos_cargos ? [userData.departamentos_cargos] : [],
+              nomeUnidade: userData.nome_unidade || null,
+              temLicao: userData.tem_licao || false,
               comunhao: userData.comunhao || 0,
               missao: userData.missao || 0,
-              estudoBiblico: userData.estudoBiblico || 0,
-              totalPresenca: userData.totalPresenca || 0,
-              batizouAlguem: userData.batizouAlguem || false,
-              discipuladoPosBatismo: userData.discipuladoPosBatismo || 0,
-              cpfValido: userData.cpfValido || false,
-              camposVaziosACMS: userData.camposVaziosACMS || false,
-              escolaSabatina: userData.escolaSabatina || {
-                comunhao: 0,
-                missao: 0,
-                estudoBiblico: 0,
-                batizouAlguem: false,
-                discipuladoPosBatismo: 0
+              estudoBiblico: userData.estudo_biblico || 0,
+              totalPresenca: userData.total_presenca || 0,
+              batizouAlguem: userData.batizou_alguem || false,
+              discipuladoPosBatismo: userData.disc_pos_batismal || 0,
+              cpfValido: userData.cpf_valido || false,
+              camposVaziosACMS: userData.campos_vazios || false,
+              escolaSabatina: {
+                comunhao: userData.comunhao || 0,
+                missao: userData.missao || 0,
+                estudoBiblico: userData.estudo_biblico || 0,
+                batizouAlguem: userData.batizou_alguem || false,
+                discipuladoPosBatismo: userData.disc_pos_batismal || 0
               }
-            },
-            breakdown: breakdown,
-            total: points
+            }
           })
         };
       } catch (error) {
