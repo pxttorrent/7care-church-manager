@@ -52,6 +52,22 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
     showDetails
   });
   
+  // PROTEÇÃO GLOBAL: Criar safeConfig para TODAS as funções do componente
+  const safeConfig = pointsConfig ? {
+    engajamento: pointsConfig.engajamento || { baixo: 0, medio: 0, alto: 0 },
+    classificacao: pointsConfig.classificacao || { frequente: 0, naoFrequente: 0 },
+    dizimista: pointsConfig.dizimista || { naoDizimista: 0, pontual: 0, sazonal: 0, recorrente: 0 },
+    ofertante: pointsConfig.ofertante || { naoOfertante: 0, pontual: 0, sazonal: 0, recorrente: 0 },
+    tempoBatismo: pointsConfig.tempoBatismo || { doisAnos: 0, cincoAnos: 0, dezAnos: 0, vinteAnos: 0, maisVinte: 0 },
+    cargos: pointsConfig.cargos || { umCargo: 0, doisCargos: 0, tresOuMais: 0 },
+    nomeUnidade: pointsConfig.nomeUnidade || { comUnidade: 0 },
+    temLicao: pointsConfig.temLicao || { comLicao: 0 },
+    totalPresenca: pointsConfig.totalPresenca || { zeroATres: 0, quatroASete: 0, oitoATreze: 0 },
+    escolaSabatina: pointsConfig.escolaSabatina || { comunhao: 0, missao: 0, estudoBiblico: 0, batizouAlguem: 0, discipuladoPosBatismo: 0 },
+    cpfValido: pointsConfig.cpfValido || { valido: 0 },
+    camposVaziosACMS: pointsConfig.camposVaziosACMS || { completos: 0 }
+  } : null;
+  
   // Buscar configuração de pontos do servidor
   useEffect(() => {
     const fetchPointsConfig = async () => {
@@ -77,23 +93,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
 
   // Função para gerar dicas personalizadas para cada usuário
   const generatePersonalizedTips = (categoryName: string): string[] => {
-    if (!pointsConfig) return [];
-    
-    // PROTEÇÃO: Criar safeConfig para evitar erros de undefined
-    const safeConfig = {
-      engajamento: pointsConfig.engajamento || { baixo: 0, medio: 0, alto: 0 },
-      classificacao: pointsConfig.classificacao || { frequente: 0, naoFrequente: 0 },
-      dizimista: pointsConfig.dizimista || { naoDizimista: 0, pontual: 0, sazonal: 0, recorrente: 0 },
-      ofertante: pointsConfig.ofertante || { naoOfertante: 0, pontual: 0, sazonal: 0, recorrente: 0 },
-      tempoBatismo: pointsConfig.tempoBatismo || { doisAnos: 0, cincoAnos: 0, dezAnos: 0, vinteAnos: 0, maisVinte: 0 },
-      cargos: pointsConfig.cargos || { umCargo: 0, doisCargos: 0, tresOuMais: 0 },
-      nomeUnidade: pointsConfig.nomeUnidade || { comUnidade: 0 },
-      temLicao: pointsConfig.temLicao || { comLicao: 0 },
-      totalPresenca: pointsConfig.totalPresenca || { zeroATres: 0, quatroASete: 0, oitoATreze: 0 },
-      escolaSabatina: pointsConfig.escolaSabatina || { comunhao: 0, missao: 0, estudoBiblico: 0, batizouAlguem: 0, discipuladoPosBatismo: 0 },
-      cpfValido: pointsConfig.cpfValido || { valido: 0 },
-      camposVaziosACMS: pointsConfig.camposVaziosACMS || { completos: 0 }
-    };
+    if (!pointsConfig || !safeConfig) return [];
     
     const tips: string[] = [];
     
@@ -315,7 +315,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
   
   // Calcular pontos de cada categoria baseado na configuração do servidor
   const calculateCategoryPoints = (categoryName: string): number => {
-    if (!pointsConfig) return 0;
+    if (!pointsConfig || !safeConfig) return 0;
     
     try {
       switch (categoryName) {
@@ -439,7 +439,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
 
   // Função para calcular pontos específicos da Escola Sabatina
   const calculateEscolaSabatinaPoints = (categoryName: string): number => {
-    if (!pointsConfig) return 0;
+    if (!pointsConfig || !safeConfig) return 0;
     if (!userData.escolaSabatina) return 0;
 
     try {
@@ -565,7 +565,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
 
   // Pontuação máxima por categoria principal
   const getMaxPointsForCategory = (categoryName: string): number => {
-    if (!pointsConfig) return 0;
+    if (!pointsConfig || !safeConfig) return 0;
     switch (categoryName) {
       case 'Engajamento':
         return safeConfig.engajamento.alto;
@@ -577,7 +577,7 @@ export const PointsBreakdown = ({ userData, showDetails = true }: PointsBreakdow
       case 'Fidelidade Regular com Ofertas':
         return safeConfig.ofertante.recorrente;
       case 'Tempo de Batismo': {
-        const t = pointsConfig.tempoBatismo;
+        const t = safeConfig.tempoBatismo;
         return Math.max(
           t.doisAnos || 0,
           t.cincoAnos || 0,
