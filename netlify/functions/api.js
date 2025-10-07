@@ -1030,9 +1030,10 @@ exports.handler = async (event, context) => {
         
         console.log(`📊 Visitas encontradas: ${visitsData.length}`);
         
-        // Processar usuários com dados de visitas e calcular pontos
-        const processedUsers = await Promise.all(users.map(async (user) => {
-          // CORREÇÃO: Usar extra_data (do banco) que contém TODOS os dados do usuário
+        // OTIMIZAÇÃO: Processar usuários sem calcular pontos (usar pontos já salvos no banco)
+        // Os pontos são recalculados apenas quando a configuração muda
+        const processedUsers = users.map((user) => {
+          // Parsear extra_data
           let extraData = {};
           const rawData = user.extra_data || user.extraData;
           if (rawData) {
@@ -1046,7 +1047,7 @@ exports.handler = async (event, context) => {
             }
           }
           
-          // ADICIONAR (não sobrescrever) dados de visitas se existirem
+          // Adicionar dados de visitas
           const visitData = visitsMap.get(user.id);
           if (visitData) {
             extraData.visited = visitData.visited;
@@ -1054,29 +1055,17 @@ exports.handler = async (event, context) => {
             extraData.lastVisitDate = visitData.lastVisitDate;
             extraData.firstVisitDate = visitData.firstVisitDate;
           } else {
-            // Se não há visitas, garantir que os campos existam
             extraData.visited = false;
             extraData.visitCount = 0;
             extraData.lastVisitDate = null;
             extraData.firstVisitDate = null;
           }
-
-        // Calcular pontos para o usuário
-        let calculatedPoints;
-        try {
-          calculatedPoints = await calculateUserPoints(user);
-          console.log(`🎯 Pontos calculados para ${user.name} (ID: ${user.id}): ${calculatedPoints}`);
-        } catch (error) {
-          console.error(`❌ Erro ao calcular pontos para ${user.name}:`, error);
-          calculatedPoints = 0; // Fallback em caso de erro
-        }
           
           return {
             ...user,
-            extraData: extraData,
-            calculatedPoints: calculatedPoints
+            extraData: extraData
           };
-        }));
+        });
         
         console.log(`📊 Usuários processados: ${processedUsers.length}`);
         
