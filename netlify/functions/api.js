@@ -6459,11 +6459,11 @@ exports.handler = async (event, context) => {
       try {
         console.log('🔍 Buscando configuração de pontos do banco de dados...');
         
-        // Buscar configurações do banco de dados
+        // Buscar configurações do banco de dados (colunas em lowercase)
         const configRow = await sql`
-          SELECT engajamento, classificacao, dizimista, ofertante, tempoBatismo,
-                 cargos, nomeUnidade, temLicao, totalPresenca, escolaSabatina,
-                 cpfValido, camposVaziosACMS
+          SELECT engajamento, classificacao, dizimista, ofertante, tempobatismo,
+                 cargos, nomeunidade, temlicao, totalpresenca, escolasabatina,
+                 cpfvalido, camposvaziosacms
           FROM points_configuration 
           LIMIT 1
         `;
@@ -6538,9 +6538,27 @@ exports.handler = async (event, context) => {
           };
         }
         
-        // Usar configuração do banco de dados
-        const config = configRow[0];
-        console.log('✅ Configuração carregada do banco de dados');
+        // Usar configuração do banco de dados e mapear para camelCase
+        const rawConfig = configRow[0];
+        console.log('✅ Configuração carregada do banco de dados (raw):', rawConfig);
+        
+        // Mapear colunas lowercase para camelCase
+        const config = {
+          engajamento: rawConfig.engajamento,
+          classificacao: rawConfig.classificacao,
+          dizimista: rawConfig.dizimista,
+          ofertante: rawConfig.ofertante,
+          tempoBatismo: rawConfig.tempobatismo,
+          cargos: rawConfig.cargos,
+          nomeUnidade: rawConfig.nomeunidade,
+          temLicao: rawConfig.temlicao,
+          totalPresenca: rawConfig.totalpresenca,
+          escolaSabatina: rawConfig.escolasabatina,
+          cpfValido: rawConfig.cpfvalido,
+          camposVaziosACMS: rawConfig.camposvaziosacms
+        };
+        
+        console.log('✅ Configuração mapeada para camelCase:', config);
         
         return {
           statusCode: 200,
