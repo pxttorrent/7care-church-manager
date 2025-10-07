@@ -170,7 +170,73 @@ export const PointsConfiguration = () => {
         const response = await fetch('/api/system/points-config');
         if (response.ok) {
           const backendConfig = await response.json();
-          setConfig(backendConfig);
+          
+          // CORREÇÃO: Sempre mesclar com valores padrão para garantir que não há campos vazios
+          const configCompleta: PointsConfig = {
+            engajamento: {
+              baixo: backendConfig.engajamento?.baixo ?? 50,
+              medio: backendConfig.engajamento?.medio ?? 100,
+              alto: backendConfig.engajamento?.alto ?? 200
+            },
+            classificacao: {
+              frequente: backendConfig.classificacao?.frequente ?? 100,
+              naoFrequente: backendConfig.classificacao?.naoFrequente ?? 50
+            },
+            dizimista: {
+              naoDizimista: backendConfig.dizimista?.naoDizimista ?? 0,
+              pontual: backendConfig.dizimista?.pontual ?? 25,
+              sazonal: backendConfig.dizimista?.sazonal ?? 50,
+              recorrente: backendConfig.dizimista?.recorrente ?? 100
+            },
+            ofertante: {
+              naoOfertante: backendConfig.ofertante?.naoOfertante ?? 0,
+              pontual: backendConfig.ofertante?.pontual ?? 15,
+              sazonal: backendConfig.ofertante?.sazonal ?? 30,
+              recorrente: backendConfig.ofertante?.recorrente ?? 60
+            },
+            tempoBatismo: {
+              doisAnos: backendConfig.tempoBatismo?.doisAnos ?? (backendConfig.tempobatismo?.doisAnos ?? 25),
+              cincoAnos: backendConfig.tempoBatismo?.cincoAnos ?? (backendConfig.tempobatismo?.cincoAnos ?? 50),
+              dezAnos: backendConfig.tempoBatismo?.dezAnos ?? (backendConfig.tempobatismo?.dezAnos ?? 100),
+              vinteAnos: backendConfig.tempoBatismo?.vinteAnos ?? (backendConfig.tempobatismo?.vinteAnos ?? 150),
+              maisVinte: backendConfig.tempoBatismo?.maisVinte ?? (backendConfig.tempobatismo?.maisVinte ?? 200)
+            },
+            cargos: {
+              umCargo: backendConfig.cargos?.umCargo ?? 50,
+              doisCargos: backendConfig.cargos?.doisCargos ?? 100,
+              tresOuMais: backendConfig.cargos?.tresOuMais ?? 150
+            },
+            nomeUnidade: {
+              comUnidade: backendConfig.nomeUnidade?.comUnidade ?? (backendConfig.nomeunidade?.comUnidade ?? 25)
+            },
+            temLicao: {
+              comLicao: backendConfig.temLicao?.comLicao ?? (backendConfig.temlicao?.comLicao ?? 30)
+            },
+            pontuacaoDinamica: {
+              multiplicador: backendConfig.pontuacaoDinamica?.multiplicador ?? 5
+            },
+            totalPresenca: {
+              zeroATres: backendConfig.totalPresenca?.zeroATres ?? (backendConfig.totalpresenca?.zeroATres ?? 25),
+              quatroASete: backendConfig.totalPresenca?.quatroASete ?? (backendConfig.totalpresenca?.quatroASete ?? 50),
+              oitoATreze: backendConfig.totalPresenca?.oitoATreze ?? (backendConfig.totalpresenca?.oitoATreze ?? 100)
+            },
+            escolaSabatina: {
+              comunhao: backendConfig.escolaSabatina?.comunhao ?? (backendConfig.escolasabatina?.comunhao ?? 10),
+              missao: backendConfig.escolaSabatina?.missao ?? (backendConfig.escolasabatina?.missao ?? 15),
+              estudoBiblico: backendConfig.escolaSabatina?.estudoBiblico ?? (backendConfig.escolasabatina?.estudoBiblico ?? 20),
+              batizouAlguem: backendConfig.escolaSabatina?.batizouAlguem ?? (backendConfig.escolasabatina?.batizouAlguem ?? 100),
+              discipuladoPosBatismo: backendConfig.escolaSabatina?.discipuladoPosBatismo ?? (backendConfig.escolasabatina?.discipuladoPosBatismo ?? 25)
+            },
+            cpfValido: {
+              valido: backendConfig.cpfValido?.valido ?? (backendConfig.cpfvalido?.valido ?? 25)
+            },
+            camposVaziosACMS: {
+              semCamposVazios: backendConfig.camposVaziosACMS?.semCamposVazios ?? (backendConfig.camposvaziosacms?.completos ?? 50)
+            }
+          };
+          
+          setConfig(configCompleta);
+          console.log('✅ Configuração carregada e mesclada com valores padrão');
         } else {
           console.log('Usando configuração padrão');
           setConfig(defaultConfig);
@@ -269,6 +335,10 @@ export const PointsConfiguration = () => {
       
       const result = await response.json();
       
+      // ATUALIZAR estado local com a configuração completa que foi salva
+      setConfig(configCompleta);
+      console.log('✅ Estado local atualizado com configuração salva');
+      
       if (result.updatedUsers > 0) {
         toast({
           title: "✅ Configurações salvas!",
@@ -348,11 +418,76 @@ export const PointsConfiguration = () => {
       
       const result = await response.json();
       
-      // Recarregar configurações do backend
+      // Recarregar configurações do backend e mesclar com padrões
       const configResponse = await fetch('/api/system/points-config');
       if (configResponse.ok) {
         const backendConfig = await configResponse.json();
-        setConfig(backendConfig);
+        
+        // Mesclar com valores padrão (mesma lógica do loadConfig)
+        const configCompleta: PointsConfig = {
+          engajamento: {
+            baixo: backendConfig.engajamento?.baixo ?? 50,
+            medio: backendConfig.engajamento?.medio ?? 100,
+            alto: backendConfig.engajamento?.alto ?? 200
+          },
+          classificacao: {
+            frequente: backendConfig.classificacao?.frequente ?? 100,
+            naoFrequente: backendConfig.classificacao?.naoFrequente ?? 50
+          },
+          dizimista: {
+            naoDizimista: backendConfig.dizimista?.naoDizimista ?? 0,
+            pontual: backendConfig.dizimista?.pontual ?? 25,
+            sazonal: backendConfig.dizimista?.sazonal ?? 50,
+            recorrente: backendConfig.dizimista?.recorrente ?? 100
+          },
+          ofertante: {
+            naoOfertante: backendConfig.ofertante?.naoOfertante ?? 0,
+            pontual: backendConfig.ofertante?.pontual ?? 15,
+            sazonal: backendConfig.ofertante?.sazonal ?? 30,
+            recorrente: backendConfig.ofertante?.recorrente ?? 60
+          },
+          tempoBatismo: {
+            doisAnos: backendConfig.tempoBatismo?.doisAnos ?? (backendConfig.tempobatismo?.doisAnos ?? 25),
+            cincoAnos: backendConfig.tempoBatismo?.cincoAnos ?? (backendConfig.tempobatismo?.cincoAnos ?? 50),
+            dezAnos: backendConfig.tempoBatismo?.dezAnos ?? (backendConfig.tempobatismo?.dezAnos ?? 100),
+            vinteAnos: backendConfig.tempoBatismo?.vinteAnos ?? (backendConfig.tempobatismo?.vinteAnos ?? 150),
+            maisVinte: backendConfig.tempoBatismo?.maisVinte ?? (backendConfig.tempobatismo?.maisVinte ?? 200)
+          },
+          cargos: {
+            umCargo: backendConfig.cargos?.umCargo ?? 50,
+            doisCargos: backendConfig.cargos?.doisCargos ?? 100,
+            tresOuMais: backendConfig.cargos?.tresOuMais ?? 150
+          },
+          nomeUnidade: {
+            comUnidade: backendConfig.nomeUnidade?.comUnidade ?? (backendConfig.nomeunidade?.comUnidade ?? 25)
+          },
+          temLicao: {
+            comLicao: backendConfig.temLicao?.comLicao ?? (backendConfig.temlicao?.comLicao ?? 30)
+          },
+          pontuacaoDinamica: {
+            multiplicador: backendConfig.pontuacaoDinamica?.multiplicador ?? 5
+          },
+          totalPresenca: {
+            zeroATres: backendConfig.totalPresenca?.zeroATres ?? (backendConfig.totalpresenca?.zeroATres ?? 25),
+            quatroASete: backendConfig.totalPresenca?.quatroASete ?? (backendConfig.totalpresenca?.quatroASete ?? 50),
+            oitoATreze: backendConfig.totalPresenca?.oitoATreze ?? (backendConfig.totalpresenca?.oitoATreze ?? 100)
+          },
+          escolaSabatina: {
+            comunhao: backendConfig.escolaSabatina?.comunhao ?? (backendConfig.escolasabatina?.comunhao ?? 10),
+            missao: backendConfig.escolaSabatina?.missao ?? (backendConfig.escolasabatina?.missao ?? 15),
+            estudoBiblico: backendConfig.escolaSabatina?.estudoBiblico ?? (backendConfig.escolasabatina?.estudoBiblico ?? 20),
+            batizouAlguem: backendConfig.escolaSabatina?.batizouAlguem ?? (backendConfig.escolasabatina?.batizouAlguem ?? 100),
+            discipuladoPosBatismo: backendConfig.escolaSabatina?.discipuladoPosBatismo ?? (backendConfig.escolasabatina?.discipuladoPosBatismo ?? 25)
+          },
+          cpfValido: {
+            valido: backendConfig.cpfValido?.valido ?? (backendConfig.cpfvalido?.valido ?? 25)
+          },
+          camposVaziosACMS: {
+            semCamposVazios: backendConfig.camposVaziosACMS?.semCamposVazios ?? (backendConfig.camposvaziosacms?.completos ?? 50)
+          }
+        };
+        
+        setConfig(configCompleta);
       } else {
         setConfig(defaultConfig);
       }
