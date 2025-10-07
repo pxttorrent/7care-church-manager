@@ -161,6 +161,9 @@ export const PointsConfiguration = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [targetAverage, setTargetAverage] = useState<string>('595');
+  const [isCalculatingPreset, setIsCalculatingPreset] = useState(false);
+  const [currentAverage, setCurrentAverage] = useState<number | null>(null);
 
   // Carregar configurações do backend
   useEffect(() => {
@@ -251,6 +254,127 @@ export const PointsConfiguration = () => {
 
     loadConfig();
   }, []);
+
+  // Função para calcular preset automaticamente baseado na média desejada
+  const handleCalculateAutomaticPreset = async () => {
+    const targetValue = parseFloat(targetAverage);
+    
+    if (isNaN(targetValue) || targetValue <= 0) {
+      toast({
+        title: "❌ Valor inválido",
+        description: "Por favor, insira uma média válida maior que 0.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsCalculatingPreset(true);
+    
+    try {
+      // Buscar média atual dos usuários
+      const usersResponse = await fetch('/api/users');
+      if (!usersResponse.ok) {
+        throw new Error('Erro ao buscar usuários');
+      }
+      
+      const users = await usersResponse.json();
+      const nonAdminUsers = users.filter((u: any) => u.role !== 'admin');
+      const totalPoints = nonAdminUsers.reduce((sum: number, u: any) => sum + (u.points || 0), 0);
+      const currentAvg = totalPoints / nonAdminUsers.length;
+      
+      setCurrentAverage(Math.round(currentAvg));
+      
+      // Calcular fator de ajuste
+      const adjustmentFactor = targetValue / currentAvg;
+      
+      console.log(`📊 Cálculo de Preset Automático:`);
+      console.log(`   Média atual: ${Math.round(currentAvg)}`);
+      console.log(`   Média desejada: ${targetValue}`);
+      console.log(`   Fator de ajuste: ${adjustmentFactor.toFixed(2)}x`);
+      
+      // Preset base (configuração atual ajustada)
+      const newConfig: PointsConfig = {
+        engajamento: {
+          baixo: Math.round((config.engajamento?.baixo || 40) * adjustmentFactor),
+          medio: Math.round((config.engajamento?.medio || 80) * adjustmentFactor),
+          alto: Math.round((config.engajamento?.alto || 120) * adjustmentFactor)
+        },
+        classificacao: {
+          frequente: Math.round((config.classificacao?.frequente || 180) * adjustmentFactor),
+          naoFrequente: Math.round((config.classificacao?.naoFrequente || 40) * adjustmentFactor)
+        },
+        dizimista: {
+          naoDizimista: 0, // Sempre 0
+          pontual: Math.round((config.dizimista?.pontual || 100) * adjustmentFactor),
+          sazonal: Math.round((config.dizimista?.sazonal || 200) * adjustmentFactor),
+          recorrente: Math.round((config.dizimista?.recorrente || 290) * adjustmentFactor)
+        },
+        ofertante: {
+          naoOfertante: 0, // Sempre 0
+          pontual: Math.round((config.ofertante?.pontual || 50) * adjustmentFactor),
+          sazonal: Math.round((config.ofertante?.sazonal || 80) * adjustmentFactor),
+          recorrente: Math.round((config.ofertante?.recorrente || 120) * adjustmentFactor)
+        },
+        tempoBatismo: {
+          doisAnos: Math.round((config.tempoBatismo?.doisAnos || 25) * adjustmentFactor),
+          cincoAnos: Math.round((config.tempoBatismo?.cincoAnos || 50) * adjustmentFactor),
+          dezAnos: Math.round((config.tempoBatismo?.dezAnos || 80) * adjustmentFactor),
+          vinteAnos: Math.round((config.tempoBatismo?.vinteAnos || 105) * adjustmentFactor),
+          maisVinte: Math.round((config.tempoBatismo?.maisVinte || 130) * adjustmentFactor)
+        },
+        cargos: {
+          umCargo: Math.round((config.cargos?.umCargo || 20) * adjustmentFactor),
+          doisCargos: Math.round((config.cargos?.doisCargos || 40) * adjustmentFactor),
+          tresOuMais: Math.round((config.cargos?.tresOuMais || 60) * adjustmentFactor)
+        },
+        nomeUnidade: {
+          comUnidade: Math.round((config.nomeUnidade?.comUnidade || 25) * adjustmentFactor)
+        },
+        temLicao: {
+          comLicao: Math.round((config.temLicao?.comLicao || 35) * adjustmentFactor)
+        },
+        pontuacaoDinamica: {
+          multiplicador: config.pontuacaoDinamica?.multiplicador || 5
+        },
+        totalPresenca: {
+          zeroATres: 0, // Sempre 0
+          quatroASete: Math.round((config.totalPresenca?.quatroASete || 40) * adjustmentFactor),
+          oitoATreze: Math.round((config.totalPresenca?.oitoATreze || 80) * adjustmentFactor)
+        },
+        escolaSabatina: {
+          comunhao: Math.round((config.escolaSabatina?.comunhao || 4) * adjustmentFactor),
+          missao: Math.round((config.escolaSabatina?.missao || 4) * adjustmentFactor),
+          estudoBiblico: Math.round((config.escolaSabatina?.estudoBiblico || 4) * adjustmentFactor),
+          batizouAlguem: Math.round((config.escolaSabatina?.batizouAlguem || 130) * adjustmentFactor),
+          discipuladoPosBatismo: Math.round((config.escolaSabatina?.discipuladoPosBatismo || 7) * adjustmentFactor)
+        },
+        cpfValido: {
+          valido: Math.round((config.cpfValido?.valido || 25) * adjustmentFactor)
+        },
+        camposVaziosACMS: {
+          semCamposVazios: Math.round((config.camposVaziosACMS?.semCamposVazios || 50) * adjustmentFactor)
+        }
+      };
+      
+      setConfig(newConfig);
+      
+      toast({
+        title: "🎯 Preset Calculado!",
+        description: `Configuração ajustada automaticamente para média de ${targetValue} pontos (fator ${adjustmentFactor.toFixed(2)}x). Revise os valores e clique em "Salvar" para aplicar.`,
+        duration: 6000
+      });
+      
+    } catch (error) {
+      console.error('Erro ao calcular preset:', error);
+      toast({
+        title: "❌ Erro",
+        description: "Não foi possível calcular o preset automaticamente.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsCalculatingPreset(false);
+    }
+  };
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -701,6 +825,79 @@ export const PointsConfiguration = () => {
         </CardContent>
       </Card>
 
+      {/* Calculadora de Preset Automático */}
+      <Card className="border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-blue-900">
+            <Calculator className="h-5 w-5" />
+            Calculadora de Preset Automático
+          </CardTitle>
+          <p className="text-sm text-blue-700">
+            Digite a média de pontos desejada e o sistema calculará automaticamente todos os valores da base de cálculo
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
+            <div className="flex-1 w-full sm:w-auto">
+              <Label htmlFor="targetAverage" className="text-blue-900 font-medium">
+                Média de Pontos Desejada
+              </Label>
+              <Input
+                id="targetAverage"
+                type="number"
+                value={targetAverage}
+                onChange={(e) => setTargetAverage(e.target.value)}
+                placeholder="Ex: 595"
+                className="mt-1.5 text-lg font-semibold border-blue-300 focus:border-blue-500"
+                min="1"
+                step="1"
+              />
+              <p className="text-xs text-blue-600 mt-1">
+                {currentAverage !== null && (
+                  <span className="flex items-center gap-1">
+                    <TrendingUp className="h-3 w-3" />
+                    Média atual: {currentAverage} pontos
+                  </span>
+                )}
+              </p>
+            </div>
+            
+            <Button
+              onClick={handleCalculateAutomaticPreset}
+              disabled={isCalculatingPreset || isLoading}
+              className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all w-full sm:w-auto"
+              size="lg"
+            >
+              {isCalculatingPreset ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Calculando...
+                </>
+              ) : (
+                <>
+                  <Zap className="h-4 w-4 mr-2" />
+                  Calcular Preset
+                </>
+              )}
+            </Button>
+          </div>
+          
+          <div className="mt-4 p-3 bg-blue-100 rounded-lg border border-blue-200">
+            <div className="flex items-start gap-2 text-blue-800">
+              <Star className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <div className="text-xs space-y-1">
+                <p className="font-medium">Como funciona:</p>
+                <ul className="list-disc list-inside space-y-0.5 ml-2">
+                  <li>O sistema analisa a média atual de pontos de todos os usuários</li>
+                  <li>Calcula automaticamente quanto cada campo deve valer para atingir a média desejada</li>
+                  <li>Preenche automaticamente todos os campos abaixo</li>
+                  <li>Você pode revisar e ajustar manualmente antes de salvar</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Configuration Sections */}
       <div className="space-y-6">
