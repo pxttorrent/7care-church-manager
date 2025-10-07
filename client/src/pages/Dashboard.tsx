@@ -172,7 +172,10 @@ const Dashboard = React.memo(() => {
 
     return userEvents.filter((e: any) => {
       if (!e || typeof e !== 'object') return false;
-      return intersects(parse(e.startDate), parse(e.endDate), monthStart, nextMonthStart);
+      // Eventos usam 'date' e 'end_date' no banco (snake_case)
+      const startDate = e.startDate || e.date;
+      const endDate = e.endDate || e.end_date || e.date;
+      return intersects(parse(startDate), parse(endDate), monthStart, nextMonthStart);
     }).length;
   }, [userEvents]);
 
@@ -189,7 +192,11 @@ const Dashboard = React.memo(() => {
     };
     const upcoming = [...events]
       .filter(e => e && typeof e === 'object')
-      .map(e => ({ ...e, _start: parse(e.startDate) }))
+      .map(e => {
+        // Eventos usam 'date' no banco (snake_case)
+        const startDate = e.startDate || e.date;
+        return { ...e, _start: parse(startDate) };
+      })
       .filter(e => e._start && e._start >= new Date())
       .sort((a, b) => (a._start as Date).getTime() - (b._start as Date).getTime());
 
