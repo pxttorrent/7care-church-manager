@@ -1043,22 +1043,13 @@ exports.handler = async (event, context) => {
             extraData.firstVisitDate = null;
           }
 
-        // Calcular pontos para o usuário
-        let calculatedPoints;
-        try {
-          calculatedPoints = await calculateUserPoints(user);
-          console.log(`🎯 Pontos calculados para ${user.name} (ID: ${user.id}): ${calculatedPoints}`);
-        } catch (error) {
-          console.error(`❌ Erro ao calcular pontos para ${user.name}:`, error);
-          calculatedPoints = 0; // Fallback em caso de erro
-        }
-          
-          return {
-            ...user,
-            extraData: extraData,
-            calculatedPoints: calculatedPoints
-          };
-        }));
+        // OTIMIZAÇÃO: Não calcular pontos em tempo real - usar pontos já salvos no banco
+        // Os pontos são recalculados automaticamente quando a configuração muda
+        return {
+          ...user,
+          extraData: extraData
+        };
+      }));
         
         console.log(`📊 Usuários processados: ${processedUsers.length}`);
         
