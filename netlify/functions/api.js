@@ -1141,21 +1141,7 @@ exports.handler = async (event, context) => {
     }
 
     // Rota para eventos
-    if (path === '/api/events' && method === 'GET') {
-      // Buscar eventos do ano atual e próximo ano, ordenados por data
-      const currentYear = new Date().getFullYear();
-      const events = await sql`
-        SELECT * FROM events 
-        WHERE EXTRACT(YEAR FROM date) >= ${currentYear} 
-        ORDER BY date ASC 
-        LIMIT 100
-      `;
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify(events)
-      };
-    }
+    // REMOVIDO: Rota duplicada de eventos - usar a rota mais completa abaixo que tem filtro por role
 
     // Rota para processar eventos pendentes do Google Drive
     if (path === '/api/calendar/process-pending-events' && method === 'POST') {
@@ -2363,13 +2349,22 @@ exports.handler = async (event, context) => {
           LIMIT 100
         `;
         
-        // Aplicar filtros baseados no role (simplificado)
+        // Aplicar filtros baseados no role
         if (role && role !== 'admin') {
-          // Para não-admins, filtrar alguns eventos
-          events = events.filter(event => 
-            !event.title?.toLowerCase().includes('administrativo') ||
-            !event.title?.toLowerCase().includes('interno')
-          );
+          // Para não-admins, EXCLUIR eventos administrativos ou internos
+          // Manter apenas eventos que NÃO sejam administrativos E NÃO sejam internos
+          events = events.filter(event => {
+            const title = event.title?.toLowerCase() || '';
+            const isAdministrative = title.includes('administrativo');
+            const isInternal = title.includes('interno');
+            
+            // Retornar true para eventos que não são administrativos NEM internos
+            return !isAdministrative && !isInternal;
+          });
+          
+          console.log(`📋 Eventos filtrados para role ${role}: ${events.length} eventos disponíveis`);
+        } else {
+          console.log(`👨‍💼 Admin vê todos os eventos: ${events.length} eventos`);
         }
         
         return {
