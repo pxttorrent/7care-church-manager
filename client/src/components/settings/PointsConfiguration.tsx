@@ -189,10 +189,78 @@ export const PointsConfiguration = () => {
   const handleSave = async () => {
     setIsLoading(true);
     try {
+      // GARANTIR que a configuração está completa antes de salvar
+      // Mesclar com valores padrão para não enviar campos vazios
+      const configCompleta = {
+        engajamento: {
+          baixo: config.engajamento?.baixo ?? 50,
+          medio: config.engajamento?.medio ?? 100,
+          alto: config.engajamento?.alto ?? 200
+        },
+        classificacao: {
+          frequente: config.classificacao?.frequente ?? 100,
+          naoFrequente: config.classificacao?.naoFrequente ?? 50
+        },
+        dizimista: {
+          naoDizimista: config.dizimista?.naoDizimista ?? 0,
+          pontual: config.dizimista?.pontual ?? 25,
+          sazonal: config.dizimista?.sazonal ?? 50,
+          recorrente: config.dizimista?.recorrente ?? 100
+        },
+        ofertante: {
+          naoOfertante: config.ofertante?.naoOfertante ?? 0,
+          pontual: config.ofertante?.pontual ?? 15,
+          sazonal: config.ofertante?.sazonal ?? 30,
+          recorrente: config.ofertante?.recorrente ?? 60
+        },
+        tempoBatismo: {
+          doisAnos: config.tempoBatismo?.doisAnos ?? 25,
+          cincoAnos: config.tempoBatismo?.cincoAnos ?? 50,
+          dezAnos: config.tempoBatismo?.dezAnos ?? 100,
+          vinteAnos: config.tempoBatismo?.vinteAnos ?? 150,
+          maisVinte: config.tempoBatismo?.maisVinte ?? 200
+        },
+        cargos: {
+          umCargo: config.cargos?.umCargo ?? 50,
+          doisCargos: config.cargos?.doisCargos ?? 100,
+          tresOuMais: config.cargos?.tresOuMais ?? 150
+        },
+        nomeUnidade: {
+          comUnidade: config.nomeUnidade?.comUnidade ?? 25,
+          semUnidade: config.nomeUnidade?.semUnidade ?? 0
+        },
+        temLicao: {
+          comLicao: config.temLicao?.comLicao ?? 30,
+          semLicao: config.temLicao?.semLicao ?? 0
+        },
+        totalPresenca: {
+          zeroATres: config.totalPresenca?.zeroATres ?? 25,
+          quatroASete: config.totalPresenca?.quatroASete ?? 50,
+          oitoATreze: config.totalPresenca?.oitoATreze ?? 100
+        },
+        escolaSabatina: {
+          comunhao: config.escolaSabatina?.comunhao ?? 10,
+          missao: config.escolaSabatina?.missao ?? 15,
+          estudoBiblico: config.escolaSabatina?.estudoBiblico ?? 20,
+          batizouAlguem: config.escolaSabatina?.batizouAlguem ?? 100,
+          discipuladoPosBatismo: config.escolaSabatina?.discipuladoPosBatismo ?? 25
+        },
+        cpfValido: {
+          valido: config.cpfValido?.valido ?? 25,
+          invalido: config.cpfValido?.invalido ?? 0
+        },
+        camposVaziosACMS: {
+          completos: config.camposVaziosACMS?.semCamposVazios ?? 50,
+          incompletos: config.camposVaziosACMS?.incompletos ?? 0
+        }
+      };
+      
+      console.log('💾 Salvando configuração completa:', configCompleta);
+      
       const response = await fetch('/api/system/points-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
+        body: JSON.stringify(configCompleta)
       });
       
       if (!response.ok) {
