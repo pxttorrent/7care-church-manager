@@ -9386,12 +9386,6 @@ exports.handler = async (event, context) => {
                 console.log(`✅ Usuário ${result.userName} (ID ${result.userId}): ${result.oldPoints} → ${result.newPoints} pontos`);
               }
             });
-            
-            // Pequeno delay para permitir que a barra seja visível (200ms entre lotes)
-            // Isso torna o progresso visível sem prejudicar muito a performance
-            if (i + batchSize < users.length) {
-              await new Promise(resolve => setTimeout(resolve, 200));
-            }
           }
           
           console.log(`🎉 Recálculo concluído: ${updatedCount} usuários atualizados, ${errorCount} erros`);
