@@ -1,5 +1,5 @@
 // Service Worker for 7care PWA
-const CACHE_NAME = '7care-v6-push-payload-fix';
+const CACHE_NAME = '7care-v7-rich-notifications';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -46,48 +46,81 @@ self.addEventListener('fetch', (event) => {
 
 // Push event
 self.addEventListener('push', (event) => {
-  // Parsing super defensivo: sempre capturar texto bruto e tentar JSON
+  console.log('📱 SW: Push event recebido');
+  
+  // Parsing do payload
   let payload = {};
   let rawText = '';
+  
   try {
     if (event.data) {
+      rawText = event.data.text();
+      console.log('📦 SW: Raw text recebido (primeiros 100 chars):', rawText.substring(0, 100));
+      
+      // Tentar parsear como JSON
       try {
-        rawText = event.data.text();
-      } catch (_) {
-        // alguns navegadores suportam .json(); garantir fallback
-        try { payload = event.data.json(); } catch { /* ignore */ }
-      }
-    }
-    if (!payload || Object.keys(payload).length === 0) {
-      if (rawText) {
-        try { payload = JSON.parse(rawText); } catch { payload = { body: rawText }; }
+        payload = JSON.parse(rawText);
+        console.log('✅ SW: Payload parseado como JSON:', {
+          hasTitle: !!payload.title,
+          hasMessage: !!payload.message,
+          hasImage: !!payload.image,
+          hasAudio: !!payload.audio,
+          type: payload.type
+        });
+      } catch (parseError) {
+        console.warn('⚠️ SW: Não é JSON, usando texto puro');
+        payload = { message: rawText };
       }
     }
   } catch (err) {
-    console.warn('SW push: erro ao processar payload:', err);
+    console.error('❌ SW: Erro ao processar payload:', err);
   }
 
-  // Quando o backend envia texto simples (compat iOS), usamos como body e título padrão
-  const title = (payload && payload.title) || '7care';
-  const body = (payload && (payload.body || payload.message)) || rawText || 'Nova notificação';
-  const icon = payload.icon || '/pwa-192x192.png';
-  const badge = payload.badge || '/pwa-192x192.png';
-  const tag = payload.tag || 'general';
-  const url = (payload.data && payload.data.url) || payload.url || '/';
-  const nData = { ...(payload.data || {}), url, receivedAt: Date.now() };
+  // Extrair dados LIMPOS (sem base64 grande)
+  const title = payload.title || '7care';
+  const message = payload.message || 'Nova notificação';
+  
+  // Se a mensagem for muito grande (provavelmente contém base64), limitar
+  const cleanMessage = message.length > 200 
+    ? message.substring(0, 200) + '...' 
+    : message;
+  
+  // Preparar ícone da notificação
+  let notificationIcon = '/pwa-192x192.png';
+  
+  // Se houver imagem em base64 E for pequena o suficiente, usar como ícone
+  // Caso contrário, usar ícone padrão
+  if (payload.image && payload.image.length < 100000) { // ~75KB
+    notificationIcon = payload.image;
+  }
+  
+  // Adicionar emoji baseado no tipo
+  let typeEmoji = '📢';
+  if (payload.type === 'announcement') typeEmoji = '📣';
+  else if (payload.type === 'reminder') typeEmoji = '⏰';
+  else if (payload.type === 'urgent') typeEmoji = '🚨';
+  else if (payload.type === 'general') typeEmoji = '📱';
 
   const options = {
-    body,
-    icon,
-    badge,
-    tag,
+    body: `${typeEmoji} ${cleanMessage}`,
+    icon: notificationIcon,
+    badge: '/pwa-192x192.png',
+    tag: payload.type || 'general',
     vibrate: [200, 100, 200],
-    data: nData,
+    requireInteraction: payload.type === 'urgent',
+    data: {
+      url: payload.url || '/',
+      hasImage: !!payload.image,
+      hasAudio: !!payload.audio,
+      receivedAt: Date.now()
+    },
     actions: [
-      { action: 'explore', title: 'Abrir', icon: '/pwa-192x192.png' },
+      { action: 'open', title: 'Abrir', icon: '/pwa-192x192.png' },
       { action: 'close', title: 'Fechar', icon: '/pwa-192x192.png' }
     ]
   };
+
+  console.log('📬 SW: Mostrando notificação:', { title, bodyLength: cleanMessage.length });
 
   event.waitUntil(self.registration.showNotification(title, options));
 });
