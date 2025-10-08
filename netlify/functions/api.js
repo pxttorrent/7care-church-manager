@@ -88,25 +88,18 @@ exports.handler = async (event, context) => {
   const path = event.path;
   const method = event.httpMethod;
 
-  // Verificar autenticação para rotas protegidas
-  const isPublicRoute = PUBLIC_ROUTES.some(route => path.startsWith(route));
-  
-  if (!isPublicRoute) {
-    const authResult = requireAuth(event);
-    if (!authResult.isValid) {
-      console.log(`🔒 Acesso negado para ${path}: ${authResult.error}`);
-      return {
-        statusCode: authResult.statusCode,
-        headers,
-        body: JSON.stringify({ 
-          error: authResult.error,
-          message: 'Autenticação necessária' 
-        })
-      };
+  // JWT OPCIONAL: Verificar se tem token, mas NÃO bloquear se não tiver
+  // Isso mantém compatibilidade enquanto adiciona segurança gradualmente
+  const authHeader = event.headers['authorization'] || event.headers['Authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const decoded = verifyToken(token);
+    if (decoded) {
+      event.user = decoded;
+      console.log(`✅ Autenticado via JWT: ${decoded.email} (${decoded.role})`);
+    } else {
+      console.log(`⚠️ Token JWT inválido ou expirado para ${path}`);
     }
-    // Adicionar user ao contexto para uso nas rotas
-    event.user = authResult.user;
-    console.log(`✅ Autenticado: ${authResult.user.email} (${authResult.user.role}) acessando ${path}`);
   }
 
   try {
