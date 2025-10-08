@@ -45,19 +45,16 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
 // AUTOMATIC SERVICE WORKER UPDATE - EXECUTA SEMPRE QUE A PÁGINA CARREGA
 // Service Worker + Audio Player
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    console.log('🚀 AUTO-UPDATE: Verificando Service Worker...');
+  // LISTENER GLOBAL - Registrar ANTES do load para capturar mensagens durante abertura do PWA
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    console.log('📨 [GLOBAL] Mensagem do SW recebida:', event.data);
     
-    // Listener para mensagens do Service Worker (tocar áudio com Media Session)
-    navigator.serviceWorker.addEventListener('message', (event) => {
-      console.log('📨 Mensagem do SW recebida:', event.data);
+    if (event.data.type === 'PLAY_AUDIO' && event.data.audio) {
+      console.log('🎵 [iOS] Reproduzindo áudio imediatamente...');
       
-      if (event.data.type === 'PLAY_AUDIO' && event.data.audio) {
-        console.log('🎵 Reproduzindo áudio com Media Session API...');
-        
-        try {
-          // Criar elemento de áudio com suporte iOS
-          const audio = new Audio();
+      try {
+        // Criar elemento de áudio com suporte iOS
+        const audio = new Audio();
           
           // Configurações para iOS
           audio.setAttribute('playsinline', '');
@@ -143,64 +140,104 @@ if ('serviceWorker' in navigator) {
             console.log('✅ Media Session configurada!');
           }
           
-          // Tocar áudio com retry para iOS
+          // Tocar áudio com retry agressivo para iOS
           const playAudio = async () => {
             try {
               // Tentar carregar primeiro
               await audio.load();
-              console.log('✅ Áudio carregado');
+              console.log('✅ [iOS] Áudio carregado');
+              
+              // Aguardar DOM estar pronto (crítico no iOS ao abrir PWA)
+              await new Promise(resolve => setTimeout(resolve, 300));
               
               // Tentar reproduzir
-              await audio.play();
-              console.log('✅ Áudio reproduzido com Media Session!');
+              const playPromise = audio.play();
+              if (playPromise !== undefined) {
+                await playPromise;
+                console.log('✅ [iOS] Áudio reproduzindo automaticamente!');
+              }
             } catch (err) {
-              console.error('❌ Erro ao reproduzir áudio:', err);
+              console.error('❌ [iOS] Erro ao reproduzir:', err.name, err.message);
               
-              // Fallback para iOS: Mostrar alerta
+              // FALLBACK VISUAL para iOS
               if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-                console.log('📱 iOS detectado, tentando fallback...');
+                console.log('📱 [iOS] Mostrando botão de play (fallback)');
                 
-                // Tentar novamente após interação do usuário
-                const playButton = document.createElement('button');
-                playButton.textContent = '🎵 Tocar Áudio';
-                playButton.style.cssText = `
+                // Criar overlay completo
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `
                   position: fixed;
-                  top: 50%;
-                  left: 50%;
-                  transform: translate(-50%, -50%);
-                  padding: 20px 40px;
-                  font-size: 18px;
+                  top: 0;
+                  left: 0;
+                  right: 0;
+                  bottom: 0;
+                  z-index: 999999;
+                  background: rgba(0, 0, 0, 0.85);
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  backdrop-filter: blur(10px);
+                `;
+                
+                const playButton = document.createElement('button');
+                playButton.textContent = '🎵 Tocar Áudio da Notificação';
+                playButton.style.cssText = `
+                  padding: 24px 48px;
+                  font-size: 20px;
                   font-weight: bold;
                   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                   color: white;
                   border: none;
-                  border-radius: 12px;
-                  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-                  z-index: 9999;
+                  border-radius: 16px;
+                  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.6);
                   cursor: pointer;
+                  transform: scale(1);
+                  transition: transform 0.2s ease;
                 `;
+                
+                playButton.ontouchstart = playButton.onmousedown = () => {
+                  playButton.style.transform = 'scale(0.95)';
+                };
+                playButton.ontouchend = playButton.onmouseup = () => {
+                  playButton.style.transform = 'scale(1)';
+                };
                 
                 playButton.onclick = async () => {
                   try {
                     await audio.play();
-                    document.body.removeChild(playButton);
-                    console.log('✅ Áudio reproduzido após interação');
+                    console.log('✅ [iOS] Áudio tocando após interação');
+                    document.body.removeChild(overlay);
                   } catch (e) {
-                    console.error('❌ Ainda não conseguiu reproduzir:', e);
+                    console.error('❌ [iOS] Falhou com clique:', e);
+                    alert('Não foi possível reproduzir o áudio.');
+                    document.body.removeChild(overlay);
                   }
                 };
                 
-                document.body.appendChild(playButton);
+                overlay.appendChild(playButton);
+                document.body.appendChild(overlay);
+                
+                // Auto-remover após 30s
+                setTimeout(() => {
+                  if (overlay.parentNode) {
+                    document.body.removeChild(overlay);
+                  }
+                }, 30000);
               }
             }
           };
           
-          playAudio();
-        } catch (err) {
-          console.error('❌ Erro ao criar áudio com Media Session:', err);
-        }
+          // Tentar tocar com delay para PWA carregar
+          setTimeout(() => playAudio(), 200);
+      } catch (err) {
+        console.error('❌ Erro ao criar áudio com Media Session:', err);
       }
-    });
+    }
+  });
+  
+  // Registrar Service Worker
+  window.addEventListener('load', () => {
+    console.log('🚀 AUTO-UPDATE: Verificando Service Worker...');
     
     navigator.serviceWorker.getRegistrations().then(function(registrations) {
       console.log('🔍 AUTO-UPDATE: Encontradas', registrations.length, 'registrations');
