@@ -214,13 +214,14 @@ self.addEventListener('notificationclick', (event) => {
               await client.focus();
             }
             
-            // Enviar mensagem para tocar o áudio
+            // Enviar mensagem para tocar o áudio com Media Session
             if (client) {
               client.postMessage({
                 type: 'PLAY_AUDIO',
-                audio: notificationData.audio
+                audio: notificationData.audio,
+                title: notificationData.title || '7care - Áudio'
               });
-              console.log('✅ SW v15: Mensagem enviada para tocar áudio');
+              console.log('✅ SW v16: Mensagem enviada para tocar áudio com Media Session');
             }
           } catch (err) {
             console.error('❌ SW v15: Erro ao tocar áudio:', err);
