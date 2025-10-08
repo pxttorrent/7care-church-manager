@@ -51,7 +51,14 @@ if ('serviceWorker' in navigator) {
     
     // Salvar notificação no histórico
     if (event.data.type === 'SAVE_NOTIFICATION' && event.data.notification) {
-      console.log('💾 Salvando notificação no histórico...');
+      console.log('💾 [MAIN] Salvando notificação no histórico...');
+      console.log('📦 [MAIN] Notificação recebida:', {
+        hasAudio: event.data.notification.hasAudio,
+        hasImage: event.data.notification.hasImage,
+        audioDataLength: event.data.notification.audioData?.length || 0,
+        imageDataLength: event.data.notification.imageData?.length || 0,
+        title: event.data.notification.title
+      });
       
       try {
         // Obter user_id do localStorage
@@ -65,14 +72,19 @@ if ('serviceWorker' in navigator) {
             const existing = JSON.parse(localStorage.getItem(key) || '[]');
             const updated = [event.data.notification, ...existing].slice(0, 50); // Limitar a 50
             localStorage.setItem(key, JSON.stringify(updated));
-            console.log('✅ Notificação salva no histórico!');
+            console.log('✅ [MAIN] Notificação salva no histórico! Total:', updated.length);
+            console.log('💾 [MAIN] Salvo em:', key);
             
             // Disparar evento customizado para atualizar UI
             window.dispatchEvent(new CustomEvent('newNotification', { detail: event.data.notification }));
+          } else {
+            console.warn('⚠️ [MAIN] userId não encontrado');
           }
+        } else {
+          console.warn('⚠️ [MAIN] authData não encontrado');
         }
       } catch (error) {
-        console.error('❌ Erro ao salvar notificação:', error);
+        console.error('❌ [MAIN] Erro ao salvar notificação:', error);
       }
     }
     

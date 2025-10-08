@@ -1,5 +1,5 @@
 // Service Worker for 7care PWA
-const CACHE_NAME = '7care-v18-notifications-history';
+const CACHE_NAME = '7care-v18-fix-audio-save';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -93,6 +93,9 @@ self.addEventListener('push', (event) => {
   let iconUrl = '/pwa-192x192.png';
   let audioData = null;
   let hasAudio = false;
+  let imageData = null;
+  let hasImage = false;
+  let notificationType = 'general';
   
   try {
     if (event.data) {
@@ -119,14 +122,22 @@ self.addEventListener('push', (event) => {
         // Verificar se tem imagem
         if (parsed.image && typeof parsed.image === 'string' && parsed.image.startsWith('data:image')) {
           iconUrl = parsed.image;
-          console.log('📷 SW v16: Imagem detectada');
+          imageData = parsed.image;
+          hasImage = true;
+          console.log('📷 SW v18: Imagem detectada e salva');
         }
         
         // Verificar se tem áudio
         if (parsed.audio && typeof parsed.audio === 'string' && parsed.audio.startsWith('data:audio')) {
           audioData = parsed.audio;
           hasAudio = true;
-          console.log('🎵 SW v16: Áudio detectado');
+          console.log('🎵 SW v18: Áudio detectado e salvo');
+        }
+        
+        // Verificar tipo de notificação
+        if (parsed.type) {
+          notificationType = parsed.type;
+          console.log('📋 SW v18: Tipo de notificação:', notificationType);
         }
       } else {
         // Não é JSON - usar texto limpo
@@ -202,12 +213,22 @@ self.addEventListener('push', (event) => {
       };
 
       // Broadcast para clientes abertos (atualizar UI em tempo real)
+      console.log('📤 SW v18: Enviando notificação para clientes:', {
+        hasAudio: notificationData.hasAudio,
+        hasImage: notificationData.hasImage,
+        audioDataLength: notificationData.audioData?.length || 0,
+        imageDataLength: notificationData.imageData?.length || 0
+      });
+      
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      console.log('👥 SW v18: Clientes encontrados:', clients.length);
+      
       clients.forEach(client => {
         client.postMessage({
           type: 'SAVE_NOTIFICATION',
           notification: notificationData
         });
+        console.log('✅ SW v18: Mensagem enviada para cliente');
       });
 
       // Exibir notificação visual
