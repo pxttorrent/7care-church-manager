@@ -23,6 +23,7 @@ const Tasks = lazy(() => import("./pages/Tasks"));
 const MyInterested = lazy(() => import("./pages/MyInterested"));
 const Gamification = lazy(() => import("./pages/Gamification"));
 const Prayers = lazy(() => import("./pages/Prayers"));
+const PushNotifications = lazy(() => import("./pages/PushNotifications"));
 // const TestCalendar = lazy(() => import("./pages/TestCalendar")); // Arquivo removido
 const Contact = lazy(() => import("./pages/Contact"));
 const ElectionConfig = lazy(() => import("./pages/ElectionConfig"));
@@ -84,6 +85,7 @@ const App = () => {
               <Route path="/chat" element={<Chat />} />
               <Route path="/gamification" element={<Gamification />} />
               <Route path="/prayers" element={<Prayers />} />
+              <Route path="/push-notifications" element={<PushNotifications />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/reports" element={<Tasks />} />
