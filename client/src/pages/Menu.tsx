@@ -30,6 +30,7 @@ const Menu = () => {
       { title: 'Usuários', icon: Users, path: '/users', color: 'bg-blue-500', description: 'Gerenciar membros' },
       { title: 'Interessados', icon: UserPlus, path: '/my-interested', color: 'bg-green-500', description: 'Novos contatos' },
       { title: 'Tarefas', icon: CheckSquare, path: '/tasks', color: 'bg-orange-500', description: 'Gestão de tarefas' },
+      { title: 'Notificações Push', icon: Bell, path: '/push-notifications', color: 'bg-purple-500', description: 'Enviar notificações' },
       { title: 'Configurar Nomeações', icon: Vote, path: '/election-config', color: 'bg-indigo-500', description: 'Liderança da igreja' },
       { title: 'Dashboard Nomeações', icon: Eye, path: '/election-dashboard', color: 'bg-cyan-500', description: 'Acompanhar nomeações' },
       { title: 'Configurações', icon: Settings, path: '/settings', color: 'bg-gray-500', description: 'Sistema' }
