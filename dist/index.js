@@ -11,7 +11,7 @@ import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 var connectionString = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_enihr4YBSDm8@ep-still-glade-ac5u1r48-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
 var sql = neon(connectionString);
-var db2 = drizzle(sql);
+var db = drizzle(sql);
 var isDevelopment = process.env.NODE_ENV === "development";
 var isProduction = process.env.NODE_ENV === "production";
 console.log("\u{1F517} Neon Database configurado (vers\xE3o simplificada):", {
@@ -309,7 +309,7 @@ var eventFilterPermissions = pgTable("event_filter_permissions", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow()
 });
-var schema2 = {
+var schema = {
   users,
   churches,
   events,
@@ -345,7 +345,7 @@ var NeonAdapter = class {
   // ========== USUÁRIOS ==========
   async getAllUsers() {
     try {
-      const result = await db2.select().from(schema2.users).orderBy(asc(schema2.users.id));
+      const result = await db.select().from(schema.users).orderBy(asc(schema.users.id));
       const processedUsers = result.map((user) => {
         let extraData = {};
         if (user.extra_data) {
@@ -373,12 +373,12 @@ var NeonAdapter = class {
   }
   async getVisitedUsers() {
     try {
-      const result = await db2.select().from(schema2.users).where(
+      const result = await db.select().from(schema.users).where(
         and(
-          or(eq(schema2.users.role, "member"), eq(schema2.users.role, "missionary")),
+          or(eq(schema.users.role, "member"), eq(schema.users.role, "missionary")),
           sql`extra_data->>'visited' = 'true'`
         )
-      ).orderBy(schema2.users.id);
+      ).orderBy(schema.users.id);
       return result.map((user) => ({
         ...user,
         extraData: user.extraData ? typeof user.extraData === "string" ? JSON.parse(user.extraData) : user.extraData : {}
@@ -390,7 +390,7 @@ var NeonAdapter = class {
   }
   async getUserById(id) {
     try {
-      const result = await db2.select().from(schema2.users).where(eq(schema2.users.id, id)).limit(1);
+      const result = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
       const user = result[0] || null;
       if (user && user.extraData) {
         console.log(`\u{1F50D} getUserById ${id} - extraData type:`, typeof user.extraData);
@@ -404,7 +404,7 @@ var NeonAdapter = class {
   }
   async getUserByEmail(email) {
     try {
-      const result = await db2.select().from(schema2.users).where(eq(schema2.users.email, email)).limit(1);
+      const result = await db.select().from(schema.users).where(eq(schema.users.email, email)).limit(1);
       return result[0] || null;
     } catch (error) {
       console.error("Erro ao buscar usu\xE1rio por email:", error);
@@ -423,7 +423,7 @@ var NeonAdapter = class {
         createdAt: /* @__PURE__ */ new Date(),
         updatedAt: /* @__PURE__ */ new Date()
       };
-      const result = await db2.insert(schema2.users).values(newUser).returning();
+      const result = await db.insert(schema.users).values(newUser).returning();
       return result[0];
     } catch (error) {
       console.error("Erro ao criar usu\xE1rio:", error);
@@ -437,7 +437,7 @@ var NeonAdapter = class {
         updates.password = await bcrypt.hash(updates.password, 10);
       }
       updates.updatedAt = /* @__PURE__ */ new Date();
-      const result = await db2.update(schema2.users).set(updates).where(eq(schema2.users.id, id)).returning();
+      const result = await db.update(schema.users).set(updates).where(eq(schema.users.id, id)).returning();
       console.log(`\u2705 Usu\xE1rio ${id} atualizado com sucesso:`, result[0]?.extraData);
       return result[0] || null;
     } catch (error) {
@@ -475,7 +475,7 @@ var NeonAdapter = class {
       if (user && user.role === "admin") {
         throw new Error("N\xE3o \xE9 poss\xEDvel excluir usu\xE1rios administradores do sistema");
       }
-      const result = await db2.delete(schema2.users).where(eq(schema2.users.id, id));
+      const result = await db.delete(schema.users).where(eq(schema.users.id, id));
       return true;
     } catch (error) {
       console.error("Erro ao deletar usu\xE1rio:", error);
@@ -485,7 +485,7 @@ var NeonAdapter = class {
   // ========== IGREJAS ==========
   async getAllChurches() {
     try {
-      const result = await db2.select().from(schema2.churches).orderBy(asc(schema2.churches.id));
+      const result = await db.select().from(schema.churches).orderBy(asc(schema.churches.id));
       return result;
     } catch (error) {
       console.error("Erro ao buscar igrejas:", error);
@@ -494,7 +494,7 @@ var NeonAdapter = class {
   }
   async getChurchById(id) {
     try {
-      const result = await db2.select().from(schema2.churches).where(eq(schema2.churches.id, id)).limit(1);
+      const result = await db.select().from(schema.churches).where(eq(schema.churches.id, id)).limit(1);
       return result[0] || null;
     } catch (error) {
       console.error("Erro ao buscar igreja por ID:", error);
@@ -508,7 +508,7 @@ var NeonAdapter = class {
         createdAt: /* @__PURE__ */ new Date(),
         updatedAt: /* @__PURE__ */ new Date()
       };
-      const result = await db2.insert(schema2.churches).values(newChurch).returning();
+      const result = await db.insert(schema.churches).values(newChurch).returning();
       return result[0];
     } catch (error) {
       console.error("Erro ao criar igreja:", error);
@@ -518,7 +518,7 @@ var NeonAdapter = class {
   async updateChurch(id, updates) {
     try {
       updates.updatedAt = /* @__PURE__ */ new Date();
-      const result = await db2.update(schema2.churches).set(updates).where(eq(schema2.churches.id, id)).returning();
+      const result = await db.update(schema.churches).set(updates).where(eq(schema.churches.id, id)).returning();
       return result[0] || null;
     } catch (error) {
       console.error("Erro ao atualizar igreja:", error);
@@ -527,7 +527,7 @@ var NeonAdapter = class {
   }
   async deleteChurch(id) {
     try {
-      await db2.delete(schema2.churches).where(eq(schema2.churches.id, id));
+      await db.delete(schema.churches).where(eq(schema.churches.id, id));
       return true;
     } catch (error) {
       console.error("Erro ao deletar igreja:", error);
@@ -537,21 +537,21 @@ var NeonAdapter = class {
   // ========== EVENTOS ==========
   async getAllEvents() {
     try {
-      const result = await db2.select({
-        id: schema2.events.id,
-        title: schema2.events.title,
-        description: schema2.events.description,
-        date: schema2.events.date,
-        location: schema2.events.location,
-        type: schema2.events.type,
-        capacity: schema2.events.capacity,
-        isRecurring: schema2.events.isRecurring,
-        recurrencePattern: schema2.events.recurrencePattern,
-        createdBy: schema2.events.createdBy,
-        churchId: schema2.events.churchId,
-        createdAt: schema2.events.createdAt,
-        updatedAt: schema2.events.updatedAt
-      }).from(schema2.events).orderBy(desc(schema2.events.date));
+      const result = await db.select({
+        id: schema.events.id,
+        title: schema.events.title,
+        description: schema.events.description,
+        date: schema.events.date,
+        location: schema.events.location,
+        type: schema.events.type,
+        capacity: schema.events.capacity,
+        isRecurring: schema.events.isRecurring,
+        recurrencePattern: schema.events.recurrencePattern,
+        createdBy: schema.events.createdBy,
+        churchId: schema.events.churchId,
+        createdAt: schema.events.createdAt,
+        updatedAt: schema.events.updatedAt
+      }).from(schema.events).orderBy(desc(schema.events.date));
       return result;
     } catch (error) {
       console.error("Erro ao buscar eventos:", error);
@@ -560,7 +560,7 @@ var NeonAdapter = class {
   }
   async getEventById(id) {
     try {
-      const result = await db2.select().from(schema2.events).where(eq(schema2.events.id, id)).limit(1);
+      const result = await db.select().from(schema.events).where(eq(schema.events.id, id)).limit(1);
       return result[0] || null;
     } catch (error) {
       console.error("Erro ao buscar evento por ID:", error);
@@ -574,7 +574,7 @@ var NeonAdapter = class {
         createdAt: /* @__PURE__ */ new Date(),
         updatedAt: /* @__PURE__ */ new Date()
       };
-      const result = await db2.insert(schema2.events).values(newEvent).returning();
+      const result = await db.insert(schema.events).values(newEvent).returning();
       return result[0];
     } catch (error) {
       console.error("Erro ao criar evento:", error);
@@ -584,7 +584,7 @@ var NeonAdapter = class {
   async updateEvent(id, updates) {
     try {
       updates.updatedAt = /* @__PURE__ */ new Date();
-      const result = await db2.update(schema2.events).set(updates).where(eq(schema2.events.id, id)).returning();
+      const result = await db.update(schema.events).set(updates).where(eq(schema.events.id, id)).returning();
       return result[0] || null;
     } catch (error) {
       console.error("Erro ao atualizar evento:", error);
@@ -593,7 +593,7 @@ var NeonAdapter = class {
   }
   async deleteEvent(id) {
     try {
-      await db2.delete(schema2.events).where(eq(schema2.events.id, id));
+      await db.delete(schema.events).where(eq(schema.events.id, id));
       return true;
     } catch (error) {
       console.error("Erro ao deletar evento:", error);
@@ -641,7 +641,7 @@ var NeonAdapter = class {
   // ========== CONFIGURAÇÃO DE PONTOS ==========
   async getPointsConfiguration() {
     try {
-      const configs = await db2.select().from(schema2.pointConfigs);
+      const configs = await db.select().from(schema.pointConfigs);
       if (configs.length === 0) {
         return this.getDefaultPointsConfiguration();
       }
@@ -826,7 +826,7 @@ var NeonAdapter = class {
   }
   async savePointsConfiguration(config) {
     try {
-      await db2.delete(schema2.pointConfigs);
+      await db.delete(schema.pointConfigs);
       const basicConfigs = [
         { name: "basicPoints", value: config.basicPoints || 100, category: "basic" },
         { name: "attendancePoints", value: config.attendancePoints || 10, category: "basic" },
@@ -912,7 +912,7 @@ var NeonAdapter = class {
         ...totalPresencaConfigs,
         ...escolaSabatinaConfigs
       ];
-      await db2.insert(schema2.pointConfigs).values(allConfigs);
+      await db.insert(schema.pointConfigs).values(allConfigs);
     } catch (error) {
       console.error("\u274C Erro ao salvar configura\xE7\xE3o de pontos:", error);
       throw error;
@@ -922,7 +922,7 @@ var NeonAdapter = class {
   async resetAllUserPoints() {
     try {
       console.log("\u{1F504} Zerando pontos de todos os usu\xE1rios...");
-      await db2.update(schema2.users).set({ points: 0 });
+      await db.update(schema.users).set({ points: 0 });
       console.log("\u2705 Pontos zerados para todos os usu\xE1rios");
       return {
         success: true,
@@ -936,7 +936,7 @@ var NeonAdapter = class {
   async calculateUserPoints(userId) {
     try {
       console.log(`\u{1F504} Calculando pontos para usu\xE1rio ID: ${userId}`);
-      const userResult = await db2.select().from(schema2.users).where(eq(schema2.users.id, userId)).limit(1);
+      const userResult = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
       console.log("Resultado da query direta:", userResult);
       if (!userResult || userResult.length === 0) {
         console.log("\u274C Usu\xE1rio n\xE3o encontrado na query direta");
@@ -1176,7 +1176,7 @@ var NeonAdapter = class {
           if (calculation && calculation.success) {
             if (user.points !== calculation.points) {
               console.log(`   \u{1F504} Atualizando pontos: ${user.points} \u2192 ${calculation.points}`);
-              await db2.update(schema2.users).set({ points: calculation.points }).where(eq(schema2.users.id, user.id));
+              await db.update(schema.users).set({ points: calculation.points }).where(eq(schema.users.id, user.id));
               updatedCount++;
             } else {
               console.log(`   \u2705 Pontos j\xE1 est\xE3o atualizados: ${calculation.points}`);
@@ -1214,6 +1214,535 @@ var NeonAdapter = class {
       };
     }
   }
+  // ========== MÉTODOS ADICIONAIS (Sistema, Logo, etc) ==========
+  async saveSystemLogo(logoData) {
+    try {
+      await db.insert(schema.systemSettings).values({
+        key: "system_logo",
+        value: logoData,
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).onConflictDoUpdate({
+        target: schema.systemSettings.key,
+        set: {
+          value: logoData,
+          updatedAt: /* @__PURE__ */ new Date()
+        }
+      });
+    } catch (error) {
+      console.error("Erro ao salvar logo do sistema:", error);
+      throw error;
+    }
+  }
+  async getSystemLogo() {
+    try {
+      const result = await db.select().from(schema.systemSettings).where(eq(schema.systemSettings.key, "system_logo")).limit(1);
+      return result[0]?.value || null;
+    } catch (error) {
+      console.error("Erro ao buscar logo do sistema:", error);
+      return null;
+    }
+  }
+  async clearSystemLogo() {
+    try {
+      await db.delete(schema.systemSettings).where(eq(schema.systemSettings.key, "system_logo"));
+    } catch (error) {
+      console.error("Erro ao limpar logo do sistema:", error);
+      throw error;
+    }
+  }
+  async saveSystemSetting(key, value) {
+    try {
+      await db.insert(schema.systemSettings).values({
+        key,
+        value: JSON.stringify(value),
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).onConflictDoUpdate({
+        target: schema.systemSettings.key,
+        set: {
+          value: JSON.stringify(value),
+          updatedAt: /* @__PURE__ */ new Date()
+        }
+      });
+    } catch (error) {
+      console.error("Erro ao salvar configura\xE7\xE3o do sistema:", error);
+      throw error;
+    }
+  }
+  async getSystemSetting(key) {
+    try {
+      const result = await db.select().from(schema.systemSettings).where(eq(schema.systemSettings.key, key)).limit(1);
+      if (result[0]?.value) {
+        try {
+          return JSON.parse(result[0].value);
+        } catch {
+          return result[0].value;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error("Erro ao buscar configura\xE7\xE3o do sistema:", error);
+      return null;
+    }
+  }
+  async clearAllData() {
+    try {
+      await db.delete(schema.events);
+      await db.delete(schema.meetings);
+      await db.delete(schema.messages);
+      await db.delete(schema.notifications);
+      await db.delete(schema.prayers);
+      console.log("Todos os dados foram limpos");
+    } catch (error) {
+      console.error("Erro ao limpar dados:", error);
+      throw error;
+    }
+  }
+  // ========== MÉTODOS PRIORITÁRIOS (TOP 10 MAIS USADOS) ==========
+  // 1. getRelationshipsByMissionary (7x usado)
+  async getRelationshipsByMissionary(missionaryId) {
+    try {
+      const relationships2 = await db.select().from(schema.relationships).where(eq(schema.relationships.missionaryId, missionaryId));
+      return relationships2;
+    } catch (error) {
+      console.error("Erro ao buscar relacionamentos do mission\xE1rio:", error);
+      return [];
+    }
+  }
+  // 2. getMeetingsByUserId (5x usado)
+  async getMeetingsByUserId(userId) {
+    try {
+      const meetings2 = await db.select().from(schema.meetings).where(
+        or(
+          eq(schema.meetings.participantId, userId),
+          eq(schema.meetings.leaderId, userId)
+        )
+      ).orderBy(desc(schema.meetings.scheduledAt));
+      return meetings2;
+    } catch (error) {
+      console.error("Erro ao buscar reuni\xF5es do usu\xE1rio:", error);
+      return [];
+    }
+  }
+  // 3. getRelationshipsByInterested (4x usado)
+  async getRelationshipsByInterested(interestedId) {
+    try {
+      const relationships2 = await db.select().from(schema.relationships).where(eq(schema.relationships.interestedId, interestedId));
+      return relationships2;
+    } catch (error) {
+      console.error("Erro ao buscar relacionamentos do interessado:", error);
+      return [];
+    }
+  }
+  // 4. updateUserChurch (4x usado)
+  async updateUserChurch(userId, churchName) {
+    try {
+      await db.update(schema.users).set({ church: churchName }).where(eq(schema.users.id, userId));
+      return true;
+    } catch (error) {
+      console.error("Erro ao atualizar igreja do usu\xE1rio:", error);
+      return false;
+    }
+  }
+  // 5. getAllDiscipleshipRequests (4x usado)
+  async getAllDiscipleshipRequests() {
+    try {
+      const requests = await db.select().from(schema.discipleshipRequests).orderBy(desc(schema.discipleshipRequests.createdAt));
+      return requests;
+    } catch (error) {
+      console.error("Erro ao buscar pedidos de discipulado:", error);
+      return [];
+    }
+  }
+  // 6. createRelationship (3x usado)
+  async createRelationship(data) {
+    try {
+      const [relationship] = await db.insert(schema.relationships).values({
+        missionaryId: data.missionaryId,
+        interestedId: data.interestedId,
+        status: data.status || "active",
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).returning();
+      return relationship;
+    } catch (error) {
+      console.error("Erro ao criar relacionamento:", error);
+      throw error;
+    }
+  }
+  // 7. getEventPermissions (3x usado)
+  async getEventPermissions() {
+    try {
+      const permissions = await db.select().from(schema.eventFilterPermissions).limit(1);
+      if (permissions.length > 0) {
+        return typeof permissions[0].permissions === "string" ? JSON.parse(permissions[0].permissions) : permissions[0].permissions;
+      }
+      return null;
+    } catch (error) {
+      console.error("Erro ao buscar permiss\xF5es de eventos:", error);
+      return null;
+    }
+  }
+  // 8. getEmotionalCheckInsForAdmin (3x usado)
+  async getEmotionalCheckInsForAdmin() {
+    try {
+      const checkIns = await db.select().from(schema.emotionalCheckIns).orderBy(desc(schema.emotionalCheckIns.createdAt));
+      return checkIns;
+    } catch (error) {
+      console.error("Erro ao buscar check-ins emocionais para admin:", error);
+      return [];
+    }
+  }
+  // 9. createDiscipleshipRequest (3x usado)
+  async createDiscipleshipRequest(data) {
+    try {
+      const [request] = await db.insert(schema.discipleshipRequests).values({
+        interestedId: data.interestedId,
+        requestedMissionaryId: data.requestedMissionaryId,
+        status: data.status || "pending",
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).returning();
+      return request;
+    } catch (error) {
+      console.error("Erro ao criar pedido de discipulado:", error);
+      throw error;
+    }
+  }
+  // 10. getOrCreateChurch (3x usado)
+  async getOrCreateChurch(churchName) {
+    try {
+      const existing = await db.select().from(schema.churches).where(eq(schema.churches.name, churchName)).limit(1);
+      if (existing.length > 0) {
+        return existing[0];
+      }
+      const [newChurch] = await db.insert(schema.churches).values({
+        name: churchName,
+        address: "",
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).returning();
+      return newChurch;
+    } catch (error) {
+      console.error("Erro ao buscar/criar igreja:", error);
+      throw error;
+    }
+  }
+  // ========== MÉTODOS SECUNDÁRIOS (restantes) ==========
+  // Meetings
+  async getMeetingsByStatus(status) {
+    try {
+      const meetings2 = await db.select().from(schema.meetings).where(eq(schema.meetings.status, status)).orderBy(desc(schema.meetings.scheduledAt));
+      return meetings2;
+    } catch (error) {
+      console.error("Erro ao buscar reuni\xF5es por status:", error);
+      return [];
+    }
+  }
+  async getAllMeetings() {
+    try {
+      const meetings2 = await db.select().from(schema.meetings).orderBy(desc(schema.meetings.scheduledAt));
+      return meetings2;
+    } catch (error) {
+      console.error("Erro ao buscar todas as reuni\xF5es:", error);
+      return [];
+    }
+  }
+  async getMeetingTypes() {
+    try {
+      const types = await db.select().from(schema.meetingTypes);
+      return types;
+    } catch (error) {
+      console.error("Erro ao buscar tipos de reuni\xE3o:", error);
+      return [];
+    }
+  }
+  // Prayers
+  async getPrayers() {
+    try {
+      const prayers2 = await db.select().from(schema.prayers).orderBy(desc(schema.prayers.createdAt));
+      return prayers2;
+    } catch (error) {
+      console.error("Erro ao buscar ora\xE7\xF5es:", error);
+      return [];
+    }
+  }
+  async markPrayerAsAnswered(prayerId, answeredBy) {
+    try {
+      await db.update(schema.prayers).set({
+        status: "answered",
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(schema.prayers.id, prayerId));
+      return true;
+    } catch (error) {
+      console.error("Erro ao marcar ora\xE7\xE3o como respondida:", error);
+      return false;
+    }
+  }
+  async addPrayerIntercessor(prayerId, intercessorId) {
+    try {
+      await db.insert(schema.prayerIntercessors).values({
+        prayerId,
+        userId: intercessorId,
+        createdAt: /* @__PURE__ */ new Date()
+      });
+      return true;
+    } catch (error) {
+      console.error("Erro ao adicionar intercessor:", error);
+      return false;
+    }
+  }
+  async removePrayerIntercessor(prayerId, intercessorId) {
+    try {
+      await db.delete(schema.prayerIntercessors).where(
+        and(
+          eq(schema.prayerIntercessors.prayerId, prayerId),
+          eq(schema.prayerIntercessors.userId, intercessorId)
+        )
+      );
+      return true;
+    } catch (error) {
+      console.error("Erro ao remover intercessor:", error);
+      return false;
+    }
+  }
+  async getPrayerIntercessors(prayerId) {
+    try {
+      const intercessors = await db.select().from(schema.prayerIntercessors).where(eq(schema.prayerIntercessors.prayerId, prayerId));
+      return intercessors;
+    } catch (error) {
+      console.error("Erro ao buscar intercessores:", error);
+      return [];
+    }
+  }
+  async getPrayersUserIsPrayingFor(userId) {
+    try {
+      const prayers2 = await db.select().from(schema.prayers).innerJoin(
+        schema.prayerIntercessors,
+        eq(schema.prayers.id, schema.prayerIntercessors.prayerId)
+      ).where(eq(schema.prayerIntercessors.userId, userId));
+      return prayers2;
+    } catch (error) {
+      console.error("Erro ao buscar ora\xE7\xF5es que usu\xE1rio est\xE1 orando:", error);
+      return [];
+    }
+  }
+  // Emotional Check-ins
+  async getEmotionalCheckInsByUserId(userId) {
+    try {
+      const checkIns = await db.select().from(schema.emotionalCheckIns).where(eq(schema.emotionalCheckIns.userId, userId)).orderBy(desc(schema.emotionalCheckIns.createdAt));
+      return checkIns;
+    } catch (error) {
+      console.error("Erro ao buscar check-ins do usu\xE1rio:", error);
+      return [];
+    }
+  }
+  // Discipulado
+  async updateDiscipleshipRequest(id, updates) {
+    try {
+      const [updated] = await db.update(schema.discipleshipRequests).set({ ...updates, updatedAt: /* @__PURE__ */ new Date() }).where(eq(schema.discipleshipRequests.id, id)).returning();
+      return updated;
+    } catch (error) {
+      console.error("Erro ao atualizar pedido de discipulado:", error);
+      return null;
+    }
+  }
+  async deleteDiscipleshipRequest(id) {
+    try {
+      await db.delete(schema.discipleshipRequests).where(eq(schema.discipleshipRequests.id, id));
+      return true;
+    } catch (error) {
+      console.error("Erro ao deletar pedido de discipulado:", error);
+      return false;
+    }
+  }
+  // Relacionamentos
+  async deleteRelationship(relationshipId) {
+    try {
+      await db.delete(schema.relationships).where(eq(schema.relationships.id, relationshipId));
+      return true;
+    } catch (error) {
+      console.error("Erro ao deletar relacionamento:", error);
+      return false;
+    }
+  }
+  // Chat/Mensagens
+  async getConversationsByUserId(userId) {
+    try {
+      const conversations2 = await db.select().from(schema.conversations).innerJoin(
+        schema.conversationParticipants,
+        eq(schema.conversations.id, schema.conversationParticipants.conversationId)
+      ).where(eq(schema.conversationParticipants.userId, userId));
+      return conversations2;
+    } catch (error) {
+      console.error("Erro ao buscar conversas:", error);
+      return [];
+    }
+  }
+  async getOrCreateDirectConversation(userAId, userBId) {
+    try {
+      const existing = await db.select().from(schema.conversations).where(eq(schema.conversations.type, "direct")).limit(1);
+      if (existing.length > 0) {
+        return existing[0];
+      }
+      const [conversation] = await db.insert(schema.conversations).values({
+        type: "direct",
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).returning();
+      await db.insert(schema.conversationParticipants).values([
+        { conversationId: conversation.id, userId: userAId, createdAt: /* @__PURE__ */ new Date() },
+        { conversationId: conversation.id, userId: userBId, createdAt: /* @__PURE__ */ new Date() }
+      ]);
+      return conversation;
+    } catch (error) {
+      console.error("Erro ao buscar/criar conversa:", error);
+      throw error;
+    }
+  }
+  async getMessagesByConversationId(conversationId) {
+    try {
+      const messages2 = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, conversationId)).orderBy(asc(schema.messages.createdAt));
+      return messages2;
+    } catch (error) {
+      console.error("Erro ao buscar mensagens:", error);
+      return [];
+    }
+  }
+  async createMessage(data) {
+    try {
+      const [message] = await db.insert(schema.messages).values({
+        content: data.content,
+        senderId: data.senderId,
+        conversationId: data.conversationId,
+        createdAt: /* @__PURE__ */ new Date()
+      }).returning();
+      return message;
+    } catch (error) {
+      console.error("Erro ao criar mensagem:", error);
+      throw error;
+    }
+  }
+  // Eventos
+  async saveEventPermissions(permissions) {
+    try {
+      const permissionsJson = JSON.stringify(permissions);
+      await db.insert(schema.eventFilterPermissions).values({
+        permissions: permissionsJson,
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).onConflictDoUpdate({
+        target: schema.eventFilterPermissions.id,
+        set: {
+          permissions: permissionsJson,
+          updatedAt: /* @__PURE__ */ new Date()
+        }
+      });
+    } catch (error) {
+      console.error("Erro ao salvar permiss\xF5es de eventos:", error);
+      throw error;
+    }
+  }
+  async clearAllEvents() {
+    try {
+      await db.delete(schema.events);
+      return true;
+    } catch (error) {
+      console.error("Erro ao limpar eventos:", error);
+      return false;
+    }
+  }
+  // Sistema
+  async getSystemConfig(key) {
+    try {
+      const result = await db.select().from(schema.systemConfig).where(eq(schema.systemConfig.key, key)).limit(1);
+      if (result[0]?.value) {
+        try {
+          return JSON.parse(result[0].value);
+        } catch {
+          return result[0].value;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error("Erro ao buscar config do sistema:", error);
+      return null;
+    }
+  }
+  // Usuários
+  async approveUser(id) {
+    try {
+      const [user] = await db.update(schema.users).set({ status: "approved" }).where(eq(schema.users.id, id)).returning();
+      return user;
+    } catch (error) {
+      console.error("Erro ao aprovar usu\xE1rio:", error);
+      return null;
+    }
+  }
+  async rejectUser(id) {
+    try {
+      const [user] = await db.update(schema.users).set({ status: "rejected" }).where(eq(schema.users.id, id)).returning();
+      return user;
+    } catch (error) {
+      console.error("Erro ao rejeitar usu\xE1rio:", error);
+      return null;
+    }
+  }
+  async setDefaultChurch(churchId) {
+    try {
+      await db.insert(schema.systemSettings).values({
+        key: "default_church_id",
+        value: churchId.toString(),
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).onConflictDoUpdate({
+        target: schema.systemSettings.key,
+        set: {
+          value: churchId.toString(),
+          updatedAt: /* @__PURE__ */ new Date()
+        }
+      });
+      return true;
+    } catch (error) {
+      console.error("Erro ao definir igreja padr\xE3o:", error);
+      return false;
+    }
+  }
+  // Pontos
+  async getAllPointActivities() {
+    try {
+      const activities = await db.select().from(schema.pointActivities).orderBy(desc(schema.pointActivities.createdAt));
+      return activities;
+    } catch (error) {
+      console.error("Erro ao buscar atividades de pontos:", error);
+      return [];
+    }
+  }
+  // Perfil Missionário
+  async getMissionaryProfileByUserId(userId) {
+    try {
+      const profiles = await db.select().from(schema.missionaryProfiles).where(eq(schema.missionaryProfiles.userId, userId)).limit(1);
+      return profiles[0] || null;
+    } catch (error) {
+      console.error("Erro ao buscar perfil mission\xE1rio:", error);
+      return null;
+    }
+  }
+  // Igreja
+  async getDefaultChurch() {
+    try {
+      const result = await db.select().from(schema.systemSettings).where(eq(schema.systemSettings.key, "default_church_id")).limit(1);
+      if (result[0]?.value) {
+        const churchId = parseInt(result[0].value);
+        return await this.getChurchById(churchId);
+      }
+      return null;
+    } catch (error) {
+      console.error("Erro ao buscar igreja padr\xE3o:", error);
+      return null;
+    }
+  }
 };
 
 // server/migrateToNeon.ts
@@ -1221,7 +1750,7 @@ async function migrateToNeon() {
   console.log("\u{1F680} Iniciando migra\xE7\xE3o para Neon Database...");
   try {
     console.log("\u{1F4CB} Criando tabelas...");
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1254,7 +1783,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS churches (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1267,7 +1796,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS events (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
@@ -1284,7 +1813,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS relationships (
         id SERIAL PRIMARY KEY,
         interested_id INTEGER REFERENCES users(id),
@@ -1295,7 +1824,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS meetings (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
@@ -1309,7 +1838,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS conversations (
         id SERIAL PRIMARY KEY,
         title TEXT,
@@ -1319,7 +1848,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
         content TEXT NOT NULL,
@@ -1328,7 +1857,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS notifications (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
@@ -1339,7 +1868,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS discipleship_requests (
         id SERIAL PRIMARY KEY,
         interested_id INTEGER REFERENCES users(id),
@@ -1350,7 +1879,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS missionary_profiles (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -1361,7 +1890,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS emotional_checkins (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -1370,7 +1899,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS point_configs (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1380,7 +1909,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS achievements (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1390,7 +1919,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS point_activities (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -1400,7 +1929,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS system_config (
         id SERIAL PRIMARY KEY,
         key TEXT NOT NULL UNIQUE,
@@ -1410,7 +1939,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS system_settings (
         id SERIAL PRIMARY KEY,
         key TEXT NOT NULL UNIQUE,
@@ -1420,7 +1949,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS event_participants (
         id SERIAL PRIMARY KEY,
         event_id INTEGER REFERENCES events(id),
@@ -1429,7 +1958,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS meeting_types (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1438,7 +1967,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS user_achievements (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -1446,7 +1975,7 @@ async function migrateToNeon() {
         earned_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS user_points_history (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
@@ -1455,7 +1984,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS prayers (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
@@ -1467,7 +1996,7 @@ async function migrateToNeon() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS prayer_intercessors (
         id SERIAL PRIMARY KEY,
         prayer_id INTEGER REFERENCES prayers(id),
@@ -1475,7 +2004,7 @@ async function migrateToNeon() {
         joined_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS video_call_sessions (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
@@ -1488,7 +2017,7 @@ async function migrateToNeon() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS video_call_participants (
         id SERIAL PRIMARY KEY,
         session_id INTEGER REFERENCES video_call_sessions(id),
@@ -1497,7 +2026,7 @@ async function migrateToNeon() {
         left_at TIMESTAMP
       );
     `);
-    await db2.execute(`
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS conversation_participants (
         id SERIAL PRIMARY KEY,
         conversation_id INTEGER REFERENCES conversations(id),
@@ -1507,7 +2036,7 @@ async function migrateToNeon() {
     `);
     console.log("\u2705 Tabelas criadas com sucesso!");
     console.log("\u{1F464} Verificando super administrador...");
-    const existingAdmin = await db2.execute(`
+    const existingAdmin = await db.execute(`
       SELECT id FROM users WHERE email = 'admin@7care.com' LIMIT 1
     `);
     if (existingAdmin.rows.length === 0) {
@@ -1532,7 +2061,7 @@ async function migrateToNeon() {
         cpfValido: true,
         camposVaziosACMS: false
       });
-      await db2.execute(`
+      await db.execute(`
         INSERT INTO users (
           name, email, password, role, church, church_code, departments,
           birth_date, civil_status, occupation, education, address, baptism_date,
@@ -3099,6 +3628,29 @@ import * as fs2 from "fs";
 var storage = new NeonAdapter();
 var upload2 = multer2({ dest: "uploads/" });
 async function registerRoutes(app2) {
+  const parseCargos = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") {
+      return value.split(",").map((c) => c.trim()).filter((c) => c);
+    }
+    return [];
+  };
+  const parseBoolean = (value) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      return value.toLowerCase() === "sim" || value.toLowerCase() === "true" || value === "1";
+    }
+    return !!value;
+  };
+  const parseNumber = (value) => {
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
+      const num = parseInt(value);
+      return isNaN(num) ? 0 : num;
+    }
+    return 0;
+  };
   try {
     await migrateToNeon();
     console.log("\u2705 Neon Database conectado e funcionando");
@@ -4253,17 +4805,17 @@ async function registerRoutes(app2) {
             dizimistaType: userData.dizimista || userData.Dizimista,
             ofertanteType: userData.ofertante || userData.Ofertante,
             tempoBatismoAnos: userData.tempoBatismo || userData.TempoBatismo || userData["Tempo Batismo"],
-            cargos: this.parseCargos(userData.cargos || userData.Cargos),
+            cargos: parseCargos(userData.cargos || userData.Cargos),
             nomeUnidade: userData.nomeUnidade || userData.NomeUnidade || userData["Nome Unidade"],
-            temLicao: this.parseBoolean(userData.temLicao || userData.TemLicao || userData["Tem Licao"] || userData["Tem Li\xE7\xE3o"]),
-            comunhao: this.parseNumber(userData.comunhao || userData.Comunhao || userData.Comunh\u00E3o),
+            temLicao: parseBoolean(userData.temLicao || userData.TemLicao || userData["Tem Licao"] || userData["Tem Li\xE7\xE3o"]),
+            comunhao: parseNumber(userData.comunhao || userData.Comunhao || userData.Comunh\u00E3o),
             missao: userData.missao || userData.Missao || userData.Miss\u00E3o,
-            estudoBiblico: this.parseNumber(userData.estudoBiblico || userData.EstudoBiblico || userData["Estudo Biblico"] || userData["Estudo B\xEDblico"]),
-            totalPresenca: this.parseNumber(userData.totalPresenca || userData.TotalPresenca || userData["Total Presenca"] || userData["Total Presen\xE7a"]),
-            batizouAlguem: this.parseBoolean(userData.batizouAlguem || userData.BatizouAlguem || userData["Batizou Alguem"] || userData["Batizou Algu\xE9m"]),
-            discPosBatismal: this.parseNumber(userData.discipuladoPosBatismo || userData.DiscipuladoPosBatismo || userData["Discipulado Pos-Batismo"]),
+            estudoBiblico: parseNumber(userData.estudoBiblico || userData.EstudoBiblico || userData["Estudo Biblico"] || userData["Estudo B\xEDblico"]),
+            totalPresenca: parseNumber(userData.totalPresenca || userData.TotalPresenca || userData["Total Presenca"] || userData["Total Presen\xE7a"]),
+            batizouAlguem: parseBoolean(userData.batizouAlguem || userData.BatizouAlguem || userData["Batizou Alguem"] || userData["Batizou Algu\xE9m"]),
+            discPosBatismal: parseNumber(userData.discipuladoPosBatismo || userData.DiscipuladoPosBatismo || userData["Discipulado Pos-Batismo"]),
             cpfValido: userData.cpfValido || userData.CPFValido || userData["CPF Valido"] || userData["CPF V\xE1lido"],
-            camposVaziosACMS: this.parseBoolean(userData.camposVaziosACMS || userData.CamposVaziosACMS || userData["Campos Vazios"]),
+            camposVaziosACMS: parseBoolean(userData.camposVaziosACMS || userData.CamposVaziosACMS || userData["Campos Vazios"]),
             lastPowerBIUpdate: (/* @__PURE__ */ new Date()).toISOString()
           };
           await sql`
@@ -4294,29 +4846,6 @@ async function registerRoutes(app2) {
       res.status(500).json({ error: error.message || "Internal server error" });
     }
   });
-  const parseCargos = (value) => {
-    if (!value) return [];
-    if (Array.isArray(value)) return value;
-    if (typeof value === "string") {
-      return value.split(",").map((c) => c.trim()).filter((c) => c);
-    }
-    return [];
-  };
-  const parseBoolean = (value) => {
-    if (typeof value === "boolean") return value;
-    if (typeof value === "string") {
-      return value.toLowerCase() === "sim" || value.toLowerCase() === "true" || value === "1";
-    }
-    return !!value;
-  };
-  const parseNumber = (value) => {
-    if (typeof value === "number") return value;
-    if (typeof value === "string") {
-      const num = parseInt(value);
-      return isNaN(num) ? 0 : num;
-    }
-    return 0;
-  };
   app2.post("/api/users/bulk-import", async (req, res) => {
     try {
       const { users: users2 } = req.body;

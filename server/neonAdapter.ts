@@ -103,6 +103,45 @@ export interface IStorage {
   createMeeting(data: any): Promise<any>;
   updateMeeting(id: number, updates: any): Promise<any | null>;
   deleteMeeting(id: number): Promise<boolean>;
+  
+  // Métodos adicionais implementados
+  saveSystemLogo(logoData: string): Promise<void>;
+  getSystemLogo(): Promise<string | null>;
+  clearSystemLogo(): Promise<void>;
+  saveSystemSetting(key: string, value: any): Promise<void>;
+  getSystemSetting(key: string): Promise<any | null>;
+  getRelationshipsByMissionary(missionaryId: number): Promise<any[]>;
+  getRelationshipsByInterested(interestedId: number): Promise<any[]>;
+  createRelationship(data: any): Promise<any>;
+  deleteRelationship(relationshipId: number): Promise<boolean>;
+  updateUserChurch(userId: number, churchName: string): Promise<boolean>;
+  getAllDiscipleshipRequests(): Promise<any[]>;
+  createDiscipleshipRequest(data: any): Promise<any>;
+  updateDiscipleshipRequest(id: number, updates: any): Promise<any | null>;
+  deleteDiscipleshipRequest(id: number): Promise<boolean>;
+  getEventPermissions(): Promise<any>;
+  saveEventPermissions(permissions: any): Promise<void>;
+  clearAllEvents(): Promise<boolean>;
+  getOrCreateChurch(churchName: string): Promise<any>;
+  getMeetingsByStatus(status: string): Promise<any[]>;
+  getPrayers(): Promise<any[]>;
+  markPrayerAsAnswered(prayerId: number, answeredBy: number): Promise<boolean>;
+  addPrayerIntercessor(prayerId: number, intercessorId: number): Promise<boolean>;
+  removePrayerIntercessor(prayerId: number, intercessorId: number): Promise<boolean>;
+  getPrayerIntercessors(prayerId: number): Promise<any[]>;
+  getPrayersUserIsPrayingFor(userId: number): Promise<any[]>;
+  getConversationsByUserId(userId: number): Promise<any[]>;
+  getOrCreateDirectConversation(userAId: number, userBId: number): Promise<any>;
+  getMessagesByConversationId(conversationId: number): Promise<any[]>;
+  createMessage(data: any): Promise<any>;
+  getSystemConfig(key: string): Promise<any | null>;
+  approveUser(id: number): Promise<any | null>;
+  rejectUser(id: number): Promise<any | null>;
+  setDefaultChurch(churchId: number): Promise<boolean>;
+  getAllPointActivities(): Promise<any[]>;
+  getMissionaryProfileByUserId(userId: number): Promise<any | null>;
+  createMissionaryProfile(data: any): Promise<any>;
+  
   getAllMessages(): Promise<any[]>;
   getMessageById(id: number): Promise<any | null>;
   createMessage(data: any): Promise<any>;
@@ -1537,6 +1576,414 @@ export class NeonAdapter implements IStorage {
     } catch (error) {
       console.error('Erro ao buscar/criar igreja:', error);
       throw error;
+    }
+  }
+
+  // ========== MÉTODOS SECUNDÁRIOS (restantes) ==========
+
+  // Meetings
+  async getMeetingsByStatus(status: string): Promise<any[]> {
+    try {
+      const meetings = await db.select()
+        .from(schema.meetings)
+        .where(eq(schema.meetings.status, status))
+        .orderBy(desc(schema.meetings.scheduledAt));
+      return meetings;
+    } catch (error) {
+      console.error('Erro ao buscar reuniões por status:', error);
+      return [];
+    }
+  }
+
+  async getAllMeetings(): Promise<any[]> {
+    try {
+      const meetings = await db.select()
+        .from(schema.meetings)
+        .orderBy(desc(schema.meetings.scheduledAt));
+      return meetings;
+    } catch (error) {
+      console.error('Erro ao buscar todas as reuniões:', error);
+      return [];
+    }
+  }
+
+  async getMeetingTypes(): Promise<any[]> {
+    try {
+      const types = await db.select().from(schema.meetingTypes);
+      return types;
+    } catch (error) {
+      console.error('Erro ao buscar tipos de reunião:', error);
+      return [];
+    }
+  }
+
+  // Prayers
+  async getPrayers(): Promise<any[]> {
+    try {
+      const prayers = await db.select()
+        .from(schema.prayers)
+        .orderBy(desc(schema.prayers.createdAt));
+      return prayers;
+    } catch (error) {
+      console.error('Erro ao buscar orações:', error);
+      return [];
+    }
+  }
+
+  async markPrayerAsAnswered(prayerId: number, answeredBy: number): Promise<boolean> {
+    try {
+      await db.update(schema.prayers)
+        .set({ 
+          status: 'answered',
+          updatedAt: new Date()
+        })
+        .where(eq(schema.prayers.id, prayerId));
+      return true;
+    } catch (error) {
+      console.error('Erro ao marcar oração como respondida:', error);
+      return false;
+    }
+  }
+
+  async addPrayerIntercessor(prayerId: number, intercessorId: number): Promise<boolean> {
+    try {
+      await db.insert(schema.prayerIntercessors)
+        .values({
+          prayerId,
+          userId: intercessorId,
+          createdAt: new Date()
+        });
+      return true;
+    } catch (error) {
+      console.error('Erro ao adicionar intercessor:', error);
+      return false;
+    }
+  }
+
+  async removePrayerIntercessor(prayerId: number, intercessorId: number): Promise<boolean> {
+    try {
+      await db.delete(schema.prayerIntercessors)
+        .where(
+          and(
+            eq(schema.prayerIntercessors.prayerId, prayerId),
+            eq(schema.prayerIntercessors.userId, intercessorId)
+          )
+        );
+      return true;
+    } catch (error) {
+      console.error('Erro ao remover intercessor:', error);
+      return false;
+    }
+  }
+
+  async getPrayerIntercessors(prayerId: number): Promise<any[]> {
+    try {
+      const intercessors = await db.select()
+        .from(schema.prayerIntercessors)
+        .where(eq(schema.prayerIntercessors.prayerId, prayerId));
+      return intercessors;
+    } catch (error) {
+      console.error('Erro ao buscar intercessores:', error);
+      return [];
+    }
+  }
+
+  async getPrayersUserIsPrayingFor(userId: number): Promise<any[]> {
+    try {
+      const prayers = await db.select()
+        .from(schema.prayers)
+        .innerJoin(
+          schema.prayerIntercessors,
+          eq(schema.prayers.id, schema.prayerIntercessors.prayerId)
+        )
+        .where(eq(schema.prayerIntercessors.userId, userId));
+      return prayers;
+    } catch (error) {
+      console.error('Erro ao buscar orações que usuário está orando:', error);
+      return [];
+    }
+  }
+
+  // Emotional Check-ins
+  async getEmotionalCheckInsByUserId(userId: number): Promise<any[]> {
+    try {
+      const checkIns = await db.select()
+        .from(schema.emotionalCheckIns)
+        .where(eq(schema.emotionalCheckIns.userId, userId))
+        .orderBy(desc(schema.emotionalCheckIns.createdAt));
+      return checkIns;
+    } catch (error) {
+      console.error('Erro ao buscar check-ins do usuário:', error);
+      return [];
+    }
+  }
+
+  // Discipulado
+  async updateDiscipleshipRequest(id: number, updates: any): Promise<any | null> {
+    try {
+      const [updated] = await db.update(schema.discipleshipRequests)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(schema.discipleshipRequests.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error('Erro ao atualizar pedido de discipulado:', error);
+      return null;
+    }
+  }
+
+  async deleteDiscipleshipRequest(id: number): Promise<boolean> {
+    try {
+      await db.delete(schema.discipleshipRequests)
+        .where(eq(schema.discipleshipRequests.id, id));
+      return true;
+    } catch (error) {
+      console.error('Erro ao deletar pedido de discipulado:', error);
+      return false;
+    }
+  }
+
+  // Relacionamentos
+  async deleteRelationship(relationshipId: number): Promise<boolean> {
+    try {
+      await db.delete(schema.relationships)
+        .where(eq(schema.relationships.id, relationshipId));
+      return true;
+    } catch (error) {
+      console.error('Erro ao deletar relacionamento:', error);
+      return false;
+    }
+  }
+
+  // Chat/Mensagens
+  async getConversationsByUserId(userId: number): Promise<any[]> {
+    try {
+      const conversations = await db.select()
+        .from(schema.conversations)
+        .innerJoin(
+          schema.conversationParticipants,
+          eq(schema.conversations.id, schema.conversationParticipants.conversationId)
+        )
+        .where(eq(schema.conversationParticipants.userId, userId));
+      return conversations;
+    } catch (error) {
+      console.error('Erro ao buscar conversas:', error);
+      return [];
+    }
+  }
+
+  async getOrCreateDirectConversation(userAId: number, userBId: number): Promise<any> {
+    try {
+      // Buscar conversa existente
+      const existing = await db.select()
+        .from(schema.conversations)
+        .where(eq(schema.conversations.type, 'direct'))
+        .limit(1);
+      
+      if (existing.length > 0) {
+        return existing[0];
+      }
+      
+      // Criar nova conversa
+      const [conversation] = await db.insert(schema.conversations)
+        .values({
+          type: 'direct',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .returning();
+      
+      // Adicionar participantes
+      await db.insert(schema.conversationParticipants).values([
+        { conversationId: conversation.id, userId: userAId, createdAt: new Date() },
+        { conversationId: conversation.id, userId: userBId, createdAt: new Date() }
+      ]);
+      
+      return conversation;
+    } catch (error) {
+      console.error('Erro ao buscar/criar conversa:', error);
+      throw error;
+    }
+  }
+
+  async getMessagesByConversationId(conversationId: number): Promise<any[]> {
+    try {
+      const messages = await db.select()
+        .from(schema.messages)
+        .where(eq(schema.messages.conversationId, conversationId))
+        .orderBy(asc(schema.messages.createdAt));
+      return messages;
+    } catch (error) {
+      console.error('Erro ao buscar mensagens:', error);
+      return [];
+    }
+  }
+
+  async createMessage(data: any): Promise<any> {
+    try {
+      const [message] = await db.insert(schema.messages)
+        .values({
+          content: data.content,
+          senderId: data.senderId,
+          conversationId: data.conversationId,
+          createdAt: new Date()
+        })
+        .returning();
+      return message;
+    } catch (error) {
+      console.error('Erro ao criar mensagem:', error);
+      throw error;
+    }
+  }
+
+  // Eventos
+  async saveEventPermissions(permissions: any): Promise<void> {
+    try {
+      const permissionsJson = JSON.stringify(permissions);
+      await db.insert(schema.eventFilterPermissions)
+        .values({
+          permissions: permissionsJson,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .onConflictDoUpdate({
+          target: schema.eventFilterPermissions.id,
+          set: {
+            permissions: permissionsJson,
+            updatedAt: new Date()
+          }
+        });
+    } catch (error) {
+      console.error('Erro ao salvar permissões de eventos:', error);
+      throw error;
+    }
+  }
+
+  async clearAllEvents(): Promise<boolean> {
+    try {
+      await db.delete(schema.events);
+      return true;
+    } catch (error) {
+      console.error('Erro ao limpar eventos:', error);
+      return false;
+    }
+  }
+
+  // Sistema
+  async getSystemConfig(key: string): Promise<any | null> {
+    try {
+      const result = await db.select()
+        .from(schema.systemConfig)
+        .where(eq(schema.systemConfig.key, key))
+        .limit(1);
+      
+      if (result[0]?.value) {
+        try {
+          return JSON.parse(result[0].value);
+        } catch {
+          return result[0].value;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('Erro ao buscar config do sistema:', error);
+      return null;
+    }
+  }
+
+  // Usuários
+  async approveUser(id: number): Promise<any | null> {
+    try {
+      const [user] = await db.update(schema.users)
+        .set({ status: 'approved' })
+        .where(eq(schema.users.id, id))
+        .returning();
+      return user;
+    } catch (error) {
+      console.error('Erro ao aprovar usuário:', error);
+      return null;
+    }
+  }
+
+  async rejectUser(id: number): Promise<any | null> {
+    try {
+      const [user] = await db.update(schema.users)
+        .set({ status: 'rejected' })
+        .where(eq(schema.users.id, id))
+        .returning();
+      return user;
+    } catch (error) {
+      console.error('Erro ao rejeitar usuário:', error);
+      return null;
+    }
+  }
+
+  async setDefaultChurch(churchId: number): Promise<boolean> {
+    try {
+      await db.insert(schema.systemSettings)
+        .values({
+          key: 'default_church_id',
+          value: churchId.toString(),
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .onConflictDoUpdate({
+          target: schema.systemSettings.key,
+          set: {
+            value: churchId.toString(),
+            updatedAt: new Date()
+          }
+        });
+      return true;
+    } catch (error) {
+      console.error('Erro ao definir igreja padrão:', error);
+      return false;
+    }
+  }
+
+  // Pontos
+  async getAllPointActivities(): Promise<any[]> {
+    try {
+      const activities = await db.select()
+        .from(schema.pointActivities)
+        .orderBy(desc(schema.pointActivities.createdAt));
+      return activities;
+    } catch (error) {
+      console.error('Erro ao buscar atividades de pontos:', error);
+      return [];
+    }
+  }
+
+  // Perfil Missionário
+  async getMissionaryProfileByUserId(userId: number): Promise<any | null> {
+    try {
+      const profiles = await db.select()
+        .from(schema.missionaryProfiles)
+        .where(eq(schema.missionaryProfiles.userId, userId))
+        .limit(1);
+      return profiles[0] || null;
+    } catch (error) {
+      console.error('Erro ao buscar perfil missionário:', error);
+      return null;
+    }
+  }
+
+  // Igreja
+  async getDefaultChurch(): Promise<any | null> {
+    try {
+      const result = await db.select()
+        .from(schema.systemSettings)
+        .where(eq(schema.systemSettings.key, 'default_church_id'))
+        .limit(1);
+      
+      if (result[0]?.value) {
+        const churchId = parseInt(result[0].value);
+        return await this.getChurchById(churchId);
+      }
+      return null;
+    } catch (error) {
+      console.error('Erro ao buscar igreja padrão:', error);
+      return null;
     }
   }
 }
