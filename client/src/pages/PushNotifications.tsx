@@ -6,10 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { 
   Bell, Send, RefreshCw, Users, Check, AlertCircle,
   TrendingUp, Zap, Smile, Image, Mic, Play, Pause,
-  Trash2, X, Plus, ToggleLeft, ToggleRight, Clock
+  Trash2, X, Plus
 } from 'lucide-react';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { useAuth } from '@/hooks/useAuth';
@@ -430,69 +431,33 @@ export default function PushNotifications() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+              <div className="space-y-2 max-h-96 overflow-y-auto">
                 {subscriptionsList.map((subscription, index) => {
                   const isActive = subscription.is_active !== false; // Por padrão, considerar ativo
                   
                   return (
                     <div 
                       key={subscription.id} 
-                      className={`flex items-center justify-between p-4 rounded-xl transition-all duration-300 border-2 ${
-                        isActive 
-                          ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 hover:shadow-md' 
-                          : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-300 opacity-60'
-                      }`}
+                      className="flex items-center justify-between p-3 bg-white rounded-lg border hover:bg-gray-50 transition-colors"
                     >
                       <div className="flex items-center gap-3 flex-1">
-                        <div className={`h-12 w-12 rounded-full flex items-center justify-center text-white font-bold shadow-lg ${
-                          isActive 
-                            ? 'bg-gradient-to-br from-green-400 to-emerald-500' 
-                            : 'bg-gradient-to-br from-gray-400 to-slate-500'
-                        }`}>
+                        <div className="h-10 w-10 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
                           {subscription.user_name?.charAt(0).toUpperCase() || '?'}
                         </div>
                         <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-gray-900">{subscription.user_name}</span>
-                            {isActive ? (
-                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">
-                                Ativa
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 bg-gray-200 text-gray-600 text-xs font-medium rounded-full">
-                                Desativada
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5">{subscription.user_email}</div>
-                          <div className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            Criada em {new Date(subscription.created_at).toLocaleDateString('pt-BR')}
-                          </div>
+                          <div className="text-sm font-semibold text-gray-900">{subscription.user_name}</div>
+                          <div className="text-xs text-gray-500">{subscription.user_email}</div>
                         </div>
                       </div>
-                      <Button
-                        onClick={() => toggleSubscription(subscription.id, isActive)}
-                        variant={isActive ? "outline" : "default"}
-                        size="sm"
-                        className={`ml-3 transition-all duration-300 ${
-                          isActive
-                            ? 'border-2 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400'
-                            : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white shadow-lg'
-                        }`}
-                      >
-                        {isActive ? (
-                          <>
-                            <ToggleRight className="h-4 w-4 mr-1" />
-                            Desativar
-                          </>
-                        ) : (
-                          <>
-                            <ToggleLeft className="h-4 w-4 mr-1" />
-                            Ativar
-                          </>
-                        )}
-                      </Button>
+                      <div className="flex items-center gap-3">
+                        <div className="text-xs text-gray-400">
+                          {new Date(subscription.created_at).toLocaleDateString('pt-BR')}
+                        </div>
+                        <Switch
+                          checked={isActive}
+                          onCheckedChange={(checked) => toggleSubscription(subscription.id, isActive)}
+                        />
+                      </div>
                     </div>
                   );
                 })}
