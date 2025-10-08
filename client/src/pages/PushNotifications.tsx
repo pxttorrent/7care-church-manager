@@ -65,7 +65,19 @@ export default function PushNotifications() {
       const res = await fetch('/api/push/subscriptions');
       if (!res.ok) return;
       const data = await res.json();
-      setSubscriptionsList(data.subscriptions || data || []);
+      const allSubscriptions = data.subscriptions || data || [];
+      
+      // Agrupar por usuário (mostrar apenas o mais recente de cada)
+      const userMap = new Map();
+      allSubscriptions.forEach(sub => {
+        if (!userMap.has(sub.user_id) || 
+            new Date(sub.created_at) > new Date(userMap.get(sub.user_id).created_at)) {
+          userMap.set(sub.user_id, sub);
+        }
+      });
+      
+      const uniqueSubscriptions = Array.from(userMap.values());
+      setSubscriptionsList(uniqueSubscriptions);
     } catch {}
   };
 
