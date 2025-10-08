@@ -15,6 +15,7 @@ import {
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { forceUpdateServiceWorker } from '@/utils/updateServiceWorker';
 
 // Emojis populares para picker rápido
 const POPULAR_EMOJIS = [
@@ -341,7 +342,7 @@ export default function PushNotifications() {
         </div>
 
         {/* Botões de ação */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <Button 
             onClick={() => setShowNotificationModal(true)} 
             size="lg"
@@ -358,6 +359,15 @@ export default function PushNotifications() {
           >
             <RefreshCw className="h-5 w-5 mr-2" />
             Atualizar Lista
+          </Button>
+          <Button 
+            onClick={forceUpdateServiceWorker} 
+            variant="outline" 
+            size="lg"
+            className="h-16 border-2 border-orange-300 hover:border-orange-400 hover:bg-orange-50 transition-all duration-300 text-lg font-semibold text-orange-700"
+          >
+            <RefreshCw className="h-5 w-5 mr-2" />
+            Atualizar SW
           </Button>
         </div>
 

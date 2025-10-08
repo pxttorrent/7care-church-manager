@@ -1,5 +1,5 @@
 // Service Worker for 7care PWA
-const CACHE_NAME = '7care-v7-rich-notifications';
+const CACHE_NAME = '7care-v8-clean-notifications';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -12,9 +12,13 @@ const urlsToCache = [
 
 // Install event
 self.addEventListener('install', (event) => {
+  console.log('🔄 SW: Nova versão instalando...', CACHE_NAME);
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(urlsToCache))
+      .then((cache) => {
+        console.log('💾 SW: Cache criado:', CACHE_NAME);
+        return cache.addAll(urlsToCache);
+      })
   );
   // Ativar imediatamente a nova versão do SW
   self.skipWaiting();
@@ -46,9 +50,9 @@ self.addEventListener('fetch', (event) => {
 
 // Push event
 self.addEventListener('push', (event) => {
-  console.log('📱 SW: Push event recebido');
+  console.log('📱 SW: Push event recebido - Versão v8');
   
-  // Parsing do payload
+  // Parsing SUPER DEFENSIVO do payload
   let payload = {};
   let rawText = '';
   
@@ -69,28 +73,42 @@ self.addEventListener('push', (event) => {
         });
       } catch (parseError) {
         console.warn('⚠️ SW: Não é JSON, usando texto puro');
+        // Se não é JSON, usar o texto como mensagem
         payload = { message: rawText };
       }
     }
   } catch (err) {
     console.error('❌ SW: Erro ao processar payload:', err);
+    payload = { message: 'Nova notificação' };
   }
 
-  // Extrair dados LIMPOS (sem base64 grande)
+  // Extrair dados LIMPOS - NUNCA mostrar JSON
   const title = payload.title || '7care';
-  const message = payload.message || 'Nova notificação';
+  let message = payload.message || 'Nova notificação';
   
-  // Se a mensagem for muito grande (provavelmente contém base64), limitar
-  const cleanMessage = message.length > 200 
-    ? message.substring(0, 200) + '...' 
+  // PROTEÇÃO: Se a mensagem ainda contém JSON, extrair apenas texto
+  if (message.includes('{') && message.includes('}')) {
+    console.warn('⚠️ SW: Mensagem contém JSON, extraindo texto puro');
+    // Tentar extrair apenas o texto da mensagem
+    const messageMatch = message.match(/"message":"([^"]+)"/);
+    if (messageMatch) {
+      message = messageMatch[1];
+    } else {
+      // Se não conseguir extrair, usar mensagem padrão
+      message = 'Nova notificação do 7care';
+    }
+  }
+  
+  // Limitar tamanho da mensagem
+  const cleanMessage = message.length > 150 
+    ? message.substring(0, 150) + '...' 
     : message;
   
   // Preparar ícone da notificação
   let notificationIcon = '/pwa-192x192.png';
   
   // Se houver imagem em base64 E for pequena o suficiente, usar como ícone
-  // Caso contrário, usar ícone padrão
-  if (payload.image && payload.image.length < 100000) { // ~75KB
+  if (payload.image && typeof payload.image === 'string' && payload.image.length < 100000) {
     notificationIcon = payload.image;
   }
   
@@ -120,7 +138,12 @@ self.addEventListener('push', (event) => {
     ]
   };
 
-  console.log('📬 SW: Mostrando notificação:', { title, bodyLength: cleanMessage.length });
+  console.log('📬 SW: Mostrando notificação LIMPA:', { 
+    title, 
+    message: cleanMessage,
+    bodyLength: cleanMessage.length,
+    type: payload.type
+  });
 
   event.waitUntil(self.registration.showNotification(title, options));
 });
