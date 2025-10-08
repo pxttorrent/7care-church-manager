@@ -198,26 +198,24 @@ export default function PushNotifications() {
     setLoading(true);
 
     try {
-      // Preparar payload com mídia rica
-      const formData = new FormData();
-      formData.append('title', notificationTitle);
-      formData.append('message', notificationMessage);
-      formData.append('type', notificationType);
-      formData.append('userId', selectedUserId === 'all' ? '' : String(selectedUserId));
-      
-      // Adicionar imagem se houver
-      if (selectedImage) {
-        formData.append('image', selectedImage);
-      }
-      
-      // Adicionar áudio se houver
-      if (audioBlob) {
-        formData.append('audio', audioBlob, 'audio.webm');
-      }
+      // Preparar payload JSON com informações de mídia
+      const payload = {
+        title: notificationTitle,
+        message: notificationMessage,
+        type: notificationType,
+        userId: selectedUserId === 'all' ? null : Number(selectedUserId),
+        hasImage: !!selectedImage,
+        hasAudio: !!audioBlob,
+        imageName: selectedImage?.name || null,
+        audioSize: audioBlob?.size || null
+      };
 
       const res = await fetch('/api/push/send', {
         method: 'POST',
-        body: formData
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
       });
 
       if (!res.ok) {

@@ -13546,38 +13546,11 @@ exports.handler = async (event, context) => {
 
     if (path === '/api/push/send' && method === 'POST') {
       try {
+        // JSON com informações de mídia rica
         const body = JSON.parse(event.body || '{}');
-        // Suporte para FormData (mídia rica) ou JSON (texto simples)
-        let title, message, userId, type = 'general', hasImage = false, hasAudio = false;
+        const { title, message, userId, type = 'general', hasImage = false, hasAudio = false, imageName = null, audioSize = null } = body;
         
-        if (headers['content-type']?.includes('multipart/form-data')) {
-          // FormData - mídia rica
-          console.log('📦 FormData recebido - processando mídia rica...');
-          
-          // Para simplificar, vamos usar uma biblioteca de parsing
-          // Por enquanto, vamos assumir que temos os dados básicos
-          const rawBody = event.body;
-          
-          // Extrair campos básicos do FormData
-          const titleMatch = rawBody.match(/name="title"\r\n\r\n([^\r\n]+)/);
-          const messageMatch = rawBody.match(/name="message"\r\n\r\n([^\r\n]+)/);
-          const typeMatch = rawBody.match(/name="type"\r\n\r\n([^\r\n]+)/);
-          const userIdMatch = rawBody.match(/name="userId"\r\n\r\n([^\r\n]*)/);
-          
-          title = titleMatch ? titleMatch[1] : 'Notificação';
-          message = messageMatch ? messageMatch[1] : 'Nova mensagem';
-          type = typeMatch ? typeMatch[1] : 'general';
-          userId = userIdMatch ? userIdMatch[1] : null;
-          
-          // Verificar se tem imagem ou áudio
-          hasImage = rawBody.includes('name="image"');
-          hasAudio = rawBody.includes('name="audio"');
-          
-          console.log('📦 FormData parseado:', { title, message, type, userId, hasImage, hasAudio });
-        } else {
-          // JSON - texto simples
-          ({ title, message, userId, type = 'general' } = body);
-        }
+        console.log('📦 JSON recebido:', { title, message, type, userId, hasImage, hasAudio, imageName, audioSize });
 
         if (!title || !message) {
           return {
@@ -13636,10 +13609,14 @@ exports.handler = async (event, context) => {
         // Adicionar indicadores de mídia rica no texto
         if (hasImage && hasAudio) {
           payload = `📷🎵 ${message}`;
+          if (imageName) payload += ` [${imageName}]`;
+          if (audioSize) payload += ` [${Math.round(audioSize/1024)}KB áudio]`;
         } else if (hasImage) {
           payload = `📷 ${message}`;
+          if (imageName) payload += ` [${imageName}]`;
         } else if (hasAudio) {
           payload = `🎵 ${message}`;
+          if (audioSize) payload += ` [${Math.round(audioSize/1024)}KB áudio]`;
         }
         
         console.log('📦 Payload INTELIGENTE preparado:', { 
@@ -13647,7 +13624,9 @@ exports.handler = async (event, context) => {
           message: payload,
           type,
           hasImage,
-          hasAudio
+          hasAudio,
+          imageName,
+          audioSize
         });
 
         let sentCount = 0;
