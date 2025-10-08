@@ -718,9 +718,9 @@ export default function PushNotifications() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">👥 Todos ({subscriptionsList.length})</SelectItem>
-                      {usersList.map((u) => (
-                        <SelectItem key={u.id} value={String(u.id)}>
-                          {u.name}
+                      {subscriptionsList.map((sub) => (
+                        <SelectItem key={sub.id} value={String(sub.user_id)}>
+                          {sub.user_name}
                         </SelectItem>
                       ))}
                     </SelectContent>
