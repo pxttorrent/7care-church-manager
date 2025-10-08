@@ -1,6 +1,12 @@
 import { QueryClient } from '@tanstack/react-query';
 import { PERFORMANCE_CONFIG } from './performance';
 
+// Helper para adicionar JWT token nas requisições
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('7care_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
 // Configuração otimizada do React Query
 export const createQueryClient = () => {
   return new QueryClient({
@@ -18,6 +24,22 @@ export const createQueryClient = () => {
         
         // Configurações de retry inteligente
         retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+        
+        // Adicionar JWT token automaticamente em todas as queries
+        queryFn: async ({ queryKey }) => {
+          const url = queryKey[0] as string;
+          const token = localStorage.getItem('7care_token');
+          
+          const response = await fetch(url, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          return response.json();
+        },
       },
       mutations: {
         // Configurações para mutations

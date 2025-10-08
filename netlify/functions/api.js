@@ -1,6 +1,68 @@
 const { neon } = require('@neondatabase/serverless');
 const bcrypt = require('bcryptjs');
 const webpush = require('web-push');
+const jwt = require('jsonwebtoken');
+
+// JWT Secret (em produção, usar variável de ambiente)
+const JWT_SECRET = process.env.JWT_SECRET || '7care-secret-key-change-in-production-2025';
+const JWT_EXPIRES_IN = '24h';
+
+// Função para gerar JWT
+function generateToken(user) {
+  const payload = {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    name: user.name
+  };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+}
+
+// Função para verificar JWT
+function verifyToken(token) {
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (error) {
+    return null;
+  }
+}
+
+// Middleware de autenticação
+function requireAuth(event) {
+  const authHeader = event.headers['authorization'] || event.headers['Authorization'];
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return {
+      isValid: false,
+      error: 'Token não fornecido',
+      statusCode: 401
+    };
+  }
+  
+  const token = authHeader.substring(7); // Remove 'Bearer '
+  const decoded = verifyToken(token);
+  
+  if (!decoded) {
+    return {
+      isValid: false,
+      error: 'Token inválido ou expirado',
+      statusCode: 401
+    };
+  }
+  
+  return {
+    isValid: true,
+    user: decoded
+  };
+}
+
+// Lista de rotas públicas (não precisam de autenticação)
+const PUBLIC_ROUTES = [
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/reset-password',
+  '/api/system/logo'
+];
 
 // Nota: O status de recálculo agora é armazenado no banco (tabela recalculation_status)
 // para funcionar corretamente em ambientes serverless onde cada request pode ser uma nova instância
@@ -9,8 +71,8 @@ exports.handler = async (event, context) => {
   // Configurar CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
     'Content-Type': 'application/json'
   };
 
@@ -21,6 +83,30 @@ exports.handler = async (event, context) => {
       headers,
       body: ''
     };
+  }
+
+  const path = event.path;
+  const method = event.httpMethod;
+
+  // Verificar autenticação para rotas protegidas
+  const isPublicRoute = PUBLIC_ROUTES.some(route => path.startsWith(route));
+  
+  if (!isPublicRoute) {
+    const authResult = requireAuth(event);
+    if (!authResult.isValid) {
+      console.log(`🔒 Acesso negado para ${path}: ${authResult.error}`);
+      return {
+        statusCode: authResult.statusCode,
+        headers,
+        body: JSON.stringify({ 
+          error: authResult.error,
+          message: 'Autenticação necessária' 
+        })
+      };
+    }
+    // Adicionar user ao contexto para uso nas rotas
+    event.user = authResult.user;
+    console.log(`✅ Autenticado: ${authResult.user.email} (${authResult.user.role}) acessando ${path}`);
   }
 
   try {
@@ -1783,11 +1869,17 @@ exports.handler = async (event, context) => {
         // Verificar senha (simplificado para demo)
         const validPasswords = ['admin123', '123456', 'admin', 'password', '7care', 'meu7care'];
         if (validPasswords.includes(password)) {
+          // Gerar JWT token
+          const token = generateToken(user);
+          
+          console.log('✅ Login bem-sucedido, JWT gerado');
+          
           return {
             statusCode: 200,
             headers,
             body: JSON.stringify({ 
               success: true, 
+              token: token, // JWT token
               user: {
                 id: user.id,
                 name: user.name,

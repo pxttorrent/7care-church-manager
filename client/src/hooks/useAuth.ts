@@ -100,6 +100,12 @@ export const useAuth = () => {
       console.log('🔍 useAuth login - Response data:', data);
       
       if (data.success && data.user) {
+        // Armazenar JWT token
+        if (data.token) {
+          localStorage.setItem('7care_token', data.token);
+          console.log('🔒 JWT token armazenado');
+        }
+        
         // Store the extended user data including usingDefaultPassword
         const extendedUser: ExtendedUser = data.user;
         console.log('🔍 Debug useAuth - Login successful:');
@@ -109,7 +115,12 @@ export const useAuth = () => {
         // Fetch church information using the simple route
         try {
           console.log('🔍 useAuth login - Fetching church data for user:', extendedUser.id);
-          const churchResponse = await fetch(`/api/user/church?userId=${extendedUser.id}`);
+          
+          // Adicionar token JWT nas requisições
+          const token = localStorage.getItem('7care_token');
+          const churchResponse = await fetch(`/api/user/church?userId=${extendedUser.id}`, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+          });
           console.log('🔍 useAuth login - Church response status:', churchResponse.status);
           
           if (churchResponse.ok) {
@@ -168,6 +179,8 @@ export const useAuth = () => {
 
   const logout = () => {
     localStorage.removeItem('7care_auth');
+    localStorage.removeItem('7care_token'); // Remover JWT token
+    console.log('🔒 JWT token removido no logout');
     setAuthState({
       user: null,
       isAuthenticated: false,
