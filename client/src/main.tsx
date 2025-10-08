@@ -56,8 +56,18 @@ if ('serviceWorker' in navigator) {
         console.log('🎵 Reproduzindo áudio com Media Session API...');
         
         try {
-          // Criar elemento de áudio
-          const audio = new Audio(event.data.audio);
+          // Criar elemento de áudio com suporte iOS
+          const audio = new Audio();
+          
+          // Configurações para iOS
+          audio.setAttribute('playsinline', '');
+          audio.setAttribute('webkit-playsinline', '');
+          audio.preload = 'auto';
+          audio.src = event.data.audio;
+          
+          // Adicionar ao DOM temporariamente (necessário no iOS)
+          audio.style.display = 'none';
+          document.body.appendChild(audio);
           
           // Configurar Media Session API
           if ('mediaSession' in navigator) {
@@ -124,19 +134,68 @@ if ('serviceWorker' in navigator) {
             audio.addEventListener('ended', () => {
               navigator.mediaSession.playbackState = 'none';
               console.log('✅ Áudio finalizado');
+              // Remover do DOM após finalizar
+              if (audio.parentNode) {
+                audio.parentNode.removeChild(audio);
+              }
             });
             
             console.log('✅ Media Session configurada!');
           }
           
-          // Tocar áudio
-          audio.play()
-            .then(() => {
+          // Tocar áudio com retry para iOS
+          const playAudio = async () => {
+            try {
+              // Tentar carregar primeiro
+              await audio.load();
+              console.log('✅ Áudio carregado');
+              
+              // Tentar reproduzir
+              await audio.play();
               console.log('✅ Áudio reproduzido com Media Session!');
-            })
-            .catch((err) => {
+            } catch (err) {
               console.error('❌ Erro ao reproduzir áudio:', err);
-            });
+              
+              // Fallback para iOS: Mostrar alerta
+              if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+                console.log('📱 iOS detectado, tentando fallback...');
+                
+                // Tentar novamente após interação do usuário
+                const playButton = document.createElement('button');
+                playButton.textContent = '🎵 Tocar Áudio';
+                playButton.style.cssText = `
+                  position: fixed;
+                  top: 50%;
+                  left: 50%;
+                  transform: translate(-50%, -50%);
+                  padding: 20px 40px;
+                  font-size: 18px;
+                  font-weight: bold;
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  color: white;
+                  border: none;
+                  border-radius: 12px;
+                  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                  z-index: 9999;
+                  cursor: pointer;
+                `;
+                
+                playButton.onclick = async () => {
+                  try {
+                    await audio.play();
+                    document.body.removeChild(playButton);
+                    console.log('✅ Áudio reproduzido após interação');
+                  } catch (e) {
+                    console.error('❌ Ainda não conseguiu reproduzir:', e);
+                  }
+                };
+                
+                document.body.appendChild(playButton);
+              }
+            }
+          };
+          
+          playAudio();
         } catch (err) {
           console.error('❌ Erro ao criar áudio com Media Session:', err);
         }
