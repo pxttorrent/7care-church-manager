@@ -1,5 +1,5 @@
 // Service Worker for 7care PWA
-const CACHE_NAME = '7care-v11-notifications-fixed';
+const CACHE_NAME = '7care-v12-auto-update';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -48,9 +48,9 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Push event - VERSÃO ULTRA SIMPLES v11
+// Push event - VERSÃO DEFINITIVA v12
 self.addEventListener('push', (event) => {
-  console.log('📱 SW v11: Push event recebido');
+  console.log('📱 SW v12: Push event recebido');
   
   let title = '7care';
   let message = 'Nova notificação';
@@ -58,37 +58,54 @@ self.addEventListener('push', (event) => {
   try {
     if (event.data) {
       const rawText = event.data.text();
-      console.log('📦 SW v11: Raw text:', rawText.substring(0, 50));
+      console.log('📦 SW v12: Raw text:', rawText.substring(0, 100));
       
       // Tentar parsear JSON
       try {
         const data = JSON.parse(rawText);
         title = data.title || '7care';
         message = data.message || 'Nova notificação';
-        console.log('✅ SW v11: Parseado:', { title, message });
+        console.log('✅ SW v12: Parseado:', { title, message });
       } catch (e) {
         // Se não for JSON, usar texto direto
         message = rawText;
-        console.log('⚠️ SW v11: Usando texto direto');
+        console.log('⚠️ SW v12: Usando texto direto');
       }
     }
   } catch (err) {
-    console.error('❌ SW v11: Erro:', err);
+    console.error('❌ SW v12: Erro:', err);
   }
 
-  // Garantir que nunca mostra JSON
-  if (message.includes('{') || message.includes('}')) {
-    message = 'Nova notificação do 7care';
-  }
+  // PROTEÇÃO MÁXIMA: Limpar qualquer JSON que apareça
+  const cleanMessage = (text) => {
+    // Se contém JSON, extrair apenas o texto limpo
+    if (text.includes('{') && text.includes('}')) {
+      try {
+        const jsonMatch = text.match(/\{.*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return parsed.message || parsed.title || 'Nova notificação do 7care';
+        }
+      } catch (e) {
+        // Se falhar, usar texto padrão
+      }
+      return 'Nova notificação do 7care';
+    }
+    return text;
+  };
 
-  console.log('📬 SW v11: Exibindo:', { title, message });
+  message = cleanMessage(message);
+  
+  console.log('📬 SW v12: Exibindo LIMPO:', { title, message });
 
   event.waitUntil(
     self.registration.showNotification(title, {
       body: message,
       icon: '/pwa-192x192.png',
       badge: '/pwa-192x192.png',
-      vibrate: [200, 100, 200]
+      vibrate: [200, 100, 200],
+      tag: '7care-notification',
+      requireInteraction: false
     })
   );
 });

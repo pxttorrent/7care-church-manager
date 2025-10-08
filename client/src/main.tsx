@@ -42,16 +42,73 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
   }
 }
 
-// Register service worker for PWA and push notifications
+// AUTOMATIC SERVICE WORKER UPDATE - EXECUTA SEMPRE QUE A PÁGINA CARREGA
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((registration) => {
-        console.log('✅ Service Worker registrado com sucesso:', registration.scope);
-      })
-      .catch((error) => {
-        console.error('❌ Falha ao registrar Service Worker:', error);
-      });
+    console.log('🚀 AUTO-UPDATE: Verificando Service Worker...');
+    
+    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+      console.log('🔍 AUTO-UPDATE: Encontradas', registrations.length, 'registrations');
+      
+      // SEMPRE forçar atualização para garantir SW v11
+      if (registrations.length > 0) {
+        console.log('🔄 AUTO-UPDATE: Forçando atualização...');
+        
+        // Remover todas as registrations
+        const promises = registrations.map(registration => {
+          console.log('❌ AUTO-UPDATE: Removendo:', registration.scope);
+          return registration.unregister();
+        });
+        
+        Promise.all(promises).then(function() {
+          console.log('✅ AUTO-UPDATE: Registrations removidas');
+          
+          // Limpar cache
+          if ('caches' in window) {
+            caches.keys().then(function(cacheNames) {
+              console.log('🗑️ AUTO-UPDATE: Limpando', cacheNames.length, 'caches');
+              const deletePromises = cacheNames.map(cacheName => {
+                console.log('❌ AUTO-UPDATE: Deletando cache:', cacheName);
+                return caches.delete(cacheName);
+              });
+              
+              Promise.all(deletePromises).then(function() {
+                console.log('✅ AUTO-UPDATE: Caches limpos');
+                
+                // Aguardar e registrar nova versão
+                setTimeout(function() {
+                  console.log('🆕 AUTO-UPDATE: Registrando SW v11...');
+                  navigator.serviceWorker.register('/sw.js', {
+                    scope: '/'
+                  }).then(function(registration) {
+                    console.log('✅ AUTO-UPDATE: SW v11 registrado!');
+                    
+                    // Forçar ativação
+                    if (registration.waiting) {
+                      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                    
+                    // Recarregar após 2 segundos
+                    setTimeout(function() {
+                      console.log('🔄 AUTO-UPDATE: Recarregando...');
+                      window.location.reload();
+                    }, 2000);
+                    
+                  }).catch(function(error) {
+                    console.error('❌ AUTO-UPDATE: Erro:', error);
+                  });
+                }, 1000);
+              });
+            });
+          }
+        });
+      } else {
+        console.log('✅ AUTO-UPDATE: Nenhuma registration encontrada, registrando SW v11...');
+        navigator.serviceWorker.register('/sw.js').then(function(registration) {
+          console.log('✅ AUTO-UPDATE: SW v11 registrado!');
+        });
+      }
+    });
   });
 }
 

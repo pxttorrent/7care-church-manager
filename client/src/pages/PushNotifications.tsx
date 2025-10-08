@@ -14,13 +14,7 @@ import { MobileLayout } from '@/components/layout/MobileLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
-// Função para forçar atualização ultra agressiva do Service Worker
-const forceUltraUpdate = () => {
-  const script = document.createElement('script');
-  script.src = '/force-update.js';
-  script.onload = () => console.log('✅ Script de atualização carregado');
-  document.head.appendChild(script);
-};
+// Service Worker agora atualiza automaticamente via main.tsx
 
 export default function PushNotifications() {
   const { user } = useAuth();
@@ -199,7 +193,7 @@ export default function PushNotifications() {
         </div>
 
         {/* Botões de ação */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <Button 
             onClick={() => setShowNotificationModal(true)} 
             size="lg"
@@ -216,15 +210,6 @@ export default function PushNotifications() {
           >
             <RefreshCw className="h-6 w-6 mr-3" />
             Atualizar Lista
-          </Button>
-          <Button 
-            onClick={forceUltraUpdate} 
-            variant="outline" 
-            size="lg"
-            className="h-16 border-2 border-red-300 hover:border-red-400 hover:bg-red-50 transition-all duration-300 text-lg font-semibold text-red-700"
-          >
-            <RefreshCw className="h-6 w-6 mr-3" />
-            Fix SW v11
           </Button>
         </div>
 
