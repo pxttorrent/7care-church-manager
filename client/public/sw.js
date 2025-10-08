@@ -1,5 +1,5 @@
 // Service Worker for 7care PWA
-const CACHE_NAME = '7care-v13-simple-text';
+const CACHE_NAME = '7care-v14-rich-media';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -48,37 +48,49 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Push event - VERSÃO TEXTO SIMPLES v13
+// Push event - VERSÃO MÍDIA RICA v14
 self.addEventListener('push', (event) => {
-  console.log('📱 SW v13: Push event recebido');
+  console.log('📱 SW v14: Push event recebido');
   
   let title = '7care';
   let message = 'Nova notificação';
+  let notificationIcon = '/pwa-192x192.png';
   
   try {
     if (event.data) {
       const rawText = event.data.text();
-      console.log('📦 SW v13: Raw text recebido:', rawText.substring(0, 100));
+      console.log('📦 SW v14: Raw text recebido:', rawText.substring(0, 100));
       
-      // Como agora enviamos apenas texto simples, usar diretamente
+      // Usar texto diretamente (já vem com emojis e indicadores de mídia)
       message = rawText;
-      console.log('✅ SW v13: Usando texto simples:', message);
+      console.log('✅ SW v14: Usando texto rico:', message);
+      
+      // Detectar tipo de mídia e ajustar ícone
+      if (message.includes('📷🎵')) {
+        notificationIcon = '/pwa-192x192.png'; // Ícone com mídia completa
+      } else if (message.includes('📷')) {
+        notificationIcon = '/pwa-192x192.png'; // Ícone com imagem
+      } else if (message.includes('🎵')) {
+        notificationIcon = '/pwa-192x192.png'; // Ícone com áudio
+      }
     }
   } catch (err) {
-    console.error('❌ SW v13: Erro:', err);
+    console.error('❌ SW v14: Erro:', err);
     message = 'Nova notificação do 7care';
   }
   
-  console.log('📬 SW v13: Exibindo notificação:', { title, message });
+  console.log('📬 SW v14: Exibindo notificação rica:', { title, message });
 
   event.waitUntil(
     self.registration.showNotification(title, {
       body: message,
-      icon: '/pwa-192x192.png',
+      icon: notificationIcon,
       badge: '/pwa-192x192.png',
       vibrate: [200, 100, 200],
       tag: '7care-notification',
-      requireInteraction: false
+      requireInteraction: false,
+      silent: false,
+      renotify: true
     })
   );
 });

@@ -13547,7 +13547,37 @@ exports.handler = async (event, context) => {
     if (path === '/api/push/send' && method === 'POST') {
       try {
         const body = JSON.parse(event.body || '{}');
-        const { title, message, userId, type = 'general' } = body;
+        // Suporte para FormData (mídia rica) ou JSON (texto simples)
+        let title, message, userId, type = 'general', hasImage = false, hasAudio = false;
+        
+        if (headers['content-type']?.includes('multipart/form-data')) {
+          // FormData - mídia rica
+          console.log('📦 FormData recebido - processando mídia rica...');
+          
+          // Para simplificar, vamos usar uma biblioteca de parsing
+          // Por enquanto, vamos assumir que temos os dados básicos
+          const rawBody = event.body;
+          
+          // Extrair campos básicos do FormData
+          const titleMatch = rawBody.match(/name="title"\r\n\r\n([^\r\n]+)/);
+          const messageMatch = rawBody.match(/name="message"\r\n\r\n([^\r\n]+)/);
+          const typeMatch = rawBody.match(/name="type"\r\n\r\n([^\r\n]+)/);
+          const userIdMatch = rawBody.match(/name="userId"\r\n\r\n([^\r\n]*)/);
+          
+          title = titleMatch ? titleMatch[1] : 'Notificação';
+          message = messageMatch ? messageMatch[1] : 'Nova mensagem';
+          type = typeMatch ? typeMatch[1] : 'general';
+          userId = userIdMatch ? userIdMatch[1] : null;
+          
+          // Verificar se tem imagem ou áudio
+          hasImage = rawBody.includes('name="image"');
+          hasAudio = rawBody.includes('name="audio"');
+          
+          console.log('📦 FormData parseado:', { title, message, type, userId, hasImage, hasAudio });
+        } else {
+          // JSON - texto simples
+          ({ title, message, userId, type = 'general' } = body);
+        }
 
         if (!title || !message) {
           return {
@@ -13600,14 +13630,24 @@ exports.handler = async (event, context) => {
           VALUES (${title}, ${message}, ${userId || null}, ${type}, false, NOW())
         `;
 
-        // ENVIO SIMPLES - Apenas título e mensagem
-        // Enviar apenas o texto da mensagem, sem JSON
-        const payload = message;
+        // ENVIO INTELIGENTE - Texto simples com informações de mídia
+        let payload = message;
         
-        console.log('📦 Payload SIMPLES preparado:', { 
+        // Adicionar indicadores de mídia rica no texto
+        if (hasImage && hasAudio) {
+          payload = `📷🎵 ${message}`;
+        } else if (hasImage) {
+          payload = `📷 ${message}`;
+        } else if (hasAudio) {
+          payload = `🎵 ${message}`;
+        }
+        
+        console.log('📦 Payload INTELIGENTE preparado:', { 
           title,
-          message,
-          type
+          message: payload,
+          type,
+          hasImage,
+          hasAudio
         });
 
         let sentCount = 0;

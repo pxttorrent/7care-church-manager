@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -8,7 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Bell, Send, RefreshCw, Users, Check, AlertCircle,
-  TrendingUp, Zap
+  TrendingUp, Zap, Smile, Image, Mic, Play, Pause,
+  Trash2, X, Plus
 } from 'lucide-react';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,6 +28,21 @@ export default function PushNotifications() {
   const [usersList, setUsersList] = useState<any[]>([]);
   const [subscriptionsList, setSubscriptionsList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  // Estados para mídia rica
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  
+  // Refs para áudio
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') return;
@@ -52,6 +68,123 @@ export default function PushNotifications() {
     } catch {}
   };
 
+  // Emojis populares
+  const POPULAR_EMOJIS = [
+    '😀', '😊', '😂', '🤗', '😍', '🥰', '😎', '🤩', '🥳', '🎉',
+    '❤️', '💕', '💖', '💯', '🔥', '✨', '🌟', '🙏', '👍', '👏',
+    '🎊', '🎈', '🎁', '🎂', '🍰', '☕', '🍕', '🎵', '🎶', '📱'
+  ];
+
+  // Funções de emoji
+  const insertEmoji = (emoji: string) => {
+    setNotificationMessage(prev => prev + emoji);
+    setShowEmojiPicker(false);
+  };
+
+  // Funções de imagem
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({
+          title: "Arquivo muito grande",
+          description: "A imagem deve ter no máximo 5MB",
+          variant: "destructive"
+        });
+        return;
+      }
+      setSelectedImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Funções de áudio
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setAudioBlob(audioBlob);
+        setAudioUrl(URL.createObjectURL(audioBlob));
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      
+      toast({
+        title: "🎤 Gravando...",
+        description: "Clique novamente para parar a gravação"
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao gravar",
+        description: "Não foi possível acessar o microfone",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      
+      toast({
+        title: "✅ Gravação concluída",
+        description: "Áudio pronto para envio"
+      });
+    }
+  };
+
+  const playAudio = () => {
+    if (audioUrl) {
+      if (!audioPlayerRef.current) {
+        audioPlayerRef.current = new Audio(audioUrl);
+      }
+      audioPlayerRef.current.play();
+      setIsPlayingAudio(true);
+      audioPlayerRef.current.onended = () => setIsPlayingAudio(false);
+    }
+  };
+
+  const pauseAudio = () => {
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      setIsPlayingAudio(false);
+    }
+  };
+
+  const removeAudio = () => {
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current = null;
+    }
+    setAudioBlob(null);
+    setAudioUrl(null);
+    setIsPlayingAudio(false);
+  };
+
   const sendNotification = async () => {
     if (!notificationTitle.trim() || !notificationMessage.trim()) {
       toast({
@@ -65,19 +198,26 @@ export default function PushNotifications() {
     setLoading(true);
 
     try {
-      const payload = {
-        title: notificationTitle,
-        message: notificationMessage,
-        type: notificationType,
-        userId: selectedUserId === 'all' ? null : Number(selectedUserId)
-      };
+      // Preparar payload com mídia rica
+      const formData = new FormData();
+      formData.append('title', notificationTitle);
+      formData.append('message', notificationMessage);
+      formData.append('type', notificationType);
+      formData.append('userId', selectedUserId === 'all' ? '' : String(selectedUserId));
+      
+      // Adicionar imagem se houver
+      if (selectedImage) {
+        formData.append('image', selectedImage);
+      }
+      
+      // Adicionar áudio se houver
+      if (audioBlob) {
+        formData.append('audio', audioBlob, 'audio.webm');
+      }
 
       const res = await fetch('/api/push/send', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
+        body: formData
       });
 
       if (!res.ok) {
@@ -97,6 +237,9 @@ export default function PushNotifications() {
       setNotificationType('general');
       setSelectedUserId('all');
       setShowNotificationModal(false);
+      removeImage();
+      removeAudio();
+      setShowEmojiPicker(false);
 
     } catch (e) {
       toast({
@@ -253,11 +396,11 @@ export default function PushNotifications() {
 
         {/* Modal de envio */}
         <Dialog open={showNotificationModal} onOpenChange={setShowNotificationModal}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-2xl flex items-center gap-2">
                 <Bell className="h-6 w-6 text-blue-600" />
-                Nova Notificação
+                Nova Notificação Rica
               </DialogTitle>
             </DialogHeader>
             
@@ -273,15 +416,127 @@ export default function PushNotifications() {
                 />
               </div>
 
-              {/* Mensagem */}
+              {/* Mensagem com emoji picker */}
               <div>
-                <Label className="text-sm font-semibold">Mensagem</Label>
+                <Label className="text-sm font-semibold flex items-center justify-between">
+                  <span>Mensagem</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    className="h-8 px-2"
+                  >
+                    <Smile className="h-4 w-4 mr-1" />
+                    Emojis
+                  </Button>
+                </Label>
+                
+                {showEmojiPicker && (
+                  <div className="mt-2 p-3 bg-gray-50 rounded-lg border">
+                    <div className="flex flex-wrap gap-2">
+                      {POPULAR_EMOJIS.map((emoji, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => insertEmoji(emoji)}
+                          className="text-2xl hover:bg-white p-2 rounded transition-colors"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 <Textarea 
                   value={notificationMessage} 
                   onChange={(e) => setNotificationMessage(e.target.value)}
                   placeholder="Escreva sua mensagem aqui..."
                   className="mt-1.5 min-h-[100px]"
                 />
+              </div>
+
+              {/* Upload de imagem */}
+              <div>
+                <Label className="text-sm font-semibold">Imagem (opcional)</Label>
+                <div className="mt-1.5">
+                  {imagePreview ? (
+                    <div className="relative">
+                      <img 
+                        src={imagePreview} 
+                        alt="Preview" 
+                        className="w-full h-48 object-cover rounded-lg border-2 border-gray-200"
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={removeImage}
+                        className="absolute top-2 right-2"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all"
+                    >
+                      <Image className="h-10 w-10 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-600">Clique para selecionar uma imagem</p>
+                      <p className="text-xs text-gray-400 mt-1">PNG, JPG até 5MB</p>
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+              {/* Gravação de áudio */}
+              <div>
+                <Label className="text-sm font-semibold">Áudio (opcional)</Label>
+                <div className="mt-1.5 space-y-2">
+                  {audioUrl ? (
+                    <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={isPlayingAudio ? pauseAudio : playAudio}
+                      >
+                        {isPlayingAudio ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                      </Button>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Áudio gravado</p>
+                        <p className="text-xs text-gray-500">Clique para ouvir</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={removeAudio}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant={isRecording ? "destructive" : "outline"}
+                      onClick={isRecording ? stopRecording : startRecording}
+                      className="w-full"
+                    >
+                      <Mic className="h-4 w-4 mr-2" />
+                      {isRecording ? 'Parar Gravação' : 'Gravar Áudio'}
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {/* Tipo e destinatário */}
