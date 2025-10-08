@@ -1,5 +1,5 @@
 // Service Worker for 7care PWA
-const CACHE_NAME = '7care-v14-rich-media';
+const CACHE_NAME = '7care-v15-interactive-audio';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -48,76 +48,168 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Push event - VERSÃO MÍDIA RICA v14
+// Push event - VERSÃO ÁUDIO INTERATIVO v15
 self.addEventListener('push', (event) => {
-  console.log('📱 SW v14: Push event recebido');
+  console.log('📱 SW v15: Push event recebido');
   
-  let title = '7care';
-  let message = 'Nova notificação';
-  let notificationIcon = '/pwa-192x192.png';
+  let notificationData = {
+    title: '7care',
+    message: 'Nova notificação',
+    hasImage: false,
+    hasAudio: false,
+    image: null,
+    audio: null
+  };
   
   try {
     if (event.data) {
       const rawText = event.data.text();
-      console.log('📦 SW v14: Raw text recebido:', rawText.substring(0, 100));
+      console.log('📦 SW v15: Raw text recebido:', rawText.substring(0, 100));
       
-      // Usar texto diretamente (já vem com emojis e indicadores de mídia)
-      message = rawText;
-      console.log('✅ SW v14: Usando texto rico:', message);
-      
-      // Detectar tipo de mídia e ajustar ícone
-      if (message.includes('📷🎵')) {
-        notificationIcon = '/pwa-192x192.png'; // Ícone com mídia completa
-      } else if (message.includes('📷')) {
-        notificationIcon = '/pwa-192x192.png'; // Ícone com imagem
-      } else if (message.includes('🎵')) {
-        notificationIcon = '/pwa-192x192.png'; // Ícone com áudio
+      try {
+        // Tentar parsear como JSON
+        const parsed = JSON.parse(rawText);
+        notificationData = {
+          title: parsed.title || '7care',
+          message: parsed.message || 'Nova notificação',
+          hasImage: !!parsed.image,
+          hasAudio: !!parsed.audio,
+          image: parsed.image || null,
+          audio: parsed.audio || null,
+          imageName: parsed.imageName || null,
+          audioSize: parsed.audioSize || null
+        };
+        console.log('✅ SW v15: JSON parseado com sucesso:', {
+          hasImage: notificationData.hasImage,
+          hasAudio: notificationData.hasAudio,
+          imageName: notificationData.imageName,
+          audioSize: notificationData.audioSize
+        });
+      } catch (parseError) {
+        // Se não for JSON, usar como texto simples
+        notificationData.message = rawText;
+        console.log('⚠️ SW v15: Usando como texto simples');
       }
     }
   } catch (err) {
-    console.error('❌ SW v14: Erro:', err);
-    message = 'Nova notificação do 7care';
+    console.error('❌ SW v15: Erro:', err);
   }
   
-  console.log('📬 SW v14: Exibindo notificação rica:', { title, message });
+  // Preparar opções da notificação
+  const notificationOptions = {
+    body: notificationData.message,
+    icon: notificationData.image || '/pwa-192x192.png',
+    badge: '/pwa-192x192.png',
+    vibrate: [200, 100, 200],
+    tag: '7care-notification',
+    requireInteraction: notificationData.hasAudio, // Manter aberta se tiver áudio
+    silent: false,
+    renotify: true,
+    data: {
+      audio: notificationData.audio,
+      hasAudio: notificationData.hasAudio,
+      image: notificationData.image,
+      hasImage: notificationData.hasImage
+    }
+  };
+  
+  // Adicionar ações se tiver áudio
+  if (notificationData.hasAudio) {
+    notificationOptions.actions = [
+      {
+        action: 'play-audio',
+        title: '🎵 Tocar Áudio',
+        icon: '/pwa-192x192.png'
+      },
+      {
+        action: 'close',
+        title: 'Fechar',
+        icon: '/pwa-192x192.png'
+      }
+    ];
+  }
+  
+  console.log('📬 SW v15: Exibindo notificação interativa:', {
+    title: notificationData.title,
+    hasAudio: notificationData.hasAudio,
+    hasImage: notificationData.hasImage,
+    requireInteraction: notificationOptions.requireInteraction
+  });
 
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: message,
-      icon: notificationIcon,
-      badge: '/pwa-192x192.png',
-      vibrate: [200, 100, 200],
-      tag: '7care-notification',
-      requireInteraction: false,
-      silent: false,
-      renotify: true
-    })
+    self.registration.showNotification(notificationData.title, notificationOptions)
   );
 });
 
-// Notification click event
+// Notification click event - COM SUPORTE A ÁUDIO v15
 self.addEventListener('notificationclick', (event) => {
+  console.log('🖱️ SW v15: Notificação clicada:', event.action);
+  
   try {
-    event.notification.close();
-
-    const targetUrl = (event.notification && event.notification.data && event.notification.data.url) || '/';
-
-    if (event.action === 'explore') {
-      // Open the app
+    const notificationData = event.notification.data || {};
+    
+    // Se clicou no botão de tocar áudio
+    if (event.action === 'play-audio' && notificationData.audio) {
+      console.log('🎵 SW v15: Tocando áudio...');
+      
       event.waitUntil(
-        clients.openWindow(targetUrl).catch(err => console.error('Error opening window:', err))
+        (async () => {
+          try {
+            // Buscar ou abrir janela do cliente
+            const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+            let client = clientList.find(c => c.url.includes(self.location.origin));
+            
+            if (!client) {
+              client = await clients.openWindow('/');
+            } else {
+              await client.focus();
+            }
+            
+            // Enviar mensagem para tocar o áudio
+            if (client) {
+              client.postMessage({
+                type: 'PLAY_AUDIO',
+                audio: notificationData.audio
+              });
+              console.log('✅ SW v15: Mensagem enviada para tocar áudio');
+            }
+          } catch (err) {
+            console.error('❌ SW v15: Erro ao tocar áudio:', err);
+          }
+        })()
       );
-    } else if (event.action === 'close') {
-      // Just close the notification
-      return;
-    } else {
-      // Default action - open the app
-      event.waitUntil(
-        clients.openWindow(targetUrl).catch(err => console.error('Error opening window:', err))
-      );
+      
+      return; // Não fechar a notificação ainda
     }
+    
+    // Se clicou em fechar
+    if (event.action === 'close') {
+      event.notification.close();
+      return;
+    }
+    
+    // Ação padrão - abrir aplicação
+    event.notification.close();
+    const targetUrl = notificationData.url || '/';
+    
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then((clientList) => {
+          for (let i = 0; i < clientList.length; i++) {
+            const client = clientList[i];
+            if (client.url.includes(self.location.origin) && 'focus' in client) {
+              return client.focus();
+            }
+          }
+          if (clients.openWindow) {
+            return clients.openWindow(targetUrl);
+          }
+        })
+        .catch(err => console.error('❌ SW v15: Erro ao abrir janela:', err))
+    );
   } catch (error) {
-    console.error('Error in notification click:', error);
+    console.error('❌ SW v15: Erro no clique:', error);
+    event.notification.close();
   }
 });
 

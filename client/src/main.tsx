@@ -43,9 +43,33 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
 }
 
 // AUTOMATIC SERVICE WORKER UPDATE - EXECUTA SEMPRE QUE A PÁGINA CARREGA
+// Service Worker + Audio Player
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     console.log('🚀 AUTO-UPDATE: Verificando Service Worker...');
+    
+    // Listener para mensagens do Service Worker (tocar áudio)
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      console.log('📨 Mensagem do SW recebida:', event.data);
+      
+      if (event.data.type === 'PLAY_AUDIO' && event.data.audio) {
+        console.log('🎵 Reproduzindo áudio da notificação...');
+        
+        try {
+          // Criar e tocar áudio
+          const audio = new Audio(event.data.audio);
+          audio.play()
+            .then(() => {
+              console.log('✅ Áudio reproduzido com sucesso!');
+            })
+            .catch((err) => {
+              console.error('❌ Erro ao reproduzir áudio:', err);
+            });
+        } catch (err) {
+          console.error('❌ Erro ao criar áudio:', err);
+        }
+      }
+    });
     
     navigator.serviceWorker.getRegistrations().then(function(registrations) {
       console.log('🔍 AUTO-UPDATE: Encontradas', registrations.length, 'registrations');

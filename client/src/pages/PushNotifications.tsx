@@ -199,7 +199,7 @@ export default function PushNotifications() {
 
     try {
       // Preparar payload JSON com informações de mídia
-      const payload = {
+      const payload: any = {
         title: notificationTitle,
         message: notificationMessage,
         type: notificationType,
@@ -209,6 +209,41 @@ export default function PushNotifications() {
         imageName: selectedImage?.name || null,
         audioSize: audioBlob?.size || null
       };
+
+      // Converter áudio para Base64 se houver
+      if (audioBlob) {
+        const audioBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(audioBlob);
+        });
+        payload.audioData = audioBase64;
+        
+        console.log('🎵 Áudio convertido para Base64:', {
+          size: audioBlob.size,
+          type: audioBlob.type,
+          base64Length: audioBase64.length
+        });
+      }
+
+      // Converter imagem para Base64 se houver
+      if (selectedImage) {
+        const imageBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(selectedImage);
+        });
+        payload.imageData = imageBase64;
+        
+        console.log('📷 Imagem convertida para Base64:', {
+          name: selectedImage.name,
+          size: selectedImage.size,
+          type: selectedImage.type,
+          base64Length: imageBase64.length
+        });
+      }
 
       const res = await fetch('/api/push/send', {
         method: 'POST',

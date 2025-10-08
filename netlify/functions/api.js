@@ -13548,9 +13548,33 @@ exports.handler = async (event, context) => {
       try {
         // JSON com informações de mídia rica
         const body = JSON.parse(event.body || '{}');
-        const { title, message, userId, type = 'general', hasImage = false, hasAudio = false, imageName = null, audioSize = null } = body;
+        const { 
+          title, 
+          message, 
+          userId, 
+          type = 'general', 
+          hasImage = false, 
+          hasAudio = false, 
+          imageName = null, 
+          audioSize = null,
+          imageData = null,
+          audioData = null
+        } = body;
         
-        console.log('📦 JSON recebido:', { title, message, type, userId, hasImage, hasAudio, imageName, audioSize });
+        console.log('📦 JSON recebido:', { 
+          title, 
+          message, 
+          type, 
+          userId, 
+          hasImage, 
+          hasAudio, 
+          imageName, 
+          audioSize,
+          hasImageData: !!imageData,
+          hasAudioData: !!audioData,
+          imageDataLength: imageData?.length || 0,
+          audioDataLength: audioData?.length || 0
+        });
 
         if (!title || !message) {
           return {
@@ -13603,30 +13627,38 @@ exports.handler = async (event, context) => {
           VALUES (${title}, ${message}, ${userId || null}, ${type}, false, NOW())
         `;
 
-        // ENVIO INTELIGENTE - Texto simples com informações de mídia
-        let payload = message;
+        // ENVIO INTELIGENTE - Payload JSON com mídia rica
+        const notificationPayload = {
+          title: title,
+          message: message,
+          type: type,
+          hasImage: hasImage,
+          hasAudio: hasAudio,
+          imageName: imageName,
+          audioSize: audioSize,
+          timestamp: new Date().toISOString()
+        };
         
-        // Adicionar indicadores de mídia rica no texto
-        if (hasImage && hasAudio) {
-          payload = `📷🎵 ${message}`;
-          if (imageName) payload += ` [${imageName}]`;
-          if (audioSize) payload += ` [${Math.round(audioSize/1024)}KB áudio]`;
-        } else if (hasImage) {
-          payload = `📷 ${message}`;
-          if (imageName) payload += ` [${imageName}]`;
-        } else if (hasAudio) {
-          payload = `🎵 ${message}`;
-          if (audioSize) payload += ` [${Math.round(audioSize/1024)}KB áudio]`;
+        // Adicionar dados de mídia se disponíveis
+        if (imageData) {
+          notificationPayload.image = imageData;
         }
         
-        console.log('📦 Payload INTELIGENTE preparado:', { 
+        if (audioData) {
+          notificationPayload.audio = audioData;
+        }
+        
+        const payload = JSON.stringify(notificationPayload);
+        
+        console.log('📦 Payload RICO preparado:', { 
           title,
-          message: payload,
+          message,
           type,
           hasImage,
           hasAudio,
-          imageName,
-          audioSize
+          hasImageData: !!imageData,
+          hasAudioData: !!audioData,
+          payloadSize: payload.length
         });
 
         let sentCount = 0;
