@@ -111,17 +111,19 @@ export const MobileHeader = () => {
     } bg-gradient-to-r from-white via-blue-50/30 to-purple-50/30 backdrop-blur-md border-b border-blue-100/50 shadow-lg`}>
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-3">
-          <div 
-            className="relative" 
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="relative cursor-pointer hover:scale-105 active:scale-95 transition-transform duration-200" 
             style={{ 
               transform: `translateX(-1%) translateX(${mobileHeaderLayout.logo.offsetX}px) translateY(${mobileHeaderLayout.logo.offsetY}px)` 
             }}
+            title="Voltar ao início"
           >
             {systemLogo && (
               <img 
                 src={systemLogo} 
                 alt="7care" 
-                className="w-16 h-16 drop-shadow-sm object-contain"
+                className="w-16 h-16 drop-shadow-sm object-contain pointer-events-none"
                 onError={(e) => {
                   // Remove a logo em caso de erro
                   e.currentTarget.style.display = 'none';
@@ -129,7 +131,7 @@ export const MobileHeader = () => {
               />
             )}
 
-          </div>
+          </button>
 
           
           {/* Informações de Boas-vindas em linha com a logo */}
