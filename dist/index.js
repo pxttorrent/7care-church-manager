@@ -1729,6 +1729,22 @@ var NeonAdapter = class {
       return null;
     }
   }
+  async createMissionaryProfile(data) {
+    try {
+      const [profile] = await db.insert(schema.missionaryProfiles).values({
+        userId: data.userId,
+        bio: data.bio || "",
+        specialties: data.specialties || [],
+        availability: data.availability || "",
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).returning();
+      return profile;
+    } catch (error) {
+      console.error("Erro ao criar perfil mission\xE1rio:", error);
+      throw error;
+    }
+  }
   // Igreja
   async getDefaultChurch() {
     try {
@@ -1741,6 +1757,41 @@ var NeonAdapter = class {
     } catch (error) {
       console.error("Erro ao buscar igreja padr\xE3o:", error);
       return null;
+    }
+  }
+  // ========== MÉTODOS FINAIS (últimos 3) ==========
+  async createEmotionalCheckIn(data) {
+    try {
+      const [checkIn] = await db.insert(schema.emotionalCheckIns).values({
+        userId: data.userId,
+        mood: data.mood,
+        notes: data.notes || "",
+        prayerRequest: data.prayerRequest || "",
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).returning();
+      return checkIn;
+    } catch (error) {
+      console.error("Erro ao criar emotional check-in:", error);
+      throw error;
+    }
+  }
+  async getPrayerById(prayerId) {
+    try {
+      const prayers2 = await db.select().from(schema.prayers).where(eq(schema.prayers.id, prayerId)).limit(1);
+      return prayers2[0] || null;
+    } catch (error) {
+      console.error("Erro ao buscar ora\xE7\xE3o por ID:", error);
+      return null;
+    }
+  }
+  async deletePrayer(prayerId) {
+    try {
+      await db.delete(schema.prayers).where(eq(schema.prayers.id, prayerId));
+      return true;
+    } catch (error) {
+      console.error("Erro ao deletar ora\xE7\xE3o:", error);
+      return false;
     }
   }
 };
@@ -4015,14 +4066,7 @@ async function registerRoutes(app2) {
         console.log(`\u2705 Logo uploaded successfully: ${req.file.filename}`);
         console.log(`\u{1F517} Logo URL: ${logoUrl}`);
         try {
-          const saved = await storage.saveSystemLogo(logoUrl, req.file.filename);
-          if (!saved) {
-            console.error("\u274C Failed to save logo to database");
-            return res.status(500).json({
-              success: false,
-              message: "Failed to save logo to database"
-            });
-          }
+          await storage.saveSystemLogo(logoUrl);
           console.log("\u2705 Logo saved to database successfully");
         } catch (dbError) {
           console.error("\u274C Database error:", dbError);
@@ -4054,8 +4098,8 @@ async function registerRoutes(app2) {
         console.log("\u2705 Logo found in database:", logoData);
         res.json({
           success: true,
-          logoUrl: logoData.logoUrl,
-          filename: logoData.filename
+          logoUrl: logoData,
+          filename: logoData
         });
       } else {
         console.log("\u2139\uFE0F No logo found in database");
@@ -4076,20 +4120,12 @@ async function registerRoutes(app2) {
   app2.delete("/api/settings/logo", async (req, res) => {
     console.log("\u{1F5D1}\uFE0F Logo deletion request received");
     try {
-      const deleted = await storage.clearSystemLogo();
-      if (deleted) {
-        console.log("\u2705 Logo deleted from database");
-        res.json({
-          success: true,
-          message: "Logo deleted successfully"
-        });
-      } else {
-        console.log("\u274C Failed to delete logo from database");
-        res.status(500).json({
-          success: false,
-          message: "Failed to delete logo from database"
-        });
-      }
+      await storage.clearSystemLogo();
+      console.log("\u2705 Logo deleted from database");
+      res.json({
+        success: true,
+        message: "Logo deleted successfully"
+      });
     } catch (error) {
       console.error("\u274C Error deleting logo:", error);
       res.status(500).json({

@@ -570,14 +570,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Salvar logo no banco de dados
         try {
-          const saved = await storage.saveSystemLogo(logoUrl, req.file.filename);
-          if (!saved) {
-            console.error("❌ Failed to save logo to database");
-            return res.status(500).json({ 
-              success: false, 
-              message: "Failed to save logo to database" 
-            });
-          }
+          await storage.saveSystemLogo(logoUrl);
           console.log("✅ Logo saved to database successfully");
         } catch (dbError) {
           console.error("❌ Database error:", dbError);
@@ -614,8 +607,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("✅ Logo found in database:", logoData);
         res.json({
           success: true,
-          logoUrl: logoData.logoUrl,
-          filename: logoData.filename
+          logoUrl: logoData,
+          filename: logoData
         });
       } else {
         console.log("ℹ️ No logo found in database");
@@ -639,21 +632,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log("🗑️ Logo deletion request received");
     
     try {
-      const deleted = await storage.clearSystemLogo();
-      
-      if (deleted) {
-        console.log("✅ Logo deleted from database");
-        res.json({
-          success: true,
-          message: "Logo deleted successfully"
-        });
-      } else {
-        console.log("❌ Failed to delete logo from database");
-        res.status(500).json({
-          success: false,
-          message: "Failed to delete logo from database"
-        });
-      }
+      await storage.clearSystemLogo();
+      console.log("✅ Logo deleted from database");
+      res.json({
+        success: true,
+        message: "Logo deleted successfully"
+      });
     } catch (error) {
       console.error("❌ Error deleting logo:", error);
       res.status(500).json({

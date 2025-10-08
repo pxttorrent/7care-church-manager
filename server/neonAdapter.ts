@@ -141,6 +141,9 @@ export interface IStorage {
   getAllPointActivities(): Promise<any[]>;
   getMissionaryProfileByUserId(userId: number): Promise<any | null>;
   createMissionaryProfile(data: any): Promise<any>;
+  createEmotionalCheckIn(data: any): Promise<any>;
+  getPrayerById(prayerId: number): Promise<any | null>;
+  deletePrayer(prayerId: number): Promise<boolean>;
   
   getAllMessages(): Promise<any[]>;
   getMessageById(id: number): Promise<any | null>;
@@ -1968,6 +1971,25 @@ export class NeonAdapter implements IStorage {
     }
   }
 
+  async createMissionaryProfile(data: any): Promise<any> {
+    try {
+      const [profile] = await db.insert(schema.missionaryProfiles)
+        .values({
+          userId: data.userId,
+          bio: data.bio || '',
+          specialties: data.specialties || [],
+          availability: data.availability || '',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .returning();
+      return profile;
+    } catch (error) {
+      console.error('Erro ao criar perfil missionário:', error);
+      throw error;
+    }
+  }
+
   // Igreja
   async getDefaultChurch(): Promise<any | null> {
     try {
@@ -1984,6 +2006,51 @@ export class NeonAdapter implements IStorage {
     } catch (error) {
       console.error('Erro ao buscar igreja padrão:', error);
       return null;
+    }
+  }
+
+  // ========== MÉTODOS FINAIS (últimos 3) ==========
+  
+  async createEmotionalCheckIn(data: any): Promise<any> {
+    try {
+      const [checkIn] = await db.insert(schema.emotionalCheckIns)
+        .values({
+          userId: data.userId,
+          mood: data.mood,
+          notes: data.notes || '',
+          prayerRequest: data.prayerRequest || '',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .returning();
+      return checkIn;
+    } catch (error) {
+      console.error('Erro ao criar emotional check-in:', error);
+      throw error;
+    }
+  }
+
+  async getPrayerById(prayerId: number): Promise<any | null> {
+    try {
+      const prayers = await db.select()
+        .from(schema.prayers)
+        .where(eq(schema.prayers.id, prayerId))
+        .limit(1);
+      return prayers[0] || null;
+    } catch (error) {
+      console.error('Erro ao buscar oração por ID:', error);
+      return null;
+    }
+  }
+
+  async deletePrayer(prayerId: number): Promise<boolean> {
+    try {
+      await db.delete(schema.prayers)
+        .where(eq(schema.prayers.id, prayerId));
+      return true;
+    } catch (error) {
+      console.error('Erro ao deletar oração:', error);
+      return false;
     }
   }
 }
