@@ -217,6 +217,37 @@ export default function PushNotifications() {
     }
   };
 
+  // Função para excluir subscription
+  const deleteSubscription = async (subscriptionId: number, userName: string) => {
+    if (!confirm(`Tem certeza que deseja excluir a subscription de ${userName}?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/push/subscriptions/${subscriptionId}`, {
+        method: 'DELETE'
+      });
+
+      if (!res.ok) {
+        throw new Error('Falha ao excluir subscription');
+      }
+
+      toast({
+        title: "🗑️ Subscription excluída",
+        description: `${userName} foi removido das notificações`
+      });
+
+      // Recarregar lista
+      loadSubscriptions();
+    } catch (error) {
+      toast({
+        title: "Erro ao excluir",
+        description: "Tente novamente mais tarde",
+        variant: "destructive"
+      });
+    }
+  };
+
   const sendNotification = async () => {
     if (!notificationTitle.trim() || !notificationMessage.trim()) {
       toast({
@@ -453,6 +484,14 @@ export default function PushNotifications() {
                         <div className="text-xs text-gray-400">
                           {new Date(subscription.created_at).toLocaleDateString('pt-BR')}
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteSubscription(subscription.id, subscription.user_name)}
+                          className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                         <Switch
                           checked={isActive}
                           onCheckedChange={(checked) => toggleSubscription(subscription.id, isActive)}

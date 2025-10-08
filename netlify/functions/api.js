@@ -13707,6 +13707,36 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // ROTA PARA EXCLUIR SUBSCRIPTION
+    if (path.match(/^\/api\/push\/subscriptions\/\d+$/) && method === 'DELETE') {
+      try {
+        const subscriptionId = parseInt(path.split('/')[4]);
+
+        console.log(`🗑️ Excluindo subscription ${subscriptionId}`);
+
+        await sql`
+          DELETE FROM push_subscriptions
+          WHERE id = ${subscriptionId}
+        `;
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Subscription excluída com sucesso'
+          })
+        };
+      } catch (error) {
+        console.error('❌ Erro ao excluir subscription:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao excluir subscription' })
+        };
+      }
+    }
+
     // ROTA PARA ATIVAR/DESATIVAR SUBSCRIPTION
     if (path.match(/^\/api\/push\/subscriptions\/\d+\/toggle$/) && method === 'PATCH') {
       try {
