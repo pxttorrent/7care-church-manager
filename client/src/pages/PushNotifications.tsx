@@ -478,6 +478,28 @@ export default function PushNotifications() {
                 {subscriptionsList.map((subscription, index) => {
                   const isActive = subscription.is_active !== false; // Por padrão, considerar ativo
                   
+                  // Extrair informação do dispositivo do user_agent ou endpoint
+                  const getDeviceInfo = () => {
+                    const ua = subscription.user_agent || '';
+                    
+                    // Detectar dispositivo
+                    if (ua.includes('iPhone') || ua.includes('iPad')) return { icon: '📱', name: 'iOS' };
+                    if (ua.includes('Android')) return { icon: '📱', name: 'Android' };
+                    if (ua.includes('Windows')) return { icon: '💻', name: 'Windows' };
+                    if (ua.includes('Macintosh') || ua.includes('Mac OS')) return { icon: '💻', name: 'macOS' };
+                    if (ua.includes('Linux')) return { icon: '💻', name: 'Linux' };
+                    
+                    // Detectar navegador se não conseguir detectar dispositivo
+                    if (ua.includes('Chrome')) return { icon: '🌐', name: 'Chrome' };
+                    if (ua.includes('Safari')) return { icon: '🌐', name: 'Safari' };
+                    if (ua.includes('Firefox')) return { icon: '🌐', name: 'Firefox' };
+                    if (ua.includes('Edge')) return { icon: '🌐', name: 'Edge' };
+                    
+                    return { icon: '📱', name: 'Dispositivo' };
+                  };
+                  
+                  const device = getDeviceInfo();
+                  
                   return (
                     <div 
                       key={subscription.id} 
@@ -488,7 +510,13 @@ export default function PushNotifications() {
                           {subscription.user_name?.charAt(0).toUpperCase() || '?'}
                         </div>
                         <div className="flex-1">
-                          <div className="text-sm font-semibold text-gray-900">{subscription.user_name}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-900">{subscription.user_name}</span>
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-full flex items-center gap-1">
+                              <span>{device.icon}</span>
+                              <span>{device.name}</span>
+                            </span>
+                          </div>
                           <div className="text-xs text-gray-500">{subscription.user_email}</div>
                         </div>
                       </div>

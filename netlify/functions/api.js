@@ -13439,15 +13439,19 @@ exports.handler = async (event, context) => {
           WHERE user_id = ${userId}
         `;
 
+        // Capturar user agent
+        const userAgent = headers['user-agent'] || 'Unknown';
+        
         // Salvar nova subscription
         const result = await sql`
           INSERT INTO push_subscriptions (
-            user_id, endpoint, p256dh, auth, is_active, created_at, updated_at
+            user_id, endpoint, p256dh, auth, user_agent, is_active, created_at, updated_at
           ) VALUES (
             ${userId},
             ${subscription.endpoint},
             ${subscription.keys.p256dh},
             ${subscription.keys.auth},
+            ${userAgent},
             true,
             NOW(),
             NOW()
@@ -13780,10 +13784,17 @@ exports.handler = async (event, context) => {
             endpoint TEXT NOT NULL,
             p256dh TEXT NOT NULL,
             auth TEXT NOT NULL,
+            user_agent TEXT,
             is_active BOOLEAN DEFAULT true,
             created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW()
           )
+        `;
+        
+        // Adicionar coluna user_agent se não existir
+        await sql`
+          ALTER TABLE push_subscriptions 
+          ADD COLUMN IF NOT EXISTS user_agent TEXT
         `;
 
         // Extrair userId da query string de forma mais robusta
