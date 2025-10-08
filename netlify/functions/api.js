@@ -13547,7 +13547,7 @@ exports.handler = async (event, context) => {
     if (path === '/api/push/send' && method === 'POST') {
       try {
         const body = JSON.parse(event.body || '{}');
-        const { title, message, userId, type = 'general', image, audio } = body;
+        const { title, message, userId, type = 'general' } = body;
 
         if (!title || !message) {
           return {
@@ -13564,9 +13564,7 @@ exports.handler = async (event, context) => {
           title, 
           message, 
           userId, 
-          type,
-          hasImage: !!image,
-          hasAudio: !!audio
+          type
         });
 
         // Buscar subscriptions ativas
@@ -13602,28 +13600,17 @@ exports.handler = async (event, context) => {
           VALUES (${title}, ${message}, ${userId || null}, ${type}, false, NOW())
         `;
 
-        // SOLUÇÃO DEFINITIVA: Enviar apenas dados essenciais para o Service Worker
-        // O Service Worker vai processar e exibir apenas título e mensagem limpos
-        const cleanPayload = {
+        // ENVIO SIMPLES - Apenas título e mensagem
+        const payload = JSON.stringify({
           title: title,
           message: message,
-          type: type,
-          // Metadados para o SW (não exibidos na notificação)
-          metadata: {
-            hasImage: !!image,
-            hasAudio: !!audio,
-            timestamp: new Date().toISOString(),
-            // Imagem pequena como ícone (se disponível)
-            icon: image && image.length < 100000 ? image : null
-          }
-        };
+          type: type
+        });
         
-        const payload = JSON.stringify(cleanPayload);
-        console.log('📦 Payload LIMPO preparado:', { 
-          title: cleanPayload.title,
-          message: cleanPayload.message,
-          type: cleanPayload.type,
-          metadataSize: JSON.stringify(cleanPayload.metadata).length
+        console.log('📦 Payload SIMPLES preparado:', { 
+          title,
+          message,
+          type
         });
 
         let sentCount = 0;

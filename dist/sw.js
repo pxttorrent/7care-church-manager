@@ -1,5 +1,5 @@
 // Service Worker for 7care PWA
-const CACHE_NAME = '7care-v9-definitive-fix';
+const CACHE_NAME = '7care-v10-simple-notifications';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -48,104 +48,46 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Push event - SOLUÇÃO DEFINITIVA v9
+// Push event - VERSÃO SIMPLES v10
 self.addEventListener('push', (event) => {
-  console.log('📱 SW: Push event recebido - Versão v9 DEFINITIVA');
+  console.log('📱 SW: Push event recebido - Versão SIMPLES v10');
   
-  // Parsing do payload limpo do backend
-  let payload = {};
-  let rawText = '';
+  let title = '7care';
+  let message = 'Nova notificação';
   
   try {
     if (event.data) {
-      rawText = event.data.text();
-      console.log('📦 SW: Raw text recebido (primeiros 100 chars):', rawText.substring(0, 100));
+      const rawText = event.data.text();
+      console.log('📦 SW: Raw text recebido:', rawText.substring(0, 100));
       
-      // Tentar parsear como JSON
       try {
-        payload = JSON.parse(rawText);
-        console.log('✅ SW: Payload parseado:', {
-          title: payload.title,
-          message: payload.message,
-          type: payload.type,
-          hasMetadata: !!payload.metadata
-        });
+        const payload = JSON.parse(rawText);
+        title = payload.title || '7care';
+        message = payload.message || 'Nova notificação';
+        console.log('✅ SW: Payload parseado:', { title, message });
       } catch (parseError) {
         console.warn('⚠️ SW: Não é JSON, usando texto puro');
-        payload = { message: rawText };
+        message = rawText;
       }
     }
   } catch (err) {
     console.error('❌ SW: Erro ao processar payload:', err);
-    payload = { message: 'Nova notificação' };
   }
 
-  // EXTRAIR DADOS LIMPOS - NUNCA mostrar JSON ou metadados
-  const title = payload.title || '7care';
-  const message = payload.message || 'Nova notificação';
-  const type = payload.type || 'general';
-  const metadata = payload.metadata || {};
-  
-  // LIMPAR MENSAGEM - Remover qualquer JSON que possa ter vazado
-  let cleanMessage = message;
-  
-  // Se a mensagem contém JSON, extrair apenas o texto
-  if (cleanMessage.includes('{') && cleanMessage.includes('}')) {
-    console.warn('⚠️ SW: Mensagem contém JSON, extraindo texto puro');
-    const messageMatch = cleanMessage.match(/"message":"([^"]+)"/);
-    if (messageMatch) {
-      cleanMessage = messageMatch[1];
-    } else {
-      cleanMessage = 'Nova notificação do 7care';
-    }
-  }
-  
-  // Limitar tamanho da mensagem
-  cleanMessage = cleanMessage.length > 150 
-    ? cleanMessage.substring(0, 150) + '...' 
-    : cleanMessage;
-  
-  // Preparar ícone da notificação
-  let notificationIcon = '/pwa-192x192.png';
-  if (metadata.icon) {
-    notificationIcon = metadata.icon;
-  }
-  
-  // Adicionar emoji baseado no tipo
-  let typeEmoji = '📢';
-  if (type === 'announcement') typeEmoji = '📣';
-  else if (type === 'reminder') typeEmoji = '⏰';
-  else if (type === 'urgent') typeEmoji = '🚨';
-  else if (type === 'general') typeEmoji = '📱';
-
-  // MONTAR NOTIFICAÇÃO LIMPA
+  // NOTIFICAÇÃO SIMPLES
   const options = {
-    body: `${typeEmoji} ${cleanMessage}`,
-    icon: notificationIcon,
+    body: message,
+    icon: '/pwa-192x192.png',
     badge: '/pwa-192x192.png',
-    tag: type,
     vibrate: [200, 100, 200],
-    requireInteraction: type === 'urgent',
-    data: {
-      url: '/',
-      hasImage: metadata.hasImage || false,
-      hasAudio: metadata.hasAudio || false,
-      receivedAt: Date.now()
-    },
     actions: [
       { action: 'open', title: 'Abrir', icon: '/pwa-192x192.png' },
       { action: 'close', title: 'Fechar', icon: '/pwa-192x192.png' }
     ]
   };
 
-  console.log('📬 SW: Notificação LIMPA montada:', { 
-    title, 
-    message: cleanMessage,
-    type,
-    bodyLength: cleanMessage.length
-  });
+  console.log('📬 SW: Mostrando notificação SIMPLES:', { title, message });
 
-  // EXIBIR NOTIFICAÇÃO LIMPA
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
