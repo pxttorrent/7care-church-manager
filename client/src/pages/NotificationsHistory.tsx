@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { MobileLayout } from '@/components/layout/MobileLayout';
 
 interface Notification {
   id: string;
@@ -170,8 +171,9 @@ export default function NotificationsHistory() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4 pb-24 md:pb-4">
-      <div className="max-w-4xl mx-auto">
+    <MobileLayout>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4 pb-24 md:pb-4">
+        <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
@@ -290,8 +292,9 @@ export default function NotificationsHistory() {
             ))}
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </MobileLayout>
   );
 }
 
