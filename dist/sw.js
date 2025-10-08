@@ -1,5 +1,5 @@
 // Service Worker for 7care PWA
-const CACHE_NAME = '7care-v10-simple-notifications';
+const CACHE_NAME = '7care-v11-notifications-fixed';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -48,9 +48,9 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Push event - VERSÃO SIMPLES v10
+// Push event - VERSÃO ULTRA SIMPLES v11
 self.addEventListener('push', (event) => {
-  console.log('📱 SW: Push event recebido - Versão SIMPLES v10');
+  console.log('📱 SW v11: Push event recebido');
   
   let title = '7care';
   let message = 'Nova notificação';
@@ -58,37 +58,39 @@ self.addEventListener('push', (event) => {
   try {
     if (event.data) {
       const rawText = event.data.text();
-      console.log('📦 SW: Raw text recebido:', rawText.substring(0, 100));
+      console.log('📦 SW v11: Raw text:', rawText.substring(0, 50));
       
+      // Tentar parsear JSON
       try {
-        const payload = JSON.parse(rawText);
-        title = payload.title || '7care';
-        message = payload.message || 'Nova notificação';
-        console.log('✅ SW: Payload parseado:', { title, message });
-      } catch (parseError) {
-        console.warn('⚠️ SW: Não é JSON, usando texto puro');
+        const data = JSON.parse(rawText);
+        title = data.title || '7care';
+        message = data.message || 'Nova notificação';
+        console.log('✅ SW v11: Parseado:', { title, message });
+      } catch (e) {
+        // Se não for JSON, usar texto direto
         message = rawText;
+        console.log('⚠️ SW v11: Usando texto direto');
       }
     }
   } catch (err) {
-    console.error('❌ SW: Erro ao processar payload:', err);
+    console.error('❌ SW v11: Erro:', err);
   }
 
-  // NOTIFICAÇÃO SIMPLES
-  const options = {
-    body: message,
-    icon: '/pwa-192x192.png',
-    badge: '/pwa-192x192.png',
-    vibrate: [200, 100, 200],
-    actions: [
-      { action: 'open', title: 'Abrir', icon: '/pwa-192x192.png' },
-      { action: 'close', title: 'Fechar', icon: '/pwa-192x192.png' }
-    ]
-  };
+  // Garantir que nunca mostra JSON
+  if (message.includes('{') || message.includes('}')) {
+    message = 'Nova notificação do 7care';
+  }
 
-  console.log('📬 SW: Mostrando notificação SIMPLES:', { title, message });
+  console.log('📬 SW v11: Exibindo:', { title, message });
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: message,
+      icon: '/pwa-192x192.png',
+      badge: '/pwa-192x192.png',
+      vibrate: [200, 100, 200]
+    })
+  );
 });
 
 // Notification click event
