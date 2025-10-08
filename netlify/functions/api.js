@@ -13602,22 +13602,28 @@ exports.handler = async (event, context) => {
           VALUES (${title}, ${message}, ${userId || null}, ${type}, false, NOW())
         `;
 
-        // Enviar push notifications com suporte a mídia rica
-        // Payload como JSON stringificado com título, mensagem, imagem e áudio
-        const notificationData = {
-          title,
-          message,
-          type,
-          image: image || null,
-          audio: audio || null,
-          timestamp: new Date().toISOString()
+        // SOLUÇÃO DEFINITIVA: Enviar apenas dados essenciais para o Service Worker
+        // O Service Worker vai processar e exibir apenas título e mensagem limpos
+        const cleanPayload = {
+          title: title,
+          message: message,
+          type: type,
+          // Metadados para o SW (não exibidos na notificação)
+          metadata: {
+            hasImage: !!image,
+            hasAudio: !!audio,
+            timestamp: new Date().toISOString(),
+            // Imagem pequena como ícone (se disponível)
+            icon: image && image.length < 100000 ? image : null
+          }
         };
         
-        const payload = JSON.stringify(notificationData);
-        console.log('📦 Payload preparado:', { 
-          size: payload.length, 
-          hasImage: !!image, 
-          hasAudio: !!audio 
+        const payload = JSON.stringify(cleanPayload);
+        console.log('📦 Payload LIMPO preparado:', { 
+          title: cleanPayload.title,
+          message: cleanPayload.message,
+          type: cleanPayload.type,
+          metadataSize: JSON.stringify(cleanPayload.metadata).length
         });
 
         let sentCount = 0;

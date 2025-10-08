@@ -1,5 +1,5 @@
 // Service Worker for 7care PWA
-const CACHE_NAME = '7care-v8-clean-notifications';
+const CACHE_NAME = '7care-v9-definitive-fix';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -48,11 +48,11 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Push event
+// Push event - SOLUÇÃO DEFINITIVA v9
 self.addEventListener('push', (event) => {
-  console.log('📱 SW: Push event recebido - Versão v8');
+  console.log('📱 SW: Push event recebido - Versão v9 DEFINITIVA');
   
-  // Parsing SUPER DEFENSIVO do payload
+  // Parsing do payload limpo do backend
   let payload = {};
   let rawText = '';
   
@@ -64,16 +64,14 @@ self.addEventListener('push', (event) => {
       // Tentar parsear como JSON
       try {
         payload = JSON.parse(rawText);
-        console.log('✅ SW: Payload parseado como JSON:', {
-          hasTitle: !!payload.title,
-          hasMessage: !!payload.message,
-          hasImage: !!payload.image,
-          hasAudio: !!payload.audio,
-          type: payload.type
+        console.log('✅ SW: Payload parseado:', {
+          title: payload.title,
+          message: payload.message,
+          type: payload.type,
+          hasMetadata: !!payload.metadata
         });
       } catch (parseError) {
         console.warn('⚠️ SW: Não é JSON, usando texto puro');
-        // Se não é JSON, usar o texto como mensagem
         payload = { message: rawText };
       }
     }
@@ -82,54 +80,56 @@ self.addEventListener('push', (event) => {
     payload = { message: 'Nova notificação' };
   }
 
-  // Extrair dados LIMPOS - NUNCA mostrar JSON
+  // EXTRAIR DADOS LIMPOS - NUNCA mostrar JSON ou metadados
   const title = payload.title || '7care';
-  let message = payload.message || 'Nova notificação';
+  const message = payload.message || 'Nova notificação';
+  const type = payload.type || 'general';
+  const metadata = payload.metadata || {};
   
-  // PROTEÇÃO: Se a mensagem ainda contém JSON, extrair apenas texto
-  if (message.includes('{') && message.includes('}')) {
+  // LIMPAR MENSAGEM - Remover qualquer JSON que possa ter vazado
+  let cleanMessage = message;
+  
+  // Se a mensagem contém JSON, extrair apenas o texto
+  if (cleanMessage.includes('{') && cleanMessage.includes('}')) {
     console.warn('⚠️ SW: Mensagem contém JSON, extraindo texto puro');
-    // Tentar extrair apenas o texto da mensagem
-    const messageMatch = message.match(/"message":"([^"]+)"/);
+    const messageMatch = cleanMessage.match(/"message":"([^"]+)"/);
     if (messageMatch) {
-      message = messageMatch[1];
+      cleanMessage = messageMatch[1];
     } else {
-      // Se não conseguir extrair, usar mensagem padrão
-      message = 'Nova notificação do 7care';
+      cleanMessage = 'Nova notificação do 7care';
     }
   }
   
   // Limitar tamanho da mensagem
-  const cleanMessage = message.length > 150 
-    ? message.substring(0, 150) + '...' 
-    : message;
+  cleanMessage = cleanMessage.length > 150 
+    ? cleanMessage.substring(0, 150) + '...' 
+    : cleanMessage;
   
   // Preparar ícone da notificação
   let notificationIcon = '/pwa-192x192.png';
-  
-  // Se houver imagem em base64 E for pequena o suficiente, usar como ícone
-  if (payload.image && typeof payload.image === 'string' && payload.image.length < 100000) {
-    notificationIcon = payload.image;
+  if (metadata.icon) {
+    notificationIcon = metadata.icon;
   }
   
   // Adicionar emoji baseado no tipo
   let typeEmoji = '📢';
-  if (payload.type === 'announcement') typeEmoji = '📣';
-  else if (payload.type === 'reminder') typeEmoji = '⏰';
-  else if (payload.type === 'urgent') typeEmoji = '🚨';
-  else if (payload.type === 'general') typeEmoji = '📱';
+  if (type === 'announcement') typeEmoji = '📣';
+  else if (type === 'reminder') typeEmoji = '⏰';
+  else if (type === 'urgent') typeEmoji = '🚨';
+  else if (type === 'general') typeEmoji = '📱';
 
+  // MONTAR NOTIFICAÇÃO LIMPA
   const options = {
     body: `${typeEmoji} ${cleanMessage}`,
     icon: notificationIcon,
     badge: '/pwa-192x192.png',
-    tag: payload.type || 'general',
+    tag: type,
     vibrate: [200, 100, 200],
-    requireInteraction: payload.type === 'urgent',
+    requireInteraction: type === 'urgent',
     data: {
-      url: payload.url || '/',
-      hasImage: !!payload.image,
-      hasAudio: !!payload.audio,
+      url: '/',
+      hasImage: metadata.hasImage || false,
+      hasAudio: metadata.hasAudio || false,
       receivedAt: Date.now()
     },
     actions: [
@@ -138,13 +138,14 @@ self.addEventListener('push', (event) => {
     ]
   };
 
-  console.log('📬 SW: Mostrando notificação LIMPA:', { 
+  console.log('📬 SW: Notificação LIMPA montada:', { 
     title, 
     message: cleanMessage,
-    bodyLength: cleanMessage.length,
-    type: payload.type
+    type,
+    bodyLength: cleanMessage.length
   });
 
+  // EXIBIR NOTIFICAÇÃO LIMPA
   event.waitUntil(self.registration.showNotification(title, options));
 });
 

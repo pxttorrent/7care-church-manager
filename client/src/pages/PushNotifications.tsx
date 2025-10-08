@@ -17,6 +17,21 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { forceUpdateServiceWorker } from '@/utils/updateServiceWorker';
 
+// Função para forçar atualização completa do Service Worker
+const forceCompleteSWUpdate = async () => {
+  try {
+    // Carregar e executar script de atualização forçada
+    const script = document.createElement('script');
+    script.src = '/force-sw-update.js';
+    script.onload = () => {
+      console.log('✅ Script de atualização carregado');
+    };
+    document.head.appendChild(script);
+  } catch (error) {
+    console.error('❌ Erro ao forçar atualização:', error);
+  }
+};
+
 // Emojis populares para picker rápido
 const POPULAR_EMOJIS = [
   '😊', '👍', '❤️', '🎉', '🙏', '✨', '🔥', '💪',
@@ -361,13 +376,13 @@ export default function PushNotifications() {
             Atualizar Lista
           </Button>
           <Button 
-            onClick={forceUpdateServiceWorker} 
+            onClick={forceCompleteSWUpdate} 
             variant="outline" 
             size="lg"
-            className="h-16 border-2 border-orange-300 hover:border-orange-400 hover:bg-orange-50 transition-all duration-300 text-lg font-semibold text-orange-700"
+            className="h-16 border-2 border-red-300 hover:border-red-400 hover:bg-red-50 transition-all duration-300 text-lg font-semibold text-red-700"
           >
             <RefreshCw className="h-5 w-5 mr-2" />
-            Atualizar SW
+            Forçar SW v9
           </Button>
         </div>
 
