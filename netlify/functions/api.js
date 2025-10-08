@@ -13547,7 +13547,7 @@ exports.handler = async (event, context) => {
     if (path === '/api/push/send' && method === 'POST') {
       try {
         const body = JSON.parse(event.body || '{}');
-        const { title, message, userId, type = 'general' } = body;
+        const { title, message, userId, type = 'general', image, audio } = body;
 
         if (!title || !message) {
           return {
@@ -13560,7 +13560,14 @@ exports.handler = async (event, context) => {
           };
         }
 
-        console.log('📱 Enviando push notification:', { title, message, userId, type });
+        console.log('📱 Enviando push notification:', { 
+          title, 
+          message, 
+          userId, 
+          type,
+          hasImage: !!image,
+          hasAudio: !!audio
+        });
 
         // Buscar subscriptions ativas
         let subscriptions;
@@ -13595,10 +13602,23 @@ exports.handler = async (event, context) => {
           VALUES (${title}, ${message}, ${userId || null}, ${type}, false, NOW())
         `;
 
-        // Enviar push notifications reais
-        // Para máxima compatibilidade (especialmente iOS), usamos payload de TEXTO puro.
-        // O Service Worker fará o parse e montará o título/ícone.
-        const payload = String(message || 'Nova notificação');
+        // Enviar push notifications com suporte a mídia rica
+        // Payload como JSON stringificado com título, mensagem, imagem e áudio
+        const notificationData = {
+          title,
+          message,
+          type,
+          image: image || null,
+          audio: audio || null,
+          timestamp: new Date().toISOString()
+        };
+        
+        const payload = JSON.stringify(notificationData);
+        console.log('📦 Payload preparado:', { 
+          size: payload.length, 
+          hasImage: !!image, 
+          hasAudio: !!audio 
+        });
 
         let sentCount = 0;
         const errors = [];
