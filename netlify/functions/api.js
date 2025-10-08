@@ -13707,6 +13707,39 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // ROTA PARA ATIVAR/DESATIVAR SUBSCRIPTION
+    if (path.match(/^\/api\/push\/subscriptions\/\d+\/toggle$/) && method === 'PATCH') {
+      try {
+        const subscriptionId = parseInt(path.split('/')[4]);
+        const body = JSON.parse(event.body || '{}');
+        const { isActive } = body;
+
+        console.log(`🔄 Toggling subscription ${subscriptionId} para ${isActive ? 'ATIVA' : 'DESATIVADA'}`);
+
+        await sql`
+          UPDATE push_subscriptions
+          SET is_active = ${isActive}, updated_at = NOW()
+          WHERE id = ${subscriptionId}
+        `;
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: isActive ? 'Subscription ativada' : 'Subscription desativada'
+          })
+        };
+      } catch (error) {
+        console.error('❌ Erro ao atualizar subscription:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Erro ao atualizar subscription' })
+        };
+      }
+    }
+
     if (path === '/api/push/subscriptions' && method === 'GET') {
       try {
         // Verificar se a tabela push_subscriptions existe, se não, criar
@@ -13756,14 +13789,13 @@ exports.handler = async (event, context) => {
               ORDER BY ps.created_at DESC
             `;
           } else {
-            // Buscar todas as subscriptions ativas
-            console.log('🔍 Buscando todas as subscriptions ativas');
+            // Buscar todas as subscriptions (ativas e inativas)
+            console.log('🔍 Buscando todas as subscriptions');
             subscriptions = await sql`
               SELECT ps.*, u.name as user_name, u.email as user_email
               FROM push_subscriptions ps
               JOIN users u ON ps.user_id = u.id
-              WHERE ps.is_active = true
-              ORDER BY ps.created_at DESC
+              ORDER BY ps.is_active DESC, ps.created_at DESC
             `;
           }
           console.log('✅ Subscriptions encontradas:', subscriptions.length);
