@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import { NeonAdapter } from "./neonAdapter";
 import { migrateToNeon } from "./migrateToNeon";
 import { setupNeonData } from "./setupNeonData";
-import { sql } from "./neonConfig";
+import { sql, db } from "./neonConfig";
+import { schema } from "./schema";
 import { importRoutes } from "./importRoutes";
 import { electionRoutes } from "./electionRoutes";
 
@@ -23,6 +24,33 @@ import { config } from "./config";
 const upload = multer({ dest: 'uploads/' });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Helper functions for parsing (moved to top for use throughout)
+  const parseCargos = (value: any): string[] => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      return value.split(',').map((c: string) => c.trim()).filter((c: string) => c);
+    }
+    return [];
+  };
+
+  const parseBoolean = (value: any): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      return value.toLowerCase() === 'sim' || value.toLowerCase() === 'true' || value === '1';
+    }
+    return !!value;
+  };
+
+  const parseNumber = (value: any): number => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const num = parseInt(value);
+      return isNaN(num) ? 0 : num;
+    }
+    return 0;
+  };
+
   // Migrar para Neon Database
   try {
     await migrateToNeon();
@@ -1554,17 +1582,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             dizimistaType: userData.dizimista || userData.Dizimista,
             ofertanteType: userData.ofertante || userData.Ofertante,
             tempoBatismoAnos: userData.tempoBatismo || userData.TempoBatismo || userData['Tempo Batismo'],
-            cargos: this.parseCargos(userData.cargos || userData.Cargos),
+            cargos: parseCargos(userData.cargos || userData.Cargos),
             nomeUnidade: userData.nomeUnidade || userData.NomeUnidade || userData['Nome Unidade'],
-            temLicao: this.parseBoolean(userData.temLicao || userData.TemLicao || userData['Tem Licao'] || userData['Tem Lição']),
-            comunhao: this.parseNumber(userData.comunhao || userData.Comunhao || userData.Comunhão),
+            temLicao: parseBoolean(userData.temLicao || userData.TemLicao || userData['Tem Licao'] || userData['Tem Lição']),
+            comunhao: parseNumber(userData.comunhao || userData.Comunhao || userData.Comunhão),
             missao: userData.missao || userData.Missao || userData.Missão,
-            estudoBiblico: this.parseNumber(userData.estudoBiblico || userData.EstudoBiblico || userData['Estudo Biblico'] || userData['Estudo Bíblico']),
-            totalPresenca: this.parseNumber(userData.totalPresenca || userData.TotalPresenca || userData['Total Presenca'] || userData['Total Presença']),
-            batizouAlguem: this.parseBoolean(userData.batizouAlguem || userData.BatizouAlguem || userData['Batizou Alguem'] || userData['Batizou Alguém']),
-            discPosBatismal: this.parseNumber(userData.discipuladoPosBatismo || userData.DiscipuladoPosBatismo || userData['Discipulado Pos-Batismo']),
+            estudoBiblico: parseNumber(userData.estudoBiblico || userData.EstudoBiblico || userData['Estudo Biblico'] || userData['Estudo Bíblico']),
+            totalPresenca: parseNumber(userData.totalPresenca || userData.TotalPresenca || userData['Total Presenca'] || userData['Total Presença']),
+            batizouAlguem: parseBoolean(userData.batizouAlguem || userData.BatizouAlguem || userData['Batizou Alguem'] || userData['Batizou Alguém']),
+            discPosBatismal: parseNumber(userData.discipuladoPosBatismo || userData.DiscipuladoPosBatismo || userData['Discipulado Pos-Batismo']),
             cpfValido: userData.cpfValido || userData.CPFValido || userData['CPF Valido'] || userData['CPF Válido'],
-            camposVaziosACMS: this.parseBoolean(userData.camposVaziosACMS || userData.CamposVaziosACMS || userData['Campos Vazios']),
+            camposVaziosACMS: parseBoolean(userData.camposVaziosACMS || userData.CamposVaziosACMS || userData['Campos Vazios']),
             lastPowerBIUpdate: new Date().toISOString()
           };
 
@@ -1602,33 +1630,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: error.message || "Internal server error" });
     }
   });
-
-  // Helper functions for parsing
-  const parseCargos = (value: any): string[] => {
-    if (!value) return [];
-    if (Array.isArray(value)) return value;
-    if (typeof value === 'string') {
-      return value.split(',').map((c: string) => c.trim()).filter((c: string) => c);
-    }
-    return [];
-  };
-
-  const parseBoolean = (value: any): boolean => {
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'string') {
-      return value.toLowerCase() === 'sim' || value.toLowerCase() === 'true' || value === '1';
-    }
-    return !!value;
-  };
-
-  const parseNumber = (value: any): number => {
-    if (typeof value === 'number') return value;
-    if (typeof value === 'string') {
-      const num = parseInt(value);
-      return isNaN(num) ? 0 : num;
-    }
-    return 0;
-  };
 
   // Bulk import users
   app.post("/api/users/bulk-import", async (req, res) => {

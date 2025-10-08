@@ -1,0 +1,77 @@
+# Métodos Faltantes no NeonAdapter
+
+## Já implementados (5):
+- saveSystemLogo ✅
+- getSystemLogo ✅  
+- clearSystemLogo ✅
+- saveSystemSetting ✅
+- getSystemSetting ✅
+- clearAllData ✅
+
+## Faltam implementar (ainda com erro):
+
+### Usuários/Igreja (4):
+- updateUserChurch
+- getDefaultChurch (já na interface)
+- setDefaultChurch (já na interface)
+- getOrCreateChurch (já na interface)
+- approveUser (já na interface)
+- rejectUser (já na interface)
+
+### Relacionamentos (5):
+- getRelationshipsByMissionary (já na interface)
+- getRelationshipsByInterested (já na interface)
+- createRelationship (já na interface)
+- deleteRelationship (já na interface)
+
+### Discipulado (5):
+- getAllDiscipleshipRequests (já na interface)
+- createDiscipleshipRequest (já na interface)
+- updateDiscipleshipRequest (já na interface)
+- deleteDiscipleshipRequest (já na interface)
+
+### Meetings (4):
+- getMeetingTypes (já na interface)
+- getMeetingsByUserId (já na interface)
+- getMeetingsByStatus (já na interface)
+- getAllMeetings (já na interface)
+
+### Orações (7):
+- getPrayers (já na interface)
+- markPrayerAsAnswered (já na interface)
+- getPrayerById (já na interface)
+- deletePrayer (já na interface)
+- addPrayerIntercessor (já na interface)
+- removePrayerIntercessor (já na interface)
+- getPrayerIntercessors (já na interface)
+- getPrayersUserIsPrayingFor (já na interface)
+
+### Emotional Check-ins (3):
+- createEmotionalCheckIn (já na interface)
+- getEmotionalCheckInsForAdmin (já na interface)
+- getEmotionalCheckInsByUserId (já na interface)
+
+### Eventos (3):
+- getEventPermissions (já na interface)
+- saveEventPermissions (já na interface)
+- clearAllEvents
+
+### Chat/Mensagens (4):
+- getConversationsByUserId (já na interface)
+- getOrCreateDirectConversation (já na interface)
+- getMessagesByConversationId (já na interface)
+- createMessage (já na interface)
+
+### Outros (4):
+- getSystemConfig (já na interface)
+- getAllPointActivities (já na interface)
+- getMissionaryProfileByUserId (já na interface)
+- createMissionaryProfile (já na interface)
+
+### Problema em routes.ts:
+- Linha 2277: db e schema não importados (erro no routes.ts)
+- Linhas 1557-1567: 'this' sem tipagem (erro no routes.ts)
+
+Total: ~40 métodos
+Muitos já estão declarados na interface mas falta a implementação!
+

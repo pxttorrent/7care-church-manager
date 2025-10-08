@@ -1259,4 +1259,284 @@ export class NeonAdapter implements IStorage {
       };
     }
   }
+
+  // ========== MÉTODOS ADICIONAIS (Sistema, Logo, etc) ==========
+  
+  async saveSystemLogo(logoData: string): Promise<void> {
+    try {
+      await db.insert(schema.systemSettings)
+        .values({
+          key: 'system_logo',
+          value: logoData,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .onConflictDoUpdate({
+          target: schema.systemSettings.key,
+          set: {
+            value: logoData,
+            updatedAt: new Date()
+          }
+        });
+    } catch (error) {
+      console.error('Erro ao salvar logo do sistema:', error);
+      throw error;
+    }
+  }
+
+  async getSystemLogo(): Promise<string | null> {
+    try {
+      const result = await db.select()
+        .from(schema.systemSettings)
+        .where(eq(schema.systemSettings.key, 'system_logo'))
+        .limit(1);
+      
+      return result[0]?.value || null;
+    } catch (error) {
+      console.error('Erro ao buscar logo do sistema:', error);
+      return null;
+    }
+  }
+
+  async clearSystemLogo(): Promise<void> {
+    try {
+      await db.delete(schema.systemSettings)
+        .where(eq(schema.systemSettings.key, 'system_logo'));
+    } catch (error) {
+      console.error('Erro ao limpar logo do sistema:', error);
+      throw error;
+    }
+  }
+
+  async saveSystemSetting(key: string, value: any): Promise<void> {
+    try {
+      await db.insert(schema.systemSettings)
+        .values({
+          key,
+          value: JSON.stringify(value),
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .onConflictDoUpdate({
+          target: schema.systemSettings.key,
+          set: {
+            value: JSON.stringify(value),
+            updatedAt: new Date()
+          }
+        });
+    } catch (error) {
+      console.error('Erro ao salvar configuração do sistema:', error);
+      throw error;
+    }
+  }
+
+  async getSystemSetting(key: string): Promise<any | null> {
+    try {
+      const result = await db.select()
+        .from(schema.systemSettings)
+        .where(eq(schema.systemSettings.key, key))
+        .limit(1);
+      
+      if (result[0]?.value) {
+        try {
+          return JSON.parse(result[0].value);
+        } catch {
+          return result[0].value;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('Erro ao buscar configuração do sistema:', error);
+      return null;
+    }
+  }
+
+  async clearAllData(): Promise<void> {
+    try {
+      // Limpar todas as tabelas (exceto usuários admin)
+      await db.delete(schema.events);
+      await db.delete(schema.meetings);
+      await db.delete(schema.messages);
+      await db.delete(schema.notifications);
+      await db.delete(schema.prayers);
+      // Adicione outras tabelas conforme necessário
+      console.log('Todos os dados foram limpos');
+    } catch (error) {
+      console.error('Erro ao limpar dados:', error);
+      throw error;
+    }
+  }
+
+  // ========== MÉTODOS PRIORITÁRIOS (TOP 10 MAIS USADOS) ==========
+
+  // 1. getRelationshipsByMissionary (7x usado)
+  async getRelationshipsByMissionary(missionaryId: number): Promise<any[]> {
+    try {
+      const relationships = await db.select()
+        .from(schema.relationships)
+        .where(eq(schema.relationships.missionaryId, missionaryId));
+      return relationships;
+    } catch (error) {
+      console.error('Erro ao buscar relacionamentos do missionário:', error);
+      return [];
+    }
+  }
+
+  // 2. getMeetingsByUserId (5x usado)
+  async getMeetingsByUserId(userId: number): Promise<any[]> {
+    try {
+      const meetings = await db.select()
+        .from(schema.meetings)
+        .where(
+          or(
+            eq(schema.meetings.participantId, userId),
+            eq(schema.meetings.leaderId, userId)
+          )
+        )
+        .orderBy(desc(schema.meetings.scheduledAt));
+      return meetings;
+    } catch (error) {
+      console.error('Erro ao buscar reuniões do usuário:', error);
+      return [];
+    }
+  }
+
+  // 3. getRelationshipsByInterested (4x usado)
+  async getRelationshipsByInterested(interestedId: number): Promise<any[]> {
+    try {
+      const relationships = await db.select()
+        .from(schema.relationships)
+        .where(eq(schema.relationships.interestedId, interestedId));
+      return relationships;
+    } catch (error) {
+      console.error('Erro ao buscar relacionamentos do interessado:', error);
+      return [];
+    }
+  }
+
+  // 4. updateUserChurch (4x usado)
+  async updateUserChurch(userId: number, churchName: string): Promise<boolean> {
+    try {
+      await db.update(schema.users)
+        .set({ church: churchName })
+        .where(eq(schema.users.id, userId));
+      return true;
+    } catch (error) {
+      console.error('Erro ao atualizar igreja do usuário:', error);
+      return false;
+    }
+  }
+
+  // 5. getAllDiscipleshipRequests (4x usado)
+  async getAllDiscipleshipRequests(): Promise<any[]> {
+    try {
+      const requests = await db.select()
+        .from(schema.discipleshipRequests)
+        .orderBy(desc(schema.discipleshipRequests.createdAt));
+      return requests;
+    } catch (error) {
+      console.error('Erro ao buscar pedidos de discipulado:', error);
+      return [];
+    }
+  }
+
+  // 6. createRelationship (3x usado)
+  async createRelationship(data: any): Promise<any> {
+    try {
+      const [relationship] = await db.insert(schema.relationships)
+        .values({
+          missionaryId: data.missionaryId,
+          interestedId: data.interestedId,
+          status: data.status || 'active',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .returning();
+      return relationship;
+    } catch (error) {
+      console.error('Erro ao criar relacionamento:', error);
+      throw error;
+    }
+  }
+
+  // 7. getEventPermissions (3x usado)
+  async getEventPermissions(): Promise<any> {
+    try {
+      const permissions = await db.select()
+        .from(schema.eventFilterPermissions)
+        .limit(1);
+      
+      if (permissions.length > 0) {
+        return typeof permissions[0].permissions === 'string' 
+          ? JSON.parse(permissions[0].permissions)
+          : permissions[0].permissions;
+      }
+      return null;
+    } catch (error) {
+      console.error('Erro ao buscar permissões de eventos:', error);
+      return null;
+    }
+  }
+
+  // 8. getEmotionalCheckInsForAdmin (3x usado)
+  async getEmotionalCheckInsForAdmin(): Promise<any[]> {
+    try {
+      const checkIns = await db.select()
+        .from(schema.emotionalCheckIns)
+        .orderBy(desc(schema.emotionalCheckIns.createdAt));
+      return checkIns;
+    } catch (error) {
+      console.error('Erro ao buscar check-ins emocionais para admin:', error);
+      return [];
+    }
+  }
+
+  // 9. createDiscipleshipRequest (3x usado)
+  async createDiscipleshipRequest(data: any): Promise<any> {
+    try {
+      const [request] = await db.insert(schema.discipleshipRequests)
+        .values({
+          interestedId: data.interestedId,
+          requestedMissionaryId: data.requestedMissionaryId,
+          status: data.status || 'pending',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .returning();
+      return request;
+    } catch (error) {
+      console.error('Erro ao criar pedido de discipulado:', error);
+      throw error;
+    }
+  }
+
+  // 10. getOrCreateChurch (3x usado)
+  async getOrCreateChurch(churchName: string): Promise<any> {
+    try {
+      // Buscar igreja existente
+      const existing = await db.select()
+        .from(schema.churches)
+        .where(eq(schema.churches.name, churchName))
+        .limit(1);
+      
+      if (existing.length > 0) {
+        return existing[0];
+      }
+      
+      // Criar nova igreja
+      const [newChurch] = await db.insert(schema.churches)
+        .values({
+          name: churchName,
+          address: '',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .returning();
+      
+      return newChurch;
+    } catch (error) {
+      console.error('Erro ao buscar/criar igreja:', error);
+      throw error;
+    }
+  }
 }
