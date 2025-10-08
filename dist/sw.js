@@ -1,5 +1,5 @@
 // Service Worker for 7care PWA
-const CACHE_NAME = '7care-v17-ios-audio-fix';
+const CACHE_NAME = '7care-v18-notifications-history';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -48,9 +48,9 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Push event - VERSÃO PARSING PERFEITO v16
+// Push event - VERSÃO COM HISTÓRICO v18
 self.addEventListener('push', (event) => {
-  console.log('📱 SW v16: Push event recebido');
+  console.log('📱 SW v18: Push event recebido');
   
   // Função auxiliar para extrair mensagem limpa de qualquer formato
   const extractCleanMessage = (data) => {
@@ -183,64 +183,78 @@ self.addEventListener('push', (event) => {
     ];
   }
   
-  console.log('📬 SW v16: Exibindo notificação com parsing perfeito');
+  console.log('📬 SW v18: Salvando notificação no histórico e exibindo');
 
   event.waitUntil(
-    self.registration.showNotification(title, notificationOptions)
+    (async () => {
+      // Salvar notificação no histórico (será acessada pela página de notificações)
+      const notificationData = {
+        id: Date.now().toString(),
+        title: title,
+        message: message,
+        type: notificationType || 'general',
+        hasAudio: hasAudio,
+        hasImage: hasImage,
+        audioData: audioData,
+        imageData: imageData,
+        timestamp: new Date().toISOString(),
+        read: false
+      };
+
+      // Broadcast para clientes abertos (atualizar UI em tempo real)
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'SAVE_NOTIFICATION',
+          notification: notificationData
+        });
+      });
+
+      // Exibir notificação visual
+      await self.registration.showNotification(title, notificationOptions);
+    })()
   );
 });
 
-// Notification click event - COM SUPORTE A ÁUDIO iOS v17
+// Notification click event - ABRIR HISTÓRICO v18
 self.addEventListener('notificationclick', (event) => {
-  console.log('🖱️ SW v17: Notificação clicada:', event.action);
+  console.log('🖱️ SW v18: Notificação clicada:', event.action);
   
   event.notification.close();
   
   try {
     const notificationData = event.notification.data || {};
     const hasAudio = notificationData.hasAudio && notificationData.audio;
+    const hasImage = notificationData.hasImage && notificationData.image;
     
     // Se clicou em fechar
     if (event.action === 'close') {
       return;
     }
     
-    // Se tem áudio (clicou no botão OU na notificação diretamente no iOS)
-    if (hasAudio && (event.action === 'play-audio' || !event.action)) {
-      console.log('🎵 SW v17: Tocando áudio (action:', event.action || 'default', ')');
+    // Se tem áudio ou imagem, abrir página de notificações
+    if (hasAudio || hasImage) {
+      console.log('📱 SW v18: Abrindo página de notificações (tem mídia)');
       
       event.waitUntil(
         (async () => {
           try {
-            // Buscar ou abrir janela do cliente
             const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
             let client = clientList.find(c => c.url.includes(self.location.origin));
             
             if (!client) {
-              console.log('📱 SW v17: Abrindo nova janela...');
-              client = await clients.openWindow('/');
-              // Aguardar um pouco para a janela carregar
-              await new Promise(resolve => setTimeout(resolve, 500));
+              console.log('📱 SW v18: Abrindo nova janela em /notifications');
+              await clients.openWindow('/notifications');
             } else {
-              console.log('📱 SW v17: Focando janela existente...');
+              console.log('📱 SW v18: Focando janela existente e navegando para /notifications');
               await client.focus();
-            }
-            
-            // Enviar mensagem para tocar o áudio com Media Session
-            if (client) {
-              console.log('📤 SW v17: Enviando mensagem PLAY_AUDIO...');
               client.postMessage({
-                type: 'PLAY_AUDIO',
-                audio: notificationData.audio,
-                title: event.notification.title || '7care - Áudio',
-                timestamp: Date.now() // Para forçar trigger no iOS
+                type: 'NAVIGATE',
+                url: '/notifications'
               });
-              console.log('✅ SW v17: Mensagem PLAY_AUDIO enviada!');
-            } else {
-              console.error('❌ SW v17: Cliente não encontrado após abrir/focar');
             }
           } catch (err) {
-            console.error('❌ SW v17: Erro ao tocar áudio:', err);
+            console.error('❌ SW v18: Erro ao abrir página de notificações:', err);
           }
         })()
       );
@@ -248,7 +262,7 @@ self.addEventListener('notificationclick', (event) => {
       return;
     }
     
-    // Ação padrão - apenas abrir aplicação (sem áudio)
+    // Ação padrão - abrir aplicação na URL especificada ou home
     const targetUrl = notificationData.url || '/';
     
     event.waitUntil(
@@ -264,10 +278,10 @@ self.addEventListener('notificationclick', (event) => {
             return clients.openWindow(targetUrl);
           }
         })
-        .catch(err => console.error('❌ SW v17: Erro ao abrir janela:', err))
+        .catch(err => console.error('❌ SW v18: Erro ao abrir janela:', err))
     );
   } catch (error) {
-    console.error('❌ SW v17: Erro no clique:', error);
+    console.error('❌ SW v18: Erro no clique:', error);
   }
 });
 

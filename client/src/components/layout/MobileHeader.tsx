@@ -169,6 +169,8 @@ export const MobileHeader = () => {
           <Button 
             variant="ghost" 
             size="sm"
+            onClick={() => navigate('/notifications')}
+            title="Notificações"
             className="bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 border border-amber-200/50 hover:border-amber-300/50 transition-all duration-200"
           >
             <Bell className="w-5 h-5 text-amber-600" />
