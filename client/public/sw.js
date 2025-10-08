@@ -1,5 +1,5 @@
 // Service Worker for 7care PWA
-const CACHE_NAME = '7care-v15-interactive-audio';
+const CACHE_NAME = '7care-v16-perfect-json';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -48,73 +48,127 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Push event - VERSÃO ÁUDIO INTERATIVO v15
+// Push event - VERSÃO PARSING PERFEITO v16
 self.addEventListener('push', (event) => {
-  console.log('📱 SW v15: Push event recebido');
+  console.log('📱 SW v16: Push event recebido');
   
-  let notificationData = {
-    title: '7care',
-    message: 'Nova notificação',
-    hasImage: false,
-    hasAudio: false,
-    image: null,
-    audio: null
+  // Função auxiliar para extrair mensagem limpa de qualquer formato
+  const extractCleanMessage = (data) => {
+    // Se for string vazia ou null
+    if (!data || data.trim() === '') {
+      return 'Nova notificação';
+    }
+    
+    // Se começar com { ou [, tentar parsear JSON
+    const trimmed = data.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        
+        // Se tem propriedade message, usar ela
+        if (parsed.message) {
+          return String(parsed.message);
+        }
+        
+        // Se tem propriedade title, usar ela
+        if (parsed.title) {
+          return String(parsed.title);
+        }
+        
+        // Se é objeto mas não tem message nem title, retornar genérico
+        return 'Nova notificação do 7care';
+      } catch (e) {
+        // Se parsing falhar, limpar e retornar texto
+        console.log('⚠️ SW v16: JSON inválido, limpando texto');
+        return trimmed.replace(/[{}[\]"]/g, '').substring(0, 200) || 'Nova notificação';
+      }
+    }
+    
+    // Se não é JSON, retornar texto limpo
+    return trimmed.substring(0, 200);
   };
+  
+  let title = '7care';
+  let message = 'Nova notificação';
+  let iconUrl = '/pwa-192x192.png';
+  let audioData = null;
+  let hasAudio = false;
   
   try {
     if (event.data) {
       const rawText = event.data.text();
-      console.log('📦 SW v15: Raw text recebido:', rawText.substring(0, 100));
+      console.log('📦 SW v16: Raw text recebido (primeiros 150 chars):', rawText.substring(0, 150));
+      
+      // Tentar parsear como JSON primeiro
+      let parsed = null;
+      let isJSON = false;
       
       try {
-        // Tentar parsear como JSON
-        const parsed = JSON.parse(rawText);
-        notificationData = {
-          title: parsed.title || '7care',
-          message: parsed.message || 'Nova notificação',
-          hasImage: !!parsed.image,
-          hasAudio: !!parsed.audio,
-          image: parsed.image || null,
-          audio: parsed.audio || null,
-          imageName: parsed.imageName || null,
-          audioSize: parsed.audioSize || null
-        };
-        console.log('✅ SW v15: JSON parseado com sucesso:', {
-          hasImage: notificationData.hasImage,
-          hasAudio: notificationData.hasAudio,
-          imageName: notificationData.imageName,
-          audioSize: notificationData.audioSize
-        });
-      } catch (parseError) {
-        // Se não for JSON, usar como texto simples
-        notificationData.message = rawText;
-        console.log('⚠️ SW v15: Usando como texto simples');
+        parsed = JSON.parse(rawText);
+        isJSON = true;
+        console.log('✅ SW v16: JSON parseado com sucesso');
+      } catch (e) {
+        console.log('ℹ️ SW v16: Não é JSON, usando texto simples');
       }
+      
+      if (isJSON && parsed) {
+        // É JSON válido - extrair dados
+        title = parsed.title || '7care';
+        message = parsed.message || 'Nova notificação';
+        
+        // Verificar se tem imagem
+        if (parsed.image && typeof parsed.image === 'string' && parsed.image.startsWith('data:image')) {
+          iconUrl = parsed.image;
+          console.log('📷 SW v16: Imagem detectada');
+        }
+        
+        // Verificar se tem áudio
+        if (parsed.audio && typeof parsed.audio === 'string' && parsed.audio.startsWith('data:audio')) {
+          audioData = parsed.audio;
+          hasAudio = true;
+          console.log('🎵 SW v16: Áudio detectado');
+        }
+      } else {
+        // Não é JSON - usar texto limpo
+        message = extractCleanMessage(rawText);
+      }
+      
+      // GARANTIA FINAL: Se message ainda parece JSON, limpar
+      if (message.includes('{') || message.includes('}')) {
+        console.log('⚠️ SW v16: Mensagem ainda tem JSON, limpando...');
+        message = extractCleanMessage(message);
+      }
+      
+      console.log('✅ SW v16: Dados finais:', {
+        title: title,
+        message: message.substring(0, 100),
+        hasAudio: hasAudio,
+        hasImage: iconUrl !== '/pwa-192x192.png'
+      });
     }
   } catch (err) {
-    console.error('❌ SW v15: Erro:', err);
+    console.error('❌ SW v16: Erro ao processar:', err);
+    message = 'Nova notificação do 7care';
   }
   
   // Preparar opções da notificação
   const notificationOptions = {
-    body: notificationData.message,
-    icon: notificationData.image || '/pwa-192x192.png',
+    body: message,
+    icon: iconUrl,
     badge: '/pwa-192x192.png',
     vibrate: [200, 100, 200],
     tag: '7care-notification',
-    requireInteraction: notificationData.hasAudio, // Manter aberta se tiver áudio
+    requireInteraction: hasAudio,
     silent: false,
     renotify: true,
     data: {
-      audio: notificationData.audio,
-      hasAudio: notificationData.hasAudio,
-      image: notificationData.image,
-      hasImage: notificationData.hasImage
+      audio: audioData,
+      hasAudio: hasAudio
     }
   };
   
   // Adicionar ações se tiver áudio
-  if (notificationData.hasAudio) {
+  if (hasAudio) {
     notificationOptions.actions = [
       {
         action: 'play-audio',
@@ -129,15 +183,10 @@ self.addEventListener('push', (event) => {
     ];
   }
   
-  console.log('📬 SW v15: Exibindo notificação interativa:', {
-    title: notificationData.title,
-    hasAudio: notificationData.hasAudio,
-    hasImage: notificationData.hasImage,
-    requireInteraction: notificationOptions.requireInteraction
-  });
+  console.log('📬 SW v16: Exibindo notificação com parsing perfeito');
 
   event.waitUntil(
-    self.registration.showNotification(notificationData.title, notificationOptions)
+    self.registration.showNotification(title, notificationOptions)
   );
 });
 

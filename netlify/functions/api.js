@@ -13627,38 +13627,25 @@ exports.handler = async (event, context) => {
           VALUES (${title}, ${message}, ${userId || null}, ${type}, false, NOW())
         `;
 
-        // ENVIO INTELIGENTE - Payload JSON com mídia rica
-        const notificationPayload = {
-          title: title,
-          message: message,
-          type: type,
-          hasImage: hasImage,
-          hasAudio: hasAudio,
-          imageName: imageName,
-          audioSize: audioSize,
-          timestamp: new Date().toISOString()
-        };
+        // ENVIO SIMPLES - Apenas texto da mensagem (SEM JSON)
+        let payload = message;
         
-        // Adicionar dados de mídia se disponíveis
-        if (imageData) {
-          notificationPayload.image = imageData;
+        // Adicionar emojis indicadores de mídia no texto
+        if (hasImage && hasAudio) {
+          payload = `📷🎵 ${message}`;
+        } else if (hasImage) {
+          payload = `📷 ${message}`;
+        } else if (hasAudio) {
+          payload = `🎵 ${message}`;
         }
         
-        if (audioData) {
-          notificationPayload.audio = audioData;
-        }
-        
-        const payload = JSON.stringify(notificationPayload);
-        
-        console.log('📦 Payload RICO preparado:', { 
+        console.log('📦 Payload SIMPLES preparado:', { 
           title,
-          message,
+          message: payload,
           type,
           hasImage,
           hasAudio,
-          hasImageData: !!imageData,
-          hasAudioData: !!audioData,
-          payloadSize: payload.length
+          payloadLength: payload.length
         });
 
         let sentCount = 0;
