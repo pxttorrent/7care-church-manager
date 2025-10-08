@@ -13601,11 +13601,8 @@ exports.handler = async (event, context) => {
         `;
 
         // ENVIO SIMPLES - Apenas título e mensagem
-        const payload = JSON.stringify({
-          title: title,
-          message: message,
-          type: type
-        });
+        // Enviar apenas o texto da mensagem, sem JSON
+        const payload = message;
         
         console.log('📦 Payload SIMPLES preparado:', { 
           title,

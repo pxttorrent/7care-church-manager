@@ -50,62 +50,29 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(function(registrations) {
       console.log('🔍 AUTO-UPDATE: Encontradas', registrations.length, 'registrations');
       
-      // SEMPRE forçar atualização para garantir SW v11
+      // Verificar se precisa atualizar (sem loop)
       if (registrations.length > 0) {
-        console.log('🔄 AUTO-UPDATE: Forçando atualização...');
+        console.log('✅ SW: Já registrado, verificando atualizações...');
         
-        // Remover todas as registrations
-        const promises = registrations.map(registration => {
-          console.log('❌ AUTO-UPDATE: Removendo:', registration.scope);
-          return registration.unregister();
-        });
-        
-        Promise.all(promises).then(function() {
-          console.log('✅ AUTO-UPDATE: Registrations removidas');
-          
-          // Limpar cache
-          if ('caches' in window) {
-            caches.keys().then(function(cacheNames) {
-              console.log('🗑️ AUTO-UPDATE: Limpando', cacheNames.length, 'caches');
-              const deletePromises = cacheNames.map(cacheName => {
-                console.log('❌ AUTO-UPDATE: Deletando cache:', cacheName);
-                return caches.delete(cacheName);
-              });
-              
-              Promise.all(deletePromises).then(function() {
-                console.log('✅ AUTO-UPDATE: Caches limpos');
-                
-                // Aguardar e registrar nova versão
-                setTimeout(function() {
-                  console.log('🆕 AUTO-UPDATE: Registrando SW v11...');
-                  navigator.serviceWorker.register('/sw.js', {
-                    scope: '/'
-                  }).then(function(registration) {
-                    console.log('✅ AUTO-UPDATE: SW v11 registrado!');
-                    
-                    // Forçar ativação
-                    if (registration.waiting) {
-                      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-                    }
-                    
-                    // Recarregar após 2 segundos
-                    setTimeout(function() {
-                      console.log('🔄 AUTO-UPDATE: Recarregando...');
-                      window.location.reload();
-                    }, 2000);
-                    
-                  }).catch(function(error) {
-                    console.error('❌ AUTO-UPDATE: Erro:', error);
-                  });
-                }, 1000);
-              });
+        // Verificar se há atualização disponível
+        const registration = registrations[0];
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('🆕 SW: Nova versão disponível');
+                // Não recarregar automaticamente para evitar loop
+              }
             });
           }
         });
       } else {
-        console.log('✅ AUTO-UPDATE: Nenhuma registration encontrada, registrando SW v11...');
+        console.log('🆕 SW: Registrando pela primeira vez...');
         navigator.serviceWorker.register('/sw.js').then(function(registration) {
-          console.log('✅ AUTO-UPDATE: SW v11 registrado!');
+          console.log('✅ SW: Registrado com sucesso!');
+        }).catch(function(error) {
+          console.error('❌ SW: Erro ao registrar:', error);
         });
       }
     });
