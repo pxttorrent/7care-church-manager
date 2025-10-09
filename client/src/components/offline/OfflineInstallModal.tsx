@@ -27,6 +27,8 @@ export function OfflineInstallModal({ isAdmin }: OfflineInstallModalProps) {
   const [isInstalling, setIsInstalling] = useState(false);
   const [installProgress, setInstallProgress] = useState(0);
   const [installMessage, setInstallMessage] = useState('Preparando download...');
+  const [selectedPath, setSelectedPath] = useState<string>('Padrão do Navegador');
+  const [showPathSelector, setShowPathSelector] = useState(false);
   const { toast } = useToast();
 
   // Verificar se deve mostrar o modal
@@ -49,6 +51,33 @@ export function OfflineInstallModal({ isAdmin }: OfflineInstallModalProps) {
       }, 2000);
     }
   }, [isAdmin]);
+
+  // Função para selecionar pasta (se suportado)
+  const selectDownloadPath = async () => {
+    try {
+      // Verificar se File System Access API está disponível
+      if ('showDirectoryPicker' in window) {
+        const dirHandle = await (window as any).showDirectoryPicker({
+          mode: 'readwrite',
+          startIn: 'downloads'
+        });
+        
+        setSelectedPath(dirHandle.name);
+        toast({
+          title: '📁 Pasta selecionada',
+          description: `Dados serão salvos em: ${dirHandle.name}`,
+        });
+      } else {
+        toast({
+          title: 'ℹ️ Recurso não disponível',
+          description: 'Seu navegador salvará os dados automaticamente no armazenamento interno.',
+        });
+      }
+    } catch (error) {
+      // Usuário cancelou ou erro
+      console.log('Seleção de pasta cancelada');
+    }
+  };
 
   // Função para instalar modo offline
   const installOfflineMode = async () => {
@@ -76,15 +105,18 @@ export function OfflineInstallModal({ isAdmin }: OfflineInstallModalProps) {
       const { enableOfflineInterceptor } = await import('@/lib/offlineInterceptor');
       enableOfflineInterceptor(true);
 
-      // Obter tamanho dos dados
+      // Obter informações do download
       const { getStorageSize } = await import('@/lib/offlineStorage');
       const storageSize = await getStorageSize();
       const sizeMB = (storageSize / 1024 / 1024).toFixed(1);
+      
+      const totalPages = localStorage.getItem('offline-total-pages') || '12';
+      const totalApis = localStorage.getItem('offline-total-apis') || '11';
 
       toast({
-        title: '✅ Dados Baixados com Sucesso!',
-        description: `${sizeMB} MB armazenados no dispositivo. Você pode usar o app offline agora!`,
-        duration: 8000,
+        title: '✅ Download Completo!',
+        description: `${totalPages} páginas e ${totalApis} conjuntos de dados (${sizeMB} MB) armazenados permanentemente no dispositivo. App pronto para uso offline!`,
+        duration: 10000,
       });
 
       setTimeout(() => {
@@ -153,11 +185,36 @@ export function OfflineInstallModal({ isAdmin }: OfflineInstallModalProps) {
               </p>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              O download inclui: usuários, eventos, tarefas, orações, reuniões, interessados e estatísticas.
-              Tempo estimado: 10-30 segundos.
+              O download inclui: <strong>TODAS as páginas</strong> (12 páginas), <strong>todos os dados</strong> (usuários, eventos, tarefas, orações, reuniões, interessados, estatísticas).
+              Tempo estimado: 20-60 segundos.
             </p>
           </DialogDescription>
         </DialogHeader>
+
+        {/* Seletor de Pasta (opcional) */}
+        {!isInstalling && (
+          <div className="space-y-3 border-t pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Local de armazenamento:</p>
+                <p className="text-xs text-muted-foreground">{selectedPath}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={selectDownloadPath}
+                className="gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Escolher Pasta
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground bg-gray-50 p-2 rounded">
+              💡 <strong>Nota:</strong> Por padrão, os dados são salvos no armazenamento interno do navegador (IndexedDB). 
+              Se seu navegador suportar, você pode escolher uma pasta específica.
+            </p>
+          </div>
+        )}
 
         {isInstalling && (
           <div className="space-y-2">

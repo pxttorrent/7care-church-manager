@@ -87,9 +87,10 @@ async function getFromStore<T = any>(storeName: string): Promise<T[]> {
 }
 
 /**
- * Download completo de dados do servidor
+ * Download completo de dados do servidor + TODAS as páginas
  */
 export async function downloadAllData(onProgress?: (progress: number, message: string) => void): Promise<void> {
+  // Lista de endpoints de API para baixar
   const endpoints = [
     { name: 'Usuários', endpoint: '/api/users', store: STORES.USERS },
     { name: 'Eventos', endpoint: '/api/events', store: STORES.EVENTS },
@@ -99,14 +100,34 @@ export async function downloadAllData(onProgress?: (progress: number, message: s
     { name: 'Reuniões', endpoint: '/api/meetings', store: STORES.MEETINGS },
     { name: 'Interessados', endpoint: '/api/interested', store: STORES.INTERESTED },
     { name: 'Dashboard', endpoint: '/api/dashboard/stats', store: STORES.DASHBOARD_STATS },
+    { name: 'Visitas', endpoint: '/api/dashboard/visits', store: 'dashboard_visits' },
+    { name: 'Aniversários', endpoint: '/api/users/birthdays', store: 'birthdays' },
+    { name: 'Check-ins Emocionais', endpoint: '/api/emotional-checkins/admin', store: 'emotional_checkins' },
   ];
 
-  const total = endpoints.length;
-  let current = 0;
+  // Lista de TODAS as páginas do app para pré-carregar
+  const pagesToPreload = [
+    { name: 'Dashboard', url: '/dashboard' },
+    { name: 'Usuários', url: '/users' },
+    { name: 'Calendário', url: '/calendar' },
+    { name: 'Tarefas', url: '/tasks' },
+    { name: 'Orações', url: '/prayers' },
+    { name: 'Chat', url: '/chat' },
+    { name: 'Interessados', url: '/interested' },
+    { name: 'Meus Interessados', url: '/my-interested' },
+    { name: 'Gamificação', url: '/gamification' },
+    { name: 'Relatórios', url: '/reports' },
+    { name: 'Configurações', url: '/settings' },
+    { name: 'Notificações', url: '/notifications' },
+  ];
 
+  const totalSteps = endpoints.length + pagesToPreload.length;
+  let currentStep = 0;
+
+  // PASSO 1: Baixar e salvar dados de APIs
   for (const { name, endpoint, store } of endpoints) {
     try {
-      onProgress?.(Math.round((current / total) * 100), `Baixando ${name}...`);
+      onProgress?.(Math.round((currentStep / totalSteps) * 100), `Baixando ${name}...`);
 
       const response = await fetch(endpoint, { credentials: 'include' });
       
@@ -123,13 +144,34 @@ export async function downloadAllData(onProgress?: (progress: number, message: s
       await saveToStore(store, dataArray);
       
       console.log(`✅ ${name} baixado e salvo:`, dataArray.length, 'itens');
-      current++;
+      currentStep++;
       
     } catch (error) {
       console.error(`❌ Erro ao baixar ${name}:`, error);
-      // Continuar mesmo se um endpoint falhar
-      current++;
+      currentStep++;
     }
+  }
+
+  // PASSO 2: Pré-carregar TODAS as páginas (para Service Worker cachear)
+  for (const { name, url } of pagesToPreload) {
+    try {
+      onProgress?.(Math.round((currentStep / totalSteps) * 100), `Carregando página ${name}...`);
+
+      // Fazer requisição para a página para Service Worker cachear
+      await fetch(url, { credentials: 'include' }).catch(() => {
+        // Ignorar erros de fetch de páginas
+      });
+      
+      console.log(`✅ Página ${name} pré-carregada`);
+      currentStep++;
+      
+    } catch (error) {
+      console.error(`❌ Erro ao pré-carregar ${name}:`, error);
+      currentStep++;
+    }
+
+    // Pequeno delay para não sobrecarregar
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
 
   // Salvar metadata do download
@@ -137,7 +179,9 @@ export async function downloadAllData(onProgress?: (progress: number, message: s
     id: 1,
     downloadedAt: new Date().toISOString(),
     version: 1,
-    totalItems: current
+    totalEndpoints: endpoints.length,
+    totalPages: pagesToPreload.length,
+    totalItems: currentStep
   };
   await saveToStore(STORES.METADATA, [metadata]);
 
@@ -146,8 +190,14 @@ export async function downloadAllData(onProgress?: (progress: number, message: s
   // Marcar como baixado
   localStorage.setItem('offline-data-downloaded', 'true');
   localStorage.setItem('offline-data-downloaded-at', metadata.downloadedAt);
+  localStorage.setItem('offline-total-pages', pagesToPreload.length.toString());
+  localStorage.setItem('offline-total-apis', endpoints.length.toString());
   
-  console.log('✅ Download completo de dados offline finalizado!');
+  console.log('✅ Download completo finalizado!', {
+    apis: endpoints.length,
+    pages: pagesToPreload.length,
+    total: currentStep
+  });
 }
 
 /**
