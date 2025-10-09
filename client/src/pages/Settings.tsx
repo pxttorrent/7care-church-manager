@@ -42,13 +42,15 @@ import {
   Filter,
   Cloud,
   Cake,
-  Send
+  Send,
+  HardDrive
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { MountainProgress } from '@/components/dashboard/MountainProgress';
 import { PointsConfiguration } from '@/components/settings/PointsConfiguration';
+import { OfflineModeSettings } from '@/components/settings/OfflineModeSettings';
 import { useLastImportDate } from '@/hooks/useLastImportDate';
 import { useSystemLogo } from '@/hooks/useSystemLogo';
 import { ImportExcelModal } from '@/components/calendar/ImportExcelModal';
@@ -1694,7 +1696,7 @@ export default function Settings() {
 
         <Tabs defaultValue={defaultTab} className="space-y-6">
           {/* Desktop Tabs */}
-          <TabsList className="hidden md:grid w-full grid-cols-9">
+          <TabsList className="hidden md:grid w-full grid-cols-10">
             <TabsTrigger value="notifications" className="text-xs">Notificações</TabsTrigger>
             {!isMemberOnlyNotifications && (
               <>
@@ -1717,6 +1719,9 @@ export default function Settings() {
             )}
             {user?.role === 'admin' && (
               <TabsTrigger value="data-management" className="text-xs">Gestão de Dados</TabsTrigger>
+            )}
+            {user?.role === 'admin' && (
+              <TabsTrigger value="offline-mode" className="text-xs">Modo Offline</TabsTrigger>
             )}
           </TabsList>
 
@@ -1744,6 +1749,9 @@ export default function Settings() {
             )}
             {user?.role === 'admin' && (
               <TabsTrigger value="data-management" className="text-xs flex-shrink-0 px-2">Gestão de Dados</TabsTrigger>
+            )}
+            {user?.role === 'admin' && (
+              <TabsTrigger value="offline-mode" className="text-xs flex-shrink-0 px-2">Modo Offline</TabsTrigger>
             )}
           </TabsList>
 
@@ -2644,6 +2652,13 @@ export default function Settings() {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+          )}
+
+          {/* Offline Mode Settings */}
+          {user?.role === 'admin' && (
+            <TabsContent value="offline-mode" className="space-y-4">
+              <OfflineModeSettings />
             </TabsContent>
           )}
 

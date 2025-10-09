@@ -1,24 +1,55 @@
-// Service Worker for 7care PWA - v23 com API Cache
-const CACHE_NAME = '7care-v23-api-cache';
+// Service Worker for 7care PWA - v24 com Cache Offline Completo
+const CACHE_NAME = '7care-v24-offline-complete';
 const urlsToCache = [
   '/',
-  '/static/js/bundle.js',
-  '/static/css/main.css',
+  '/index.html',
   '/manifest.json',
   '/pwa-192x192.png',
   '/pwa-512x512.png',
-  '/favicon.ico'
+  '/favicon.ico',
+  '/7care-logo.png',
+  '/7carelogonew.png',
+  // Páginas principais para cache offline
+  '/dashboard',
+  '/menu',
+  '/calendar',
+  '/users',
+  '/tasks',
+  '/interested',
+  '/my-interested',
+  '/chat',
+  '/settings',
+  '/gamification',
+  '/prayers',
+  '/push-notifications',
+  '/notifications',
+  '/contact',
+  '/meu-cadastro',
+  '/elections',
+  '/election-config',
+  '/election-voting',
+  '/election-dashboard',
+  '/election-manage'
 ];
 
-// Install event
+// Install event - Cache completo para offline
 self.addEventListener('install', (event) => {
-  console.log('🔄 SW: Nova versão instalando...', CACHE_NAME);
+  console.log('🔄 SW v24: Nova versão instalando...', CACHE_NAME);
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('💾 SW: Cache criado:', CACHE_NAME);
-        return cache.addAll(urlsToCache);
+        console.log('💾 SW v24: Cache criado:', CACHE_NAME);
+        // Cachear URLs principais (ignorar falhas individuais)
+        return Promise.allSettled(
+          urlsToCache.map(url => 
+            cache.add(url).catch(err => {
+              console.warn(`⚠️ SW v24: Falha ao cachear ${url}:`, err);
+              return Promise.resolve();
+            })
+          )
+        );
       })
+      .then(() => console.log('✅ SW v24: Cache inicial completo'))
   );
   // Ativar imediatamente a nova versão do SW
   self.skipWaiting();
@@ -95,14 +126,20 @@ self.addEventListener('fetch', (event) => {
         }
       }
       
-      // ========== ESTRATÉGIA PARA NAVEGAÇÃO ==========
+      // ========== ESTRATÉGIA PARA NAVEGAÇÃO (SPA) ==========
       try {
         const networkResponse = await fetch(event.request.clone());
         
-        // Cachear páginas HTML
-        if (networkResponse && networkResponse.status === 200 && event.request.mode === 'navigate') {
+        // Cachear páginas HTML e rotas de navegação
+        if (networkResponse && networkResponse.status === 200) {
           const cache = await caches.open(CACHE_NAME);
-          cache.put(event.request, networkResponse.clone());
+          
+          // Para navegação, cachear tanto a URL específica quanto o conteúdo
+          if (event.request.mode === 'navigate') {
+            cache.put(event.request, networkResponse.clone());
+            // Também cachear como a rota específica
+            cache.put(new Request(url.pathname), networkResponse.clone());
+          }
         }
         
         return networkResponse;
@@ -110,18 +147,28 @@ self.addEventListener('fetch', (event) => {
         // Offline - buscar do cache
         const cachedResponse = await caches.match(event.request);
         if (cachedResponse) {
+          console.log('📦 SW v24: Página do cache:', url.pathname);
           return cachedResponse;
         }
         
-        // Fallback para index.html
+        // Buscar pela rota específica
+        const routeCache = await caches.match(url.pathname);
+        if (routeCache) {
+          console.log('📦 SW v24: Rota do cache:', url.pathname);
+          return routeCache;
+        }
+        
+        // Fallback para index.html (SPA)
         if (event.request.mode === 'navigate') {
+          console.log('🏠 SW v24: Fallback para index.html:', url.pathname);
           const indexCache = await caches.match('/index.html') || await caches.match('/');
           if (indexCache) {
             return indexCache;
           }
         }
         
-        return new Response('Offline', { status: 503 });
+        console.error('❌ SW v24: Sem cache disponível:', url.pathname);
+        return new Response('Offline - Sem cache disponível', { status: 503 });
       }
     })()
   );
