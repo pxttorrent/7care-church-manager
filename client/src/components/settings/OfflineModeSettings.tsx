@@ -18,6 +18,8 @@ import {
   Loader2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { offlineDB } from '@/lib/offlineDatabase';
+import { downloadAllDataForOffline, checkDataFreshness } from '@/lib/apiOfflineInterceptor';
 
 interface FileCheckResult {
   name: string;
@@ -72,10 +74,12 @@ const REQUIRED_FILES = [
 export function OfflineModeSettings() {
   const { toast } = useToast();
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isDownloadingData, setIsDownloadingData] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineStatus, setOfflineStatus] = useState<OfflineStatus | null>(null);
   const [verificationResults, setVerificationResults] = useState<FileCheckResult[]>([]);
   const [cacheInfo, setCacheInfo] = useState<any>(null);
+  const [dataStats, setDataStats] = useState<Record<string, number>>({});
 
   // Monitorar status de conexão
   useEffect(() => {
@@ -95,6 +99,7 @@ export function OfflineModeSettings() {
   useEffect(() => {
     loadOfflineStatus();
     checkCacheStatus();
+    loadDataStats();
   }, []);
 
   const loadOfflineStatus = () => {
@@ -123,6 +128,54 @@ export function OfflineModeSettings() {
       } catch (error) {
         console.error('Erro ao verificar cache:', error);
       }
+    }
+  };
+
+  const loadDataStats = async () => {
+    try {
+      const stats = await offlineDB.getStats();
+      setDataStats(stats);
+      console.log('📊 Estatísticas IndexedDB:', stats);
+    } catch (error) {
+      console.error('Erro ao carregar stats:', error);
+    }
+  };
+
+  const downloadAllData = async () => {
+    if (!navigator.onLine) {
+      toast({
+        title: "Sem conexão",
+        description: "É necessário estar online para baixar os dados",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsDownloadingData(true);
+
+    try {
+      toast({
+        title: "Baixando dados...",
+        description: "Isso pode levar alguns minutos dependendo da quantidade de dados",
+      });
+
+      await downloadAllDataForOffline();
+      await loadDataStats();
+
+      toast({
+        title: "Download concluído!",
+        description: "Todos os dados agora estão disponíveis offline no IndexedDB",
+      });
+
+    } catch (error) {
+      console.error('Erro no download:', error);
+      toast({
+        title: "Erro no download",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive"
+      });
+    } finally {
+      setIsDownloadingData(false);
     }
   };
 
@@ -202,6 +255,43 @@ export function OfflineModeSettings() {
         status: isInstalled ? 'success' : 'warning',
         message: isInstalled ? 'Instalado como aplicativo' : 'Acesse via navegador (pode instalar como PWA)'
       });
+
+      // Verificar dados no IndexedDB
+      const dataFreshness = await checkDataFreshness();
+      const totalData = Object.values(dataFreshness.stats).reduce((sum, count) => sum + count, 0);
+      
+      results.push({
+        name: 'Dados Offline (IndexedDB)',
+        status: totalData > 0 ? 'success' : 'warning',
+        message: totalData > 0 
+          ? `${totalData} registros disponíveis offline` 
+          : 'Nenhum dado baixado - clique em "Baixar Dados" abaixo'
+      });
+
+      // Verificar dados por tipo
+      if (dataFreshness.stats.users > 0) {
+        results.push({
+          name: 'Usuários',
+          status: 'success',
+          message: `${dataFreshness.stats.users} usuários em cache`
+        });
+      }
+      
+      if (dataFreshness.stats.tasks > 0) {
+        results.push({
+          name: 'Tarefas',
+          status: 'success',
+          message: `${dataFreshness.stats.tasks} tarefas em cache`
+        });
+      }
+
+      if (dataFreshness.stats.interested > 0) {
+        results.push({
+          name: 'Interessados',
+          status: 'success',
+          message: `${dataFreshness.stats.interested} interessados em cache`
+        });
+      }
 
       // Salvar resultados
       setVerificationResults(results);
@@ -498,10 +588,10 @@ Depois de instalado como PWA, funciona 100% offline!
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <HardDrive className="h-5 w-5" />
-              Informações do Cache
+              Cache de Páginas (Service Worker)
             </CardTitle>
             <CardDescription>
-              Cache do Service Worker ativo
+              Assets e arquivos estáticos
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -510,8 +600,67 @@ Depois de instalado como PWA, funciona 100% offline!
               <code className="text-xs bg-muted px-2 py-1 rounded">{cacheInfo.cacheName}</code>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Itens em Cache:</span>
-              <Badge>{cacheInfo.totalItems}</Badge>
+              <span className="text-sm font-medium">Arquivos em Cache:</span>
+              <Badge>{cacheInfo.totalItems} arquivos</Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Data Info - IndexedDB */}
+      {Object.keys(dataStats).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Dados Offline (IndexedDB)
+            </CardTitle>
+            <CardDescription>
+              Dados salvos localmente no dispositivo
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {dataStats.users > 0 && (
+              <div className="flex items-center justify-between p-2 bg-muted rounded">
+                <span className="text-sm font-medium">👥 Usuários:</span>
+                <Badge variant="default">{dataStats.users}</Badge>
+              </div>
+            )}
+            {dataStats.tasks > 0 && (
+              <div className="flex items-center justify-between p-2 bg-muted rounded">
+                <span className="text-sm font-medium">✅ Tarefas:</span>
+                <Badge variant="default">{dataStats.tasks}</Badge>
+              </div>
+            )}
+            {dataStats.interested > 0 && (
+              <div className="flex items-center justify-between p-2 bg-muted rounded">
+                <span className="text-sm font-medium">🤝 Interessados:</span>
+                <Badge variant="default">{dataStats.interested}</Badge>
+              </div>
+            )}
+            {dataStats.events > 0 && (
+              <div className="flex items-center justify-between p-2 bg-muted rounded">
+                <span className="text-sm font-medium">📅 Eventos:</span>
+                <Badge variant="default">{dataStats.events}</Badge>
+              </div>
+            )}
+            {dataStats.prayers > 0 && (
+              <div className="flex items-center justify-between p-2 bg-muted rounded">
+                <span className="text-sm font-medium">🙏 Orações:</span>
+                <Badge variant="default">{dataStats.prayers}</Badge>
+              </div>
+            )}
+            {dataStats.activities > 0 && (
+              <div className="flex items-center justify-between p-2 bg-muted rounded">
+                <span className="text-sm font-medium">📊 Atividades:</span>
+                <Badge variant="default">{dataStats.activities}</Badge>
+              </div>
+            )}
+            <div className="pt-2 mt-2 border-t">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold">Total de Registros:</span>
+                <Badge className="bg-green-600">{Object.values(dataStats).reduce((sum, count) => sum + count, 0)}</Badge>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -528,6 +677,24 @@ Depois de instalado como PWA, funciona 100% offline!
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <Button 
+              onClick={downloadAllData} 
+              variant="default"
+              disabled={isDownloadingData || !isOnline}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isDownloadingData ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Baixando Dados...
+                </>
+              ) : (
+                <>
+                  <Database className="h-4 w-4 mr-2" />
+                  Baixar TODOS os Dados
+                </>
+              )}
+            </Button>
+            <Button 
               onClick={forceFullOfflineInstall} 
               variant="default"
               disabled={isVerifying}
@@ -541,37 +708,46 @@ Depois de instalado como PWA, funciona 100% offline!
               ) : (
                 <>
                   <Download className="h-4 w-4 mr-2" />
-                  Instalar para Offline Completo
+                  Instalar Páginas
                 </>
               )}
             </Button>
             <Button onClick={checkCacheStatus} variant="outline">
               <RefreshCw className="h-4 w-4 mr-2" />
-              Atualizar Cache Info
+              Atualizar Info
             </Button>
             <Button onClick={downloadInstructions} variant="outline">
               <Download className="h-4 w-4 mr-2" />
-              Baixar Instruções
+              Instruções
             </Button>
             <Button onClick={clearOfflineCache} variant="destructive">
               <XCircle className="h-4 w-4 mr-2" />
-              Limpar Cache
+              Limpar Tudo
             </Button>
           </div>
 
-          <Alert className="border-blue-500">
-            <HardDrive className="h-4 w-4" />
+          <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+            <Database className="h-4 w-4 text-green-600" />
             <AlertDescription>
-              <strong>✨ Service Worker v27 - Instalação Automática!</strong>
-              <ol className="list-decimal ml-5 mt-2 space-y-1">
-                <li><strong>Clique no botão azul acima</strong> "Instalar para Offline Completo"</li>
-                <li>OU simplesmente <strong>recarregue a página</strong> (Ctrl+R)</li>
-                <li>O Service Worker v27 cacheará <strong>TODOS os assets automaticamente</strong></li>
-                <li><strong>TODAS as 20+ páginas</strong> funcionarão offline imediatamente!</li>
-                <li>Não precisa mais visitar cada página manualmente 🎉</li>
-              </ol>
-              <p className="mt-3 text-sm font-semibold text-blue-600">
-                💡 Após a instalação, pode desconectar da internet e usar normalmente!
+              <strong className="text-green-700 dark:text-green-400">🎯 Instalação Offline COMPLETA em 2 passos:</strong>
+              <div className="mt-3 space-y-3">
+                <div className="p-3 bg-green-100 dark:bg-green-900 rounded">
+                  <p className="font-semibold text-green-800 dark:text-green-300">1️⃣ Baixar Dados (VERDE)</p>
+                  <p className="text-sm mt-1">Clique em <strong>"Baixar TODOS os Dados"</strong> para salvar usuários, tarefas, interessados, etc no dispositivo</p>
+                </div>
+                
+                <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded">
+                  <p className="font-semibold text-blue-800 dark:text-blue-300">2️⃣ Instalar Páginas (AZUL)</p>
+                  <p className="text-sm mt-1">Clique em <strong>"Instalar Páginas"</strong> ou recarregue (Ctrl+R) para cachear os 97 arquivos</p>
+                </div>
+
+                <div className="p-3 bg-purple-100 dark:bg-purple-900 rounded">
+                  <p className="font-semibold text-purple-800 dark:text-purple-300">✅ Pronto para Offline!</p>
+                  <p className="text-sm mt-1">Agora pode desconectar da internet e usar TUDO offline: páginas + dados!</p>
+                </div>
+              </div>
+              <p className="mt-3 text-sm font-semibold text-green-700 dark:text-green-400">
+                💾 Os dados ficam salvos no IndexedDB do navegador e sincronizam quando voltar online!
               </p>
             </AlertDescription>
           </Alert>
@@ -591,22 +767,24 @@ Depois de instalado como PWA, funciona 100% offline!
             </div>
 
             <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg">
-              <p className="font-semibold mb-2">🚀 Como usar offline:</p>
+              <p className="font-semibold mb-2">🚀 Instalação Offline Completa:</p>
               <ol className="list-decimal ml-5 space-y-1">
                 <li>Acesse <strong>https://7care.netlify.app</strong> (COM internet)</li>
-                <li>Aguarde o Service Worker instalar (5-10 segundos)</li>
-                <li>Veja no console: "✅ SW v27: Pre-cache completo!"</li>
-                <li><strong>Pronto!</strong> Agora pode desconectar e usar offline</li>
+                <li>Vá em <strong>Configurações → Modo Offline</strong></li>
+                <li>Clique em <strong>"Baixar TODOS os Dados"</strong> (botão VERDE)</li>
+                <li>Aguarde download (usuários, tarefas, interessados, etc)</li>
+                <li>Clique em <strong>"Instalar Páginas"</strong> (botão AZUL) ou recarregue</li>
+                <li><strong>Pronto!</strong> Desconecte e use offline com TODOS os dados!</li>
               </ol>
             </div>
 
             <div className="bg-green-50 dark:bg-green-950 p-3 rounded-lg">
-              <p className="font-semibold mb-2">📦 O que é cacheado automaticamente:</p>
+              <p className="font-semibold mb-2">📦 O que fica disponível offline:</p>
               <ul className="list-disc ml-5 space-y-1">
-                <li><strong>98 arquivos</strong> incluindo todos os chunks JS das páginas</li>
-                <li><strong>Dashboard, Users, Calendar, Tasks, Chat</strong> e todas as outras</li>
-                <li><strong>Biblioteca React, UI components, CSS</strong></li>
-                <li><strong>Ícones, imagens, manifest PWA</strong></li>
+                <li><strong>Páginas:</strong> 97 arquivos (HTML, JS, CSS) - Automático</li>
+                <li><strong>Dados:</strong> Usuários, Tarefas, Interessados, Eventos - Baixar com botão VERDE</li>
+                <li><strong>Interface:</strong> Todos os componentes UI, ícones, logos</li>
+                <li><strong>Funciona 100% offline</strong> após baixar dados + páginas!</li>
               </ul>
             </div>
 

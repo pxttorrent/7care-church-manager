@@ -10,6 +10,7 @@ import { FirstAccessWelcome } from "./components/auth/FirstAccessWelcome";
 import { createQueryClient, setupPerformanceListeners, prefetchImportantData } from "./lib/queryClient";
 import { cleanConsoleInProduction } from "./lib/performance";
 import { useOfflineCache } from "./hooks/useOfflineCache";
+import { setupOfflineInterceptor } from "./lib/apiOfflineInterceptor";
 
 // Lazy load all pages for better performance
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -55,6 +56,10 @@ const App = () => {
   useEffect(() => {
     // Clean console logs in production
     cleanConsoleInProduction();
+    
+    // Setup offline interceptor for API calls
+    setupOfflineInterceptor();
+    console.log('✅ Interceptor de API offline ativado - dados serão cacheados');
     
     // Setup performance listeners
     setupPerformanceListeners(queryClient);
