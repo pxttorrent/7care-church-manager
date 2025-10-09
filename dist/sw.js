@@ -1,5 +1,5 @@
-// Service Worker for 7care PWA - v22 Clean & Stable
-const CACHE_NAME = '7care-v22-clean-stable';
+// Service Worker for 7care PWA - v23 com API Cache
+const CACHE_NAME = '7care-v23-api-cache';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -24,7 +24,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Fetch event - com cache dinâmico
+// Fetch event - com cache dinâmico e API cache
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
@@ -33,31 +33,87 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
-  // Detectar se é asset estático
+  // Detectar tipo de requisição
   const isAsset = url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|ico)$/i);
+  const isAPI = url.pathname.startsWith('/api/');
+  const isGET = event.request.method === 'GET';
   
   event.respondWith(
     (async () => {
-      // Tentar cache primeiro para assets
-      const cachedResponse = await caches.match(event.request);
-      if (cachedResponse) {
-        return cachedResponse;
+      // ========== ESTRATÉGIA PARA API GET ==========
+      if (isAPI && isGET) {
+        try {
+          // Network First para API (dados frescos)
+          const networkResponse = await fetch(event.request.clone());
+          
+          // Cachear resposta bem-sucedida
+          if (networkResponse && networkResponse.status === 200) {
+            const cache = await caches.open('7care-api-cache');
+            cache.put(event.request, networkResponse.clone());
+          }
+          
+          return networkResponse;
+        } catch (error) {
+          // Se offline, buscar do cache
+          const cachedResponse = await caches.match(event.request);
+          if (cachedResponse) {
+            console.log('📦 API do cache:', url.pathname);
+            return cachedResponse;
+          }
+          
+          // Sem cache disponível - retornar array vazio ao invés de erro
+          console.log('⚠️ API offline sem cache:', url.pathname);
+          return new Response(
+            JSON.stringify([]), 
+            { 
+              status: 200, // Retorna 200 com array vazio em vez de 503
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+        }
       }
       
+      // ========== ESTRATÉGIA PARA ASSETS ==========
+      if (isAsset) {
+        // Cache First para assets (performance)
+        const cachedResponse = await caches.match(event.request);
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        
+        try {
+          const networkResponse = await fetch(event.request.clone());
+          
+          if (networkResponse && networkResponse.status === 200) {
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(event.request, networkResponse.clone());
+          }
+          
+          return networkResponse;
+        } catch (error) {
+          return new Response('', { status: 503 });
+        }
+      }
+      
+      // ========== ESTRATÉGIA PARA NAVEGAÇÃO ==========
       try {
-        // Buscar da rede
         const networkResponse = await fetch(event.request.clone());
         
-        // Cachear assets automaticamente
-        if (networkResponse && networkResponse.status === 200 && isAsset) {
+        // Cachear páginas HTML
+        if (networkResponse && networkResponse.status === 200 && event.request.mode === 'navigate') {
           const cache = await caches.open(CACHE_NAME);
           cache.put(event.request, networkResponse.clone());
         }
         
         return networkResponse;
       } catch (error) {
-        // Offline ou erro de rede
-        // Se for navegação, tentar servir index.html do cache
+        // Offline - buscar do cache
+        const cachedResponse = await caches.match(event.request);
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        
+        // Fallback para index.html
         if (event.request.mode === 'navigate') {
           const indexCache = await caches.match('/index.html') || await caches.match('/');
           if (indexCache) {
@@ -65,13 +121,7 @@ self.addEventListener('fetch', (event) => {
           }
         }
         
-        // Para outros recursos, retornar erro apenas se for importante
-        if (isAsset) {
-          // Não logar para evitar spam no console
-          return new Response('', { status: 503 });
-        }
-        
-        return new Response('Network error', { status: 503 });
+        return new Response('Offline', { status: 503 });
       }
     })()
   );
