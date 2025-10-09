@@ -1,4 +1,4 @@
-import { Bell, MessageCircle, Settings as SettingsIcon, User, LogOut, Sparkles, Cloud, CloudOff } from 'lucide-react';
+import { Bell, MessageCircle, Settings as SettingsIcon, User, LogOut, Sparkles, Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -28,22 +28,122 @@ export const MobileHeader = () => {
 
   // Estado offline simples (apenas para admin)
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingItems, setPendingItems] = useState(0);
   const isAdmin = user?.role === 'admin';
 
-  // Listener de online/offline (ADMIN ONLY - ULTRA SIMPLIFICADO)
+  // Funções de fila inline (sem arquivo separado)
+  const SYNC_QUEUE_KEY = 'offline-sync-queue';
+
+  const getSyncQueue = () => {
+    try {
+      const stored = localStorage.getItem(SYNC_QUEUE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const saveSyncQueue = (queue: any[]) => {
+    try {
+      localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
+      setPendingItems(queue.filter((i: any) => i.status === 'pending').length);
+    } catch (e) {
+      console.error('Erro ao salvar fila:', e);
+    }
+  };
+
+  const addToQueue = (method: string, endpoint: string, data?: any) => {
+    if (!isAdmin) return;
+    
+    const item = {
+      id: `sync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      method,
+      endpoint,
+      data,
+      timestamp: Date.now(),
+      retries: 0,
+      status: 'pending'
+    };
+
+    const queue = getSyncQueue();
+    queue.push(item);
+    saveSyncQueue(queue);
+
+    toast({ title: '📥 Ação salva', description: 'Será sincronizada quando voltar online.' });
+  };
+
+  const syncQueue = async () => {
+    if (!isAdmin || !isOnline || isSyncing) return;
+
+    setIsSyncing(true);
+    const queue = getSyncQueue();
+    const pending = queue.filter((i: any) => i.status === 'pending');
+
+    if (pending.length === 0) {
+      setIsSyncing(false);
+      return;
+    }
+
+    let success = 0;
+    let failed = 0;
+
+    for (const item of pending) {
+      try {
+        const res = await fetch(item.endpoint, {
+          method: item.method,
+          headers: { 'Content-Type': 'application/json' },
+          body: item.data ? JSON.stringify(item.data) : undefined,
+          credentials: 'include'
+        });
+
+        if (res.ok) {
+          queue.splice(queue.findIndex((i: any) => i.id === item.id), 1);
+          success++;
+        } else {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      } catch (e) {
+        item.retries = (item.retries || 0) + 1;
+        if (item.retries >= 3) item.status = 'error';
+        failed++;
+      }
+    }
+
+    saveSyncQueue(queue);
+    setIsSyncing(false);
+
+    if (success > 0) {
+      toast({ title: '✅ Sincronizado!', description: `${success} ${success === 1 ? 'item' : 'itens'}` });
+    }
+    if (failed > 0) {
+      toast({ title: '⚠️ Alguns falharam', description: `${failed} ${failed === 1 ? 'item' : 'itens'}`, variant: 'destructive' });
+    }
+  };
+
+  // Atualizar contagem ao montar
+  useEffect(() => {
+    if (isAdmin) {
+      const queue = getSyncQueue();
+      setPendingItems(queue.filter((i: any) => i.status === 'pending').length);
+    }
+  }, [isAdmin]);
+
+  // Listener de online/offline (ADMIN ONLY)
   useEffect(() => {
     if (!isAdmin) return;
 
     const handleOnline = () => {
       setIsOnline(true);
-      toast({ title: '🟢 Você está online!', description: 'Conexão restaurada.' });
+      toast({ title: '🟢 Você está online!', description: 'Sincronizando dados...' });
+      setTimeout(() => syncQueue(), 1000);
     };
 
     const handleOffline = () => {
       setIsOnline(false);
       toast({ 
-        title: '🔴 Você está offline', 
-        description: 'Algumas funcionalidades podem não estar disponíveis.',
+        title: '🔴 Modo Offline Ativado', 
+        description: 'Você pode continuar trabalhando. Dados serão sincronizados quando voltar online.',
         duration: 5000
       });
     };
@@ -55,7 +155,7 @@ export const MobileHeader = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [isAdmin, toast]);
+  }, [isAdmin, toast, isOnline]);
 
 
 
@@ -190,25 +290,45 @@ export const MobileHeader = () => {
             transform: `translateX(${mobileHeaderLayout.actions.offsetX}px) translateY(${mobileHeaderLayout.actions.offsetY}px)`
           }}
         >
-          {/* Indicador de Status Online/Offline (ADMIN ONLY - ULTRA SIMPLES) */}
+          {/* Indicador de Status Offline (ADMIN ONLY - COM SYNC) */}
           {isAdmin && (
-            <div
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
-                isOnline 
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-red-100 text-red-700'
+            <button
+              onClick={() => isSyncing ? null : syncQueue()}
+              disabled={isSyncing}
+              className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                isSyncing 
+                  ? 'bg-blue-100 text-blue-700 cursor-wait'
+                  : isOnline 
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200 cursor-pointer'
+                    : 'bg-red-100 text-red-700 cursor-default'
               }`}
-              title={isOnline ? 'Você está online' : 'Você está offline'}
+              title={
+                isSyncing 
+                  ? 'Sincronizando...'
+                  : isOnline 
+                    ? 'Online - Clique para sincronizar'
+                    : 'Offline - Dados serão sincronizados quando voltar online'
+              }
             >
-              {isOnline ? (
+              {isSyncing ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : isOnline ? (
                 <Cloud className="w-3.5 h-3.5" />
               ) : (
                 <CloudOff className="w-3.5 h-3.5" />
               )}
+              
               <span className="hidden sm:inline">
-                {isOnline ? 'Online' : 'Offline'}
+                {isSyncing ? 'Sync...' : isOnline ? 'Online' : 'Offline'}
               </span>
-            </div>
+              
+              {/* Badge de itens pendentes */}
+              {pendingItems > 0 && !isSyncing && (
+                <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                  {pendingItems > 9 ? '9+' : pendingItems}
+                </span>
+              )}
+            </button>
           )}
 
           <Button 
