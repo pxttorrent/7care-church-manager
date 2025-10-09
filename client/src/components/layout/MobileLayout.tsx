@@ -1,9 +1,11 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { MobileHeader } from './MobileHeader';
 import { MobileBottomNav } from './MobileBottomNav';
+import { OfflineInstallModal } from '../offline/OfflineInstallModal';
 import { useAuth } from '@/hooks/useAuth';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { enableOfflineInterceptor } from '@/lib/offlineInterceptor';
 import { RefreshCw } from 'lucide-react';
 
 interface MobileLayoutProps {
@@ -15,6 +17,18 @@ export const MobileLayout = ({ children, showBottomNav = true }: MobileLayoutPro
   const { isAuthenticated, isLoading, user } = useAuth();
   
   console.log('🔍 MobileLayout - Estado:', { isAuthenticated, isLoading, userRole: user?.role });
+
+  const isAdmin = user?.role === 'admin';
+
+  // Ativar interceptor offline se admin tiver instalado o modo offline
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const offlineInstalled = localStorage.getItem('offline-mode-installed');
+    if (offlineInstalled) {
+      enableOfflineInterceptor(true);
+    }
+  }, [isAdmin]);
 
   // Pull to Refresh
   const { containerRef, pullDistance, isRefreshing, progress } = usePullToRefresh({
@@ -43,6 +57,9 @@ export const MobileLayout = ({ children, showBottomNav = true }: MobileLayoutPro
 
   return (
     <div ref={containerRef} className="min-h-screen bg-background flex flex-col">
+      {/* Modal de Instalação do Modo Offline (Admin Only) */}
+      <OfflineInstallModal isAdmin={isAdmin} />
+
       {/* Indicador de Pull to Refresh */}
       <div 
         className="fixed top-0 left-0 right-0 z-40 flex items-center justify-center transition-all duration-200"

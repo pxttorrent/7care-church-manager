@@ -121,12 +121,23 @@ export const MobileHeader = () => {
     }
   };
 
-  // Atualizar contagem ao montar
+  // Atualizar contagem ao montar e quando fila mudar
   useEffect(() => {
-    if (isAdmin) {
+    if (!isAdmin) return;
+
+    const updateCount = () => {
       const queue = getSyncQueue();
       setPendingItems(queue.filter((i: any) => i.status === 'pending').length);
-    }
+    };
+
+    updateCount();
+
+    // Listener para atualizações da fila (do interceptor)
+    window.addEventListener('offlineQueueUpdated', updateCount);
+
+    return () => {
+      window.removeEventListener('offlineQueueUpdated', updateCount);
+    };
   }, [isAdmin]);
 
   // Listener de online/offline (ADMIN ONLY)
