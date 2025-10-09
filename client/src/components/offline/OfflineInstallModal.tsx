@@ -1,8 +1,8 @@
 /**
- * 🔄 MODAL DE INSTALAÇÃO DO MODO OFFLINE
+ * 🎉 MODAL DE BEM-VINDO AO PWA OFFLINE
  * 
  * Modal que aparece quando admin instala o PWA
- * Oferece instalação completa do modo offline
+ * Informa sobre funcionalidade offline automática (Service Worker v27)
  */
 
 import { useState, useEffect } from 'react';
@@ -15,8 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Cloud, Download, Check } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { CheckCircle, Wifi, WifiOff, HardDrive, Zap } from 'lucide-react';
 
 interface OfflineInstallModalProps {
   isAdmin: boolean;
@@ -24,249 +23,149 @@ interface OfflineInstallModalProps {
 
 export function OfflineInstallModal({ isAdmin }: OfflineInstallModalProps) {
   const [showModal, setShowModal] = useState(false);
-  const [isInstalling, setIsInstalling] = useState(false);
-  const [installProgress, setInstallProgress] = useState(0);
-  const [installMessage, setInstallMessage] = useState('Preparando download...');
-  const [selectedPath, setSelectedPath] = useState<string>('Padrão do Navegador');
-  const [showPathSelector, setShowPathSelector] = useState(false);
-  const { toast } = useToast();
+  const [cacheStatus, setCacheStatus] = useState<'checking' | 'ready' | 'pending'>('checking');
 
-  // Verificar se deve mostrar o modal
   useEffect(() => {
     if (!isAdmin) return;
 
-    // Verificar se já instalou o modo offline
-    const offlineInstalled = localStorage.getItem('offline-mode-installed');
+    // Verificar se já viu a mensagem de boas-vindas v27
+    const hasSeenWelcome = localStorage.getItem('offline-v27-welcome-seen');
     
-    // Verificar se PWA foi instalado (appinstalled event ou standalone mode)
+    // Verificar se PWA foi instalado
     const isPWAInstalled = window.matchMedia('(display-mode: standalone)').matches ||
                           (window.navigator as any).standalone ||
                           document.referrer.includes('android-app://');
 
-    // Mostrar modal se PWA foi instalado mas modo offline não foi configurado
-    if (isPWAInstalled && !offlineInstalled) {
-      // Delay de 2 segundos para não aparecer muito rápido
-      setTimeout(() => {
+    // Mostrar modal apenas na primeira vez após instalar PWA
+    if (isPWAInstalled && !hasSeenWelcome) {
+      setTimeout(async () => {
+        // Verificar status do cache
+        await checkCache();
         setShowModal(true);
       }, 2000);
     }
   }, [isAdmin]);
 
-  // Função para selecionar pasta (se suportado)
-  const selectDownloadPath = async () => {
-    try {
-      // Verificar se File System Access API está disponível
-      if ('showDirectoryPicker' in window) {
-        const dirHandle = await (window as any).showDirectoryPicker({
-          mode: 'readwrite',
-          startIn: 'downloads'
-        });
+  const checkCache = async () => {
+    if ('caches' in window) {
+      try {
+        const cacheNames = await caches.keys();
+        const v27Cache = cacheNames.find(name => name.includes('7care-v27'));
         
-        setSelectedPath(dirHandle.name);
-        toast({
-          title: '📁 Pasta selecionada',
-          description: `Dados serão salvos em: ${dirHandle.name}`,
-        });
-      } else {
-        toast({
-          title: 'ℹ️ Recurso não disponível',
-          description: 'Seu navegador salvará os dados automaticamente no armazenamento interno.',
-        });
+        if (v27Cache) {
+          const cache = await caches.open(v27Cache);
+          const keys = await cache.keys();
+          
+          // Se tem mais de 50 itens, considera pronto
+          setCacheStatus(keys.length > 50 ? 'ready' : 'pending');
+        } else {
+          setCacheStatus('pending');
+        }
+      } catch (error) {
+        setCacheStatus('pending');
       }
-    } catch (error) {
-      // Usuário cancelou ou erro
-      console.log('Seleção de pasta cancelada');
     }
   };
 
-  // Função para instalar modo offline
-  const installOfflineMode = async () => {
-    setIsInstalling(true);
-    setInstallProgress(0);
-
-    try {
-      // Importar função de download
-      const { downloadAllData } = await import('@/lib/offlineStorage');
-
-      // Download completo de dados com callback de progresso
-      await downloadAllData((progress, message) => {
-        setInstallProgress(progress);
-        setInstallMessage(message);
-        console.log(`📥 ${message} (${progress}%)`);
-      });
-
-      // Passo 3: Marcar como instalado
-      localStorage.setItem('offline-mode-installed', 'true');
-      localStorage.setItem('offline-mode-installed-at', new Date().toISOString());
-
-      setInstallProgress(100);
-
-      // Ativar interceptor offline
-      const { enableOfflineInterceptor } = await import('@/lib/offlineInterceptor');
-      enableOfflineInterceptor(true);
-
-      // Obter informações do download
-      const { getStorageSize } = await import('@/lib/offlineStorage');
-      const storageSize = await getStorageSize();
-      const sizeMB = (storageSize / 1024 / 1024).toFixed(1);
-      
-      const totalPages = localStorage.getItem('offline-total-pages') || '12';
-      const totalApis = localStorage.getItem('offline-total-apis') || '11';
-
-      toast({
-        title: '✅ Download Completo!',
-        description: `${totalPages} páginas e ${totalApis} conjuntos de dados (${sizeMB} MB) armazenados permanentemente no dispositivo. App pronto para uso offline!`,
-        duration: 10000,
-      });
-
-      setTimeout(() => {
-        setShowModal(false);
-        
-        // Recarregar página para aplicar interceptor
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
-      }, 1500);
-
-    } catch (error) {
-      console.error('Erro ao instalar modo offline:', error);
-      toast({
-        title: '❌ Erro na instalação',
-        description: 'Não foi possível instalar o modo offline. Tente novamente.',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsInstalling(false);
-    }
-  };
-
-  // Função para pular instalação
-  const skipInstallation = () => {
-    // Marcar como "pulado" para não mostrar novamente
-    localStorage.setItem('offline-mode-skipped', 'true');
+  const handleClose = () => {
+    localStorage.setItem('offline-v27-welcome-seen', 'true');
     setShowModal(false);
-    
-    toast({
-      title: 'Instalação pulada',
-      description: 'Você pode instalar o modo offline depois nas configurações.',
-    });
   };
 
-  if (!isAdmin || !showModal) return null;
+  const handleGoToSettings = () => {
+    localStorage.setItem('offline-v27-welcome-seen', 'true');
+    setShowModal(false);
+    window.location.href = '/settings?tab=offline-mode';
+  };
 
   return (
     <Dialog open={showModal} onOpenChange={setShowModal}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Cloud className="w-5 h-5 text-blue-500" />
-            Instalar Modo Offline
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <CheckCircle className="h-6 w-6 text-green-600" />
+            🎉 PWA Instalado com Sucesso!
           </DialogTitle>
-          <DialogDescription className="space-y-3">
-            <p>
-              Como <strong>Administrador</strong>, você pode habilitar o modo offline completo!
-            </p>
-            <p className="text-sm">
-              Isso permitirá que você:
-            </p>
-            <ul className="text-sm space-y-1 list-disc list-inside">
-              <li>✅ Acesse o app sem internet</li>
-              <li>✅ Consulte usuários, eventos e dados</li>
-              <li>✅ Crie e edite registros offline</li>
-              <li>✅ Sincronize automaticamente ao voltar online</li>
-            </ul>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
-              <p className="text-xs font-medium text-blue-900 flex items-center gap-2">
-                <Download className="w-4 h-4" />
-                Download de Dados
-              </p>
-              <p className="text-xs text-blue-700 mt-1">
-                Todos os dados serão <strong>baixados e armazenados</strong> permanentemente no seu dispositivo para acesso offline completo.
-              </p>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              O download inclui: <strong>TODAS as páginas</strong> (12 páginas), <strong>todos os dados</strong> (usuários, eventos, tarefas, orações, reuniões, interessados, estatísticas).
-              Tempo estimado: 20-60 segundos.
-            </p>
+          <DialogDescription className="text-base">
+            Bem-vindo ao 7care como aplicativo instalado
           </DialogDescription>
         </DialogHeader>
 
-        {/* Seletor de Pasta (opcional) */}
-        {!isInstalling && (
-          <div className="space-y-3 border-t pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">Local de armazenamento:</p>
-                <p className="text-xs text-muted-foreground">{selectedPath}</p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={selectDownloadPath}
-                className="gap-2"
-              >
-                <Download className="w-4 h-4" />
-                Escolher Pasta
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground bg-gray-50 p-2 rounded">
-              💡 <strong>Nota:</strong> Por padrão, os dados são salvos no armazenamento interno do navegador (IndexedDB). 
-              Se seu navegador suportar, você pode escolher uma pasta específica.
-            </p>
-          </div>
-        )}
-
-        {isInstalling && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-blue-700 font-medium">{installMessage}</span>
-              <span className="font-bold text-blue-900">{installProgress}%</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-3 shadow-inner">
-              <div 
-                className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300 shadow-sm"
-                style={{ width: `${installProgress}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground text-center">
-              Baixando dados para armazenamento permanente no dispositivo...
-            </p>
-          </div>
-        )}
-
-        <DialogFooter className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={skipInstallation}
-            disabled={isInstalling}
-          >
-            Agora Não
-          </Button>
-          <Button
-            onClick={installOfflineMode}
-            disabled={isInstalling}
-            className="gap-2"
-          >
-            {isInstalling ? (
+        <div className="space-y-4 py-4">
+          {/* Status do Cache */}
+          <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
+            {cacheStatus === 'ready' ? (
               <>
-                <Download className="w-4 h-4 animate-pulse" />
-                Instalando...
+                <CheckCircle className="h-8 w-8 text-green-600 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-green-700 dark:text-green-400">
+                    ✅ Modo Offline Ativo!
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Todas as páginas já funcionam offline
+                  </p>
+                </div>
               </>
-            ) : installProgress === 100 ? (
+            ) : cacheStatus === 'pending' ? (
               <>
-                <Check className="w-4 h-4" />
-                Concluído!
+                <Zap className="h-8 w-8 text-orange-600 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-orange-700 dark:text-orange-400">
+                    ⏳ Configurando Offline...
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Aguarde o cache completar (5-10 seg)
+                  </p>
+                </div>
               </>
             ) : (
               <>
-                <Download className="w-4 h-4" />
-                Instalar Modo Offline
+                <HardDrive className="h-8 w-8 text-blue-600 flex-shrink-0 animate-pulse" />
+                <div>
+                  <p className="font-semibold">Verificando cache...</p>
+                </div>
               </>
             )}
+          </div>
+
+          {/* Funcionalidades */}
+          <div className="space-y-2">
+            <p className="font-semibold">✨ O que você pode fazer agora:</p>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-start gap-2">
+                <WifiOff className="h-4 w-4 mt-0.5 text-blue-600" />
+                <p><strong>Usar offline:</strong> Todas as 20+ páginas funcionam sem internet</p>
+              </div>
+              <div className="flex items-start gap-2">
+                <Wifi className="h-4 w-4 mt-0.5 text-green-600" />
+                <p><strong>Sincronização automática:</strong> Dados sincronizam quando voltar online</p>
+              </div>
+              <div className="flex items-start gap-2">
+                <CheckCircle className="h-4 w-4 mt-0.5 text-purple-600" />
+                <p><strong>Service Worker v27:</strong> Cache automático de 98 assets</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Informação Adicional */}
+          <div className="p-3 bg-muted rounded-lg text-sm">
+            <p className="font-semibold mb-1">💡 Dica Pro:</p>
+            <p>
+              Vá em <strong>Configurações → Modo Offline</strong> para verificar o status 
+              completo e ver detalhes do cache.
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button onClick={handleGoToSettings} className="flex-1">
+            Ver Configurações de Offline
+          </Button>
+          <Button onClick={handleClose} variant="outline" className="flex-1">
+            Entendi, Obrigado!
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-

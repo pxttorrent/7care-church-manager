@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +9,6 @@ import {
   CheckCircle, 
   XCircle, 
   Download,
-  FolderOpen,
   RefreshCw,
   AlertTriangle,
   Wifi,
@@ -74,7 +71,6 @@ const REQUIRED_FILES = [
 
 export function OfflineModeSettings() {
   const { toast } = useToast();
-  const [offlinePath, setOfflinePath] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineStatus, setOfflineStatus] = useState<OfflineStatus | null>(null);
@@ -95,17 +91,13 @@ export function OfflineModeSettings() {
     };
   }, []);
 
-  // Carregar configuração salva
+  // Carregar status salvo e verificar cache
   useEffect(() => {
-    const savedPath = localStorage.getItem('offline-installation-path');
-    if (savedPath) {
-      setOfflinePath(savedPath);
-      loadOfflineStatus(savedPath);
-    }
+    loadOfflineStatus();
     checkCacheStatus();
   }, []);
 
-  const loadOfflineStatus = (path: string) => {
+  const loadOfflineStatus = () => {
     const status = localStorage.getItem('offline-status');
     if (status) {
       setOfflineStatus(JSON.parse(status));
@@ -135,15 +127,6 @@ export function OfflineModeSettings() {
   };
 
   const verifyOfflineInstallation = async () => {
-    if (!offlinePath) {
-      toast({
-        title: "Caminho não especificado",
-        description: "Por favor, especifique o caminho da instalação offline",
-        variant: "destructive"
-      });
-      return;
-    }
-
     setIsVerifying(true);
     const results: FileCheckResult[] = [];
 
@@ -210,20 +193,15 @@ export function OfflineModeSettings() {
         }
       }
 
-      // Verificar se o caminho especificado parece válido
-      if (offlinePath.includes('7careoffiline') || offlinePath.includes('7care') || offlinePath.includes('offline')) {
-        results.push({
-          name: 'Caminho da Instalação',
-          status: 'success',
-          message: `Configurado: ${offlinePath}`
-        });
-      } else {
-        results.push({
-          name: 'Caminho da Instalação',
-          status: 'warning',
-          message: 'Caminho configurado pode não estar correto'
-        });
-      }
+      // Verificar PWA instalado
+      const isInstalled = window.matchMedia('(display-mode: standalone)').matches ||
+                         (window.navigator as any).standalone === true;
+      
+      results.push({
+        name: 'Instalação PWA',
+        status: isInstalled ? 'success' : 'warning',
+        message: isInstalled ? 'Instalado como aplicativo' : 'Acesse via navegador (pode instalar como PWA)'
+      });
 
       // Salvar resultados
       setVerificationResults(results);
@@ -235,7 +213,7 @@ export function OfflineModeSettings() {
 
       const newStatus: OfflineStatus = {
         isConfigured: errorCount === 0,
-        path: offlinePath,
+        path: 'Cache do navegador (v27)',
         totalFiles: results.length,
         totalSize: cacheInfo?.totalItems ? `${cacheInfo.totalItems} itens` : 'N/A',
         lastVerification: new Date().toLocaleString('pt-BR'),
@@ -245,7 +223,6 @@ export function OfflineModeSettings() {
 
       setOfflineStatus(newStatus);
       localStorage.setItem('offline-status', JSON.stringify(newStatus));
-      localStorage.setItem('offline-installation-path', offlinePath);
 
       toast({
         title: "Verificação concluída",
@@ -317,9 +294,6 @@ ${REQUIRED_PAGES.map(p => `- ${p.name} (${p.path})`).join('\n')}
 
 ## Status atual da verificação:
 ${verificationResults.map(r => `- ${r.name}: ${r.message}`).join('\n')}
-
-## Caminho configurado:
-${offlinePath || 'Não configurado'}
 
 ## Instalar como PWA:
 
@@ -415,25 +389,22 @@ Depois de instalado como PWA, funciona 100% offline!
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5" />
-            Configuração da Instalação Offline
+            <HardDrive className="h-5 w-5" />
+            Instalação Offline Automática (Service Worker v27)
           </CardTitle>
           <CardDescription>
-            Especifique o caminho onde a instalação offline está localizada
+            O PWA agora funciona 100% offline usando apenas o cache do navegador. Sem necessidade de pasta local!
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="offline-path">Caminho da Instalação</Label>
             <div className="flex gap-2">
-              <Input
-                id="offline-path"
-                value={offlinePath}
-                onChange={(e) => setOfflinePath(e.target.value)}
-                placeholder="/Users/usuario/Downloads/7careoffiline"
+              <Button 
+                onClick={verifyOfflineInstallation} 
+                disabled={isVerifying}
                 className="flex-1"
-              />
-              <Button onClick={verifyOfflineInstallation} disabled={isVerifying}>
+                variant="outline"
+              >
                 {isVerifying ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -442,13 +413,13 @@ Depois de instalado como PWA, funciona 100% offline!
                 ) : (
                   <>
                     <FileCheck className="h-4 w-4 mr-2" />
-                    Verificar
+                    Verificar Status Offline
                   </>
                 )}
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              Exemplo: /Users/filipe/Downloads/7careoffiline
+              ✨ Service Worker v27 cacheia automaticamente todos os 98 assets no primeiro acesso
             </p>
           </div>
 
@@ -610,33 +581,53 @@ Depois de instalado como PWA, funciona 100% offline!
       {/* Guia Rápido */}
       <Card>
         <CardHeader>
-          <CardTitle>📚 Guia Rápido - Instalação Offline</CardTitle>
+          <CardTitle>📚 Guia Rápido - Como Funciona o Offline</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="space-y-2 text-sm">
-            <p><strong>1. Onde está a instalação?</strong></p>
-            <code className="block bg-muted p-2 rounded">
-              /Users/filipevitolapeixoto/Downloads/7careoffiline
-            </code>
+          <div className="space-y-3 text-sm">
+            <div>
+              <p className="font-semibold text-blue-600 mb-2">✨ Service Worker v27 - Totalmente Automático!</p>
+              <p>Não precisa mais de pasta local ou servidor. Tudo funciona pelo cache do navegador!</p>
+            </div>
 
-            <p className="mt-4"><strong>2. Como iniciar o servidor local?</strong></p>
-            <code className="block bg-muted p-2 rounded">
-              cd /Users/filipevitolapeixoto/Downloads/7careoffiline<br/>
-              ./start-offline.sh
-            </code>
+            <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg">
+              <p className="font-semibold mb-2">🚀 Como usar offline:</p>
+              <ol className="list-decimal ml-5 space-y-1">
+                <li>Acesse <strong>https://7care.netlify.app</strong> (COM internet)</li>
+                <li>Aguarde o Service Worker instalar (5-10 segundos)</li>
+                <li>Veja no console: "✅ SW v27: Pre-cache completo!"</li>
+                <li><strong>Pronto!</strong> Agora pode desconectar e usar offline</li>
+              </ol>
+            </div>
 
-            <p className="mt-4"><strong>3. Como acessar?</strong></p>
-            <code className="block bg-muted p-2 rounded">
-              http://localhost:8080/paginas.html
-            </code>
+            <div className="bg-green-50 dark:bg-green-950 p-3 rounded-lg">
+              <p className="font-semibold mb-2">📦 O que é cacheado automaticamente:</p>
+              <ul className="list-disc ml-5 space-y-1">
+                <li><strong>98 arquivos</strong> incluindo todos os chunks JS das páginas</li>
+                <li><strong>Dashboard, Users, Calendar, Tasks, Chat</strong> e todas as outras</li>
+                <li><strong>Biblioteca React, UI components, CSS</strong></li>
+                <li><strong>Ícones, imagens, manifest PWA</strong></li>
+              </ul>
+            </div>
 
-            <p className="mt-4"><strong>4. Arquivos importantes:</strong></p>
-            <ul className="list-disc ml-5 space-y-1">
-              <li>LEIA-ME-PRIMEIRO.txt - Guia de início</li>
-              <li>paginas.html - Índice visual de todas as páginas</li>
-              <li>start-offline.sh - Script de inicialização</li>
-              <li>README.md - Documentação completa</li>
-            </ul>
+            <div className="bg-purple-50 dark:bg-purple-950 p-3 rounded-lg">
+              <p className="font-semibold mb-2">📱 Instalar como PWA:</p>
+              <ul className="list-disc ml-5 space-y-1">
+                <li><strong>Chrome/Edge:</strong> Menu → Instalar 7care</li>
+                <li><strong>Safari iOS:</strong> Compartilhar → Adicionar à Tela Inicial</li>
+                <li>Depois de instalado, funciona como app nativo offline!</li>
+              </ul>
+            </div>
+
+            <div className="bg-orange-50 dark:bg-orange-950 p-3 rounded-lg">
+              <p className="font-semibold mb-2">🔍 Como verificar:</p>
+              <ol className="list-decimal ml-5 space-y-1">
+                <li>Abra <strong>DevTools (F12)</strong></li>
+                <li>Vá em <strong>Application → Cache Storage</strong></li>
+                <li>Procure: <strong>7care-v27-precache-total</strong></li>
+                <li>Deve ter <strong>98+ itens</strong></li>
+              </ol>
+            </div>
           </div>
         </CardContent>
       </Card>
