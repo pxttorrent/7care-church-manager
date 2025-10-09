@@ -196,7 +196,7 @@ self.addEventListener('fetch', (event) => {
         }
       }
 
-      // ========== API (Network First com Cache Persistente) ==========
+      // ========== API (Network First com Cache Inteligente) ==========
       if (isAPI && isGET) {
         try {
           // Tentar buscar da rede
@@ -205,22 +205,41 @@ self.addEventListener('fetch', (event) => {
           if (networkResponse && networkResponse.ok) {
             // Cachear SEMPRE respostas bem-sucedidas da API
             const cache = await caches.open(API_CACHE_NAME);
+            
+            // Cachear com URL completa (com query params)
             cache.put(event.request, networkResponse.clone());
-            console.log(`💾 SW v27: API cached (dados salvos): ${url.pathname}`);
+            
+            // TAMBÉM cachear sem query params para fallback
+            const urlWithoutParams = url.origin + url.pathname;
+            cache.put(new Request(urlWithoutParams), networkResponse.clone());
+            
+            console.log(`💾 SW v27: API cached: ${url.pathname}${url.search}`);
           }
           
           return networkResponse;
         } catch (error) {
           // OFFLINE - Buscar do cache de API
-          console.log('📡 SW v27: OFFLINE - Buscando dados do cache:', url.pathname);
+          console.log('📡 SW v27: OFFLINE - Buscando dados do cache:', url.pathname + url.search);
           
-          const cachedResponse = await caches.match(event.request);
+          // Tentar buscar com URL exata primeiro
+          let cachedResponse = await caches.match(event.request);
+          
+          // Se não encontrar, tentar sem query params
+          if (!cachedResponse) {
+            const urlWithoutParams = url.origin + url.pathname;
+            cachedResponse = await caches.match(urlWithoutParams);
+            
+            if (cachedResponse) {
+              console.log(`✅ SW v27: Dados do cache (sem params): ${url.pathname}`);
+            }
+          }
+          
           if (cachedResponse) {
             // Retornar dados do cache
             const clonedResponse = cachedResponse.clone();
             const data = await clonedResponse.json();
             
-            console.log(`✅ SW v27: Dados do cache: ${url.pathname} (${Array.isArray(data) ? data.length : 'N/A'} itens)`);
+            console.log(`✅ SW v27: ${Array.isArray(data) ? data.length : 'N/A'} itens retornados do cache`);
             
             // Adicionar header indicando que veio do cache
             return new Response(JSON.stringify(data), {
@@ -234,7 +253,7 @@ self.addEventListener('fetch', (event) => {
           }
           
           // Se realmente não tiver nada em cache, retornar array vazio
-          console.warn(`⚠️ SW v27: Sem dados em cache: ${url.pathname}`);
+          console.warn(`⚠️ SW v27: Sem dados em cache para: ${url.pathname}`);
           return new Response(
             JSON.stringify([]), 
             { 
