@@ -26,6 +26,7 @@ export function OfflineInstallModal({ isAdmin }: OfflineInstallModalProps) {
   const [showModal, setShowModal] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const [installProgress, setInstallProgress] = useState(0);
+  const [installMessage, setInstallMessage] = useState('Preparando download...');
   const { toast } = useToast();
 
   // Verificar se deve mostrar o modal
@@ -55,52 +56,15 @@ export function OfflineInstallModal({ isAdmin }: OfflineInstallModalProps) {
     setInstallProgress(0);
 
     try {
-      // Lista de endpoints para cachear
-      const endpointsToCache = [
-        '/api/users',
-        '/api/events',
-        '/api/tasks',
-        '/api/prayers',
-        '/api/relationships',
-        '/api/meetings',
-        '/api/interested',
-        '/api/dashboard/stats',
-        '/api/dashboard/visits',
-        '/api/users/birthdays',
-        '/api/emotional-checkins/admin'
-      ];
+      // Importar função de download
+      const { downloadAllData } = await import('@/lib/offlineStorage');
 
-      const totalSteps = endpointsToCache.length + 2; // +2 para páginas
-      let currentStep = 0;
-
-      // Passo 1: Cachear páginas principais
-      setInstallProgress(Math.round((++currentStep / totalSteps) * 100));
-      const pagesToCache = [
-        '/',
-        '/dashboard',
-        '/users',
-        '/calendar',
-        '/tasks',
-        '/prayers',
-        '/chat'
-      ];
-
-      console.log('📦 Cacheando páginas...');
-      
-      // Passo 2: Cachear APIs
-      for (const endpoint of endpointsToCache) {
-        try {
-          const response = await fetch(endpoint, { credentials: 'include' });
-          if (response.ok) {
-            // Service Worker vai cachear automaticamente via fetch event
-            console.log(`✅ API cacheada: ${endpoint}`);
-          }
-        } catch (error) {
-          console.warn(`⚠️ Erro ao cachear ${endpoint}:`, error);
-        }
-        
-        setInstallProgress(Math.round((++currentStep / totalSteps) * 100));
-      }
+      // Download completo de dados com callback de progresso
+      await downloadAllData((progress, message) => {
+        setInstallProgress(progress);
+        setInstallMessage(message);
+        console.log(`📥 ${message} (${progress}%)`);
+      });
 
       // Passo 3: Marcar como instalado
       localStorage.setItem('offline-mode-installed', 'true');
@@ -112,10 +76,15 @@ export function OfflineInstallModal({ isAdmin }: OfflineInstallModalProps) {
       const { enableOfflineInterceptor } = await import('@/lib/offlineInterceptor');
       enableOfflineInterceptor(true);
 
+      // Obter tamanho dos dados
+      const { getStorageSize } = await import('@/lib/offlineStorage');
+      const storageSize = await getStorageSize();
+      const sizeMB = (storageSize / 1024 / 1024).toFixed(1);
+
       toast({
-        title: '✅ Modo Offline Instalado!',
-        description: 'Você pode usar o app sem internet agora. Suas ações offline serão sincronizadas automaticamente.',
-        duration: 7000,
+        title: '✅ Dados Baixados com Sucesso!',
+        description: `${sizeMB} MB armazenados no dispositivo. Você pode usar o app offline agora!`,
+        duration: 8000,
       });
 
       setTimeout(() => {
@@ -174,9 +143,18 @@ export function OfflineInstallModal({ isAdmin }: OfflineInstallModalProps) {
               <li>✅ Crie e edite registros offline</li>
               <li>✅ Sincronize automaticamente ao voltar online</li>
             </ul>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
+              <p className="text-xs font-medium text-blue-900 flex items-center gap-2">
+                <Download className="w-4 h-4" />
+                Download de Dados
+              </p>
+              <p className="text-xs text-blue-700 mt-1">
+                Todos os dados serão <strong>baixados e armazenados</strong> permanentemente no seu dispositivo para acesso offline completo.
+              </p>
+            </div>
             <p className="text-xs text-muted-foreground mt-2">
-              Vamos baixar e cachear todas as páginas e dados essenciais.
-              Isso pode levar alguns segundos.
+              O download inclui: usuários, eventos, tarefas, orações, reuniões, interessados e estatísticas.
+              Tempo estimado: 10-30 segundos.
             </p>
           </DialogDescription>
         </DialogHeader>
@@ -184,15 +162,18 @@ export function OfflineInstallModal({ isAdmin }: OfflineInstallModalProps) {
         {isInstalling && (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span>Instalando...</span>
-              <span className="font-medium">{installProgress}%</span>
+              <span className="text-blue-700 font-medium">{installMessage}</span>
+              <span className="font-bold text-blue-900">{installProgress}%</span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-gray-200 rounded-full h-3 shadow-inner">
               <div 
-                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300 shadow-sm"
                 style={{ width: `${installProgress}%` }}
               />
             </div>
+            <p className="text-xs text-muted-foreground text-center">
+              Baixando dados para armazenamento permanente no dispositivo...
+            </p>
           </div>
         )}
 

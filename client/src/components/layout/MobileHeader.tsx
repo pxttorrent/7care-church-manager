@@ -30,7 +30,16 @@ export const MobileHeader = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const [pendingItems, setPendingItems] = useState(0);
+  const [hasOfflineData, setHasOfflineData] = useState(false);
   const isAdmin = user?.role === 'admin';
+
+  // Verificar se tem dados offline baixados
+  useEffect(() => {
+    if (isAdmin) {
+      const dataDownloaded = localStorage.getItem('offline-data-downloaded') === 'true';
+      setHasOfflineData(dataDownloaded);
+    }
+  }, [isAdmin]);
 
   // Funções de fila inline (sem arquivo separado)
   const SYNC_QUEUE_KEY = 'offline-sync-queue';
@@ -317,8 +326,8 @@ export const MobileHeader = () => {
                 isSyncing 
                   ? 'Sincronizando...'
                   : isOnline 
-                    ? 'Online - Clique para sincronizar'
-                    : 'Offline - Dados serão sincronizados quando voltar online'
+                    ? `Online - Clique para sincronizar${hasOfflineData ? ' | Dados baixados no dispositivo ✓' : ''}`
+                    : `Offline${hasOfflineData ? ' - Dados salvos no dispositivo' : ' - Sem dados salvos'}`
               }
             >
               {isSyncing ? (
