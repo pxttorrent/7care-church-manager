@@ -126,13 +126,13 @@ export function useOfflineCache() {
   const getCacheInfo = async () => {
     if ('caches' in window) {
       const cacheNames = await caches.keys();
-      const v26Cache = cacheNames.find(name => name.includes('7care-v26'));
+      const v27Cache = cacheNames.find(name => name.includes('7care-v27'));
       
-      if (v26Cache) {
-        const cache = await caches.open(v26Cache);
+      if (v27Cache) {
+        const cache = await caches.open(v27Cache);
         const keys = await cache.keys();
         return {
-          cacheName: v26Cache,
+          cacheName: v27Cache,
           totalItems: keys.length,
           items: keys.map(req => req.url)
         };

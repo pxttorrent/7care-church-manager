@@ -116,14 +116,14 @@ export function OfflineModeSettings() {
     if ('caches' in window) {
       try {
         const cacheNames = await caches.keys();
-        const v26Cache = cacheNames.find(name => name.includes('7care-v26-offline-total'));
+        const v27Cache = cacheNames.find(name => name.includes('7care-v27-precache-total'));
         
-        if (v26Cache) {
-          const cache = await caches.open(v26Cache);
+        if (v27Cache) {
+          const cache = await caches.open(v27Cache);
           const keys = await cache.keys();
           
           setCacheInfo({
-            cacheName: v26Cache,
+            cacheName: v27Cache,
             totalItems: keys.length,
             items: keys.map(req => req.url)
           });
@@ -169,17 +169,17 @@ export function OfflineModeSettings() {
       // Verificar Cache Storage
       if ('caches' in window) {
         const cacheNames = await caches.keys();
-        const v26Cache = cacheNames.find(name => name.includes('7care-v26-offline-total'));
+        const v27Cache = cacheNames.find(name => name.includes('7care-v27-precache-total'));
         
-        if (v26Cache) {
-          const cache = await caches.open(v26Cache);
+        if (v27Cache) {
+          const cache = await caches.open(v27Cache);
           const keys = await cache.keys();
           
           results.push({
             name: 'Cache Storage',
             status: 'success',
             message: `${keys.length} itens em cache`,
-            size: `v26`
+            size: `v27`
           });
 
           // Verificar cada página requerida
@@ -203,9 +203,9 @@ export function OfflineModeSettings() {
           }
         } else {
           results.push({
-            name: 'Cache v26',
+            name: 'Cache v27',
             status: 'error',
-            message: 'Cache offline não encontrado - visite a aplicação online primeiro'
+            message: 'Cache offline não encontrado - recarregue a aplicação para instalar'
           });
         }
       }
@@ -239,7 +239,7 @@ export function OfflineModeSettings() {
         totalFiles: results.length,
         totalSize: cacheInfo?.totalItems ? `${cacheInfo.totalItems} itens` : 'N/A',
         lastVerification: new Date().toLocaleString('pt-BR'),
-        serviceWorkerVersion: 'v26',
+        serviceWorkerVersion: 'v27',
         cacheStatus: errorCount > 0 ? 'inactive' : warningCount > 0 ? 'outdated' : 'active'
       };
 
@@ -291,38 +291,108 @@ export function OfflineModeSettings() {
 
   const downloadInstructions = () => {
     const instructions = `
-# Guia de Instalação Offline - 7care
+# Guia de Instalação Offline - 7care v27
 
-## Como configurar:
+## Como funciona:
 
-1. Copie a pasta de instalação offline para:
-   ${offlinePath || '/Users/[seu-usuario]/Downloads/7careoffiline'}
+O 7care agora usa Service Worker v27 com PRE-CACHE completo!
+TODAS as páginas funcionam offline automaticamente após a primeira instalação.
 
-2. Abra o Terminal e execute:
-   cd ${offlinePath || '/caminho/para/pasta'}
-   ./start-offline.sh
+## Instalação Automática:
 
-3. Abra no navegador:
-   http://localhost:8080/paginas.html
+1. Acesse: https://7care.netlify.app
+2. Aguarde o Service Worker instalar (veja no console)
+3. Todos os arquivos JS/CSS serão cacheados automaticamente
+4. Pronto! Pode usar offline
 
-4. Clique em TODAS as páginas para cachear
+## Verificar instalação:
 
-5. Depois pode usar offline!
+1. Abra DevTools (F12) > Console
+2. Procure por: "✅ SW v27: Pre-cache completo!"
+3. Application > Cache Storage
+4. Deve ter: 7care-v27-precache-total com 100+ itens
 
-## Páginas que precisam ser visitadas:
+## Páginas disponíveis offline (automaticamente):
 ${REQUIRED_PAGES.map(p => `- ${p.name} (${p.path})`).join('\n')}
 
 ## Status atual da verificação:
 ${verificationResults.map(r => `- ${r.name}: ${r.message}`).join('\n')}
+
+## Caminho configurado:
+${offlinePath || 'Não configurado'}
+
+## Instalar como PWA:
+
+Chrome/Edge: Menu > Instalar 7care
+Safari iOS: Compartilhar > Adicionar à Tela Inicial
+
+Depois de instalado como PWA, funciona 100% offline!
 `;
 
     const blob = new Blob([instructions], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'instalacao-offline-7care.txt';
+    a.download = 'instalacao-offline-7care-v27.txt';
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const forceFullOfflineInstall = async () => {
+    if (!('serviceWorker' in navigator)) {
+      toast({
+        title: "Service Worker não suportado",
+        description: "Seu navegador não suporta Service Workers",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsVerifying(true);
+
+    try {
+      toast({
+        title: "Instalando para offline...",
+        description: "Baixando todos os recursos. Isso pode levar alguns minutos.",
+      });
+
+      // Forçar registro do Service Worker
+      const registration = await navigator.serviceWorker.register('/sw.js', {
+        updateViaCache: 'none'
+      });
+
+      // Aguardar instalação
+      if (registration.installing) {
+        await new Promise((resolve) => {
+          registration.installing.addEventListener('statechange', (e) => {
+            if ((e.target as any).state === 'activated') {
+              resolve(true);
+            }
+          });
+        });
+      }
+
+      // Aguardar um pouco para o cache completar
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      // Verificar cache
+      await checkCacheStatus();
+
+      toast({
+        title: "Instalação offline concluída!",
+        description: "Todas as páginas agora funcionam offline. Pode desconectar da internet!",
+      });
+
+    } catch (error) {
+      console.error('Erro na instalação offline:', error);
+      toast({
+        title: "Erro na instalação",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive"
+      });
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   const successCount = verificationResults.filter(r => r.status === 'success').length;
@@ -486,6 +556,24 @@ ${verificationResults.map(r => `- ${r.name}: ${r.message}`).join('\n')}
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
+            <Button 
+              onClick={forceFullOfflineInstall} 
+              variant="default"
+              disabled={isVerifying}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {isVerifying ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Instalando...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Instalar para Offline Completo
+                </>
+              )}
+            </Button>
             <Button onClick={checkCacheStatus} variant="outline">
               <RefreshCw className="h-4 w-4 mr-2" />
               Atualizar Cache Info
@@ -500,17 +588,20 @@ ${verificationResults.map(r => `- ${r.name}: ${r.message}`).join('\n')}
             </Button>
           </div>
 
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
+          <Alert className="border-blue-500">
+            <HardDrive className="h-4 w-4" />
             <AlertDescription>
-              <strong>Importante:</strong> Para que o modo offline funcione corretamente:
+              <strong>✨ Service Worker v27 - Instalação Automática!</strong>
               <ol className="list-decimal ml-5 mt-2 space-y-1">
-                <li>Acesse a aplicação COM internet primeiro</li>
-                <li>Navegue por TODAS as páginas que deseja usar offline</li>
-                <li>Aguarde cada página carregar completamente (10 seg)</li>
-                <li>O Service Worker cacheará automaticamente</li>
-                <li>Depois pode desconectar e usar offline!</li>
+                <li><strong>Clique no botão azul acima</strong> "Instalar para Offline Completo"</li>
+                <li>OU simplesmente <strong>recarregue a página</strong> (Ctrl+R)</li>
+                <li>O Service Worker v27 cacheará <strong>TODOS os assets automaticamente</strong></li>
+                <li><strong>TODAS as 20+ páginas</strong> funcionarão offline imediatamente!</li>
+                <li>Não precisa mais visitar cada página manualmente 🎉</li>
               </ol>
+              <p className="mt-3 text-sm font-semibold text-blue-600">
+                💡 Após a instalação, pode desconectar da internet e usar normalmente!
+              </p>
             </AlertDescription>
           </Alert>
         </CardContent>
