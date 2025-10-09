@@ -13710,11 +13710,23 @@ exports.handler = async (event, context) => {
           };
         }
 
-        // Salvar notificação no banco
-        await sql`
-          INSERT INTO notifications (title, message, user_id, type, is_read, created_at)
-          VALUES (${title}, ${message}, ${userId || null}, ${type}, false, NOW())
-        `;
+        // Salvar uma notificação para CADA usuário que vai receber
+        console.log(`💾 Salvando notificações para ${subscriptions.length} usuários...`);
+        const savedNotifications = [];
+        for (const subscription of subscriptions) {
+          try {
+            const result = await sql`
+              INSERT INTO notifications (title, message, user_id, type, is_read, created_at)
+              VALUES (${title}, ${message}, ${subscription.user_id}, ${type}, false, NOW())
+              RETURNING *
+            `;
+            savedNotifications.push(result[0]);
+            console.log(`✅ Notificação salva para user_id ${subscription.user_id} (ID: ${result[0].id})`);
+          } catch (error) {
+            console.error(`❌ Erro ao salvar notificação para user_id ${subscription.user_id}:`, error);
+          }
+        }
+        console.log(`💾 Total salvo: ${savedNotifications.length}/${subscriptions.length} notificações`);
 
         // ENVIO SIMPLES - Apenas texto da mensagem (SEM JSON)
         let payload = message;
@@ -13769,6 +13781,7 @@ exports.handler = async (event, context) => {
         }
 
         console.log(`📱 Notificação enviada: ${sentCount}/${subscriptions.length} subscriptions`);
+        console.log(`💾 Notificações salvas no BD: ${savedNotifications.length}`);
 
         return {
           statusCode: 200,
@@ -13778,6 +13791,8 @@ exports.handler = async (event, context) => {
             message: 'Notificação enviada com sucesso',
             sentTo: sentCount,
             totalSubscriptions: subscriptions.length,
+            savedNotifications: savedNotifications.length,
+            notificationIds: savedNotifications.map(n => n.id),
             errors: errors,
             subscriptions: subscriptions.map(sub => ({ id: sub.id, userId: sub.user_id }))
           })
@@ -14005,6 +14020,96 @@ exports.handler = async (event, context) => {
           body: JSON.stringify({
             success: false,
             error: 'Erro interno do servidor: ' + error.message
+          })
+        };
+      }
+    }
+
+    // ========== ROTAS DE NOTIFICAÇÕES ==========
+    
+    // GET /api/notifications/:userId - Buscar notificações do usuário
+    if (path.startsWith('/api/notifications/') && method === 'GET') {
+      try {
+        const pathParts = path.split('/');
+        const userId = parseInt(pathParts[3]);
+        const limit = event.queryStringParameters?.limit ? parseInt(event.queryStringParameters.limit) : 50;
+        
+        console.log(`📥 GET /api/notifications/${userId} (limit: ${limit})`);
+        
+        const notifications = await sql`
+          SELECT * FROM notifications
+          WHERE user_id = ${userId}
+          ORDER BY created_at DESC
+          LIMIT ${limit}
+        `;
+        
+        console.log(`✅ Retornando ${notifications.length} notificações para user ${userId}`);
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(notifications)
+        };
+      } catch (error) {
+        console.error('❌ Get notifications error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: 'Internal server error' })
+        };
+      }
+    }
+    
+    // GET /api/debug/notifications - Debug endpoint
+    if (path === '/api/debug/notifications' && method === 'GET') {
+      try {
+        const userId = event.queryStringParameters?.userId ? parseInt(event.queryStringParameters.userId) : null;
+        
+        if (userId) {
+          console.log(`🔍 Buscando notificações para user_id: ${userId}`);
+          const notifications = await sql`
+            SELECT * FROM notifications
+            WHERE user_id = ${userId}
+            ORDER BY created_at DESC
+            LIMIT 100
+          `;
+          console.log(`📥 Encontradas ${notifications.length} notificações`);
+          
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              userId,
+              count: notifications.length,
+              notifications
+            })
+          };
+        } else {
+          console.log(`🔍 Buscando TODAS as notificações`);
+          const allNotifications = await sql`
+            SELECT * FROM notifications
+            ORDER BY created_at DESC
+            LIMIT 100
+          `;
+          console.log(`📥 Encontradas ${allNotifications.length} notificações no total`);
+          
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              count: allNotifications.length,
+              notifications: allNotifications
+            })
+          };
+        }
+      } catch (error) {
+        console.error('❌ Debug notifications error:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ 
+            error: 'Internal server error', 
+            details: error.message 
           })
         };
       }
