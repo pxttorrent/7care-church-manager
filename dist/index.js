@@ -6512,10 +6512,13 @@ async function registerRoutes(app2) {
     try {
       const userId = parseInt(req.params.userId);
       const limit = parseInt(req.query.limit) || 50;
+      console.log(`\u{1F4E5} GET /api/notifications/${userId} (limit: ${limit})`);
       const notifications2 = await storage.getNotificationsByUser(userId, limit);
+      console.log(`\u2705 Retornando ${notifications2.length} notifica\xE7\xF5es para user ${userId}`);
+      console.log(`\u{1F4CB} Notifica\xE7\xF5es:`, notifications2);
       res.json(notifications2);
     } catch (error) {
-      console.error("Get notifications error:", error);
+      console.error("\u274C Get notifications error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -6605,26 +6608,42 @@ async function registerRoutes(app2) {
   app2.post("/api/push/send", async (req, res) => {
     try {
       const { title, message, type, userId, hasImage, hasAudio, imageData, audioData } = req.body;
+      console.log("\u{1F4E8} POST /api/push/send recebido:", { title, message, type, userId });
       if (!title || !message) {
         res.status(400).json({ error: "Title and message are required" });
         return;
       }
       let targetUserIds = [];
       if (userId && userId !== "all" && userId !== null) {
-        targetUserIds = [Number(userId)];
+        const targetUserId = Number(userId);
+        console.log(`\u{1F3AF} Enviando para usu\xE1rio espec\xEDfico: ${targetUserId}`);
+        const user = await storage.getUserById(targetUserId);
+        if (user) {
+          targetUserIds = [targetUserId];
+          console.log(`\u2705 Usu\xE1rio encontrado: ${user.name} (ID: ${user.id})`);
+        } else {
+          console.error(`\u274C Usu\xE1rio com ID ${targetUserId} n\xE3o encontrado`);
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
       } else {
         const allSubscriptions = await storage.getAllPushSubscriptions();
         const activeSubscriptions = allSubscriptions.filter((sub) => sub.is_active !== false && sub.isActive !== false);
         targetUserIds = [...new Set(activeSubscriptions.map((sub) => sub.user_id || sub.userId))];
+        console.log(`\u{1F4E2} Enviando para todos (${targetUserIds.length} usu\xE1rios)`);
       }
+      console.log(`\u{1F3AF} Target User IDs:`, targetUserIds);
       const savedNotifications = await Promise.all(
         targetUserIds.map(async (uid) => {
-          return await storage.createNotification({
+          console.log(`\u{1F4BE} Salvando notifica\xE7\xE3o para user_id: ${uid}`);
+          const saved = await storage.createNotification({
             userId: uid,
             title,
             message,
             type: type || "general"
           });
+          console.log(`\u2705 Notifica\xE7\xE3o salva:`, saved);
+          return saved;
         })
       );
       console.log(`\u2705 ${savedNotifications.length} notifica\xE7\xF5es salvas no banco de dados`);
@@ -6632,11 +6651,38 @@ async function registerRoutes(app2) {
         success: true,
         sentTo: targetUserIds.length,
         savedNotifications: savedNotifications.length,
+        notificationIds: savedNotifications.map((n) => n.id),
         message: "Notifica\xE7\xF5es enviadas e salvas com sucesso"
       });
     } catch (error) {
-      console.error("Send push notification error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      console.error("\u274C Send push notification error:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+  });
+  app2.get("/api/debug/notifications", async (req, res) => {
+    try {
+      const userId = req.query.userId ? parseInt(req.query.userId) : null;
+      if (userId) {
+        console.log(`\u{1F50D} Buscando notifica\xE7\xF5es para user_id: ${userId}`);
+        const notifications2 = await storage.getNotificationsByUser(userId, 100);
+        console.log(`\u{1F4E5} Encontradas ${notifications2.length} notifica\xE7\xF5es`);
+        res.json({
+          userId,
+          count: notifications2.length,
+          notifications: notifications2
+        });
+      } else {
+        console.log(`\u{1F50D} Buscando TODAS as notifica\xE7\xF5es`);
+        const allNotifications = await storage.getAllNotifications();
+        console.log(`\u{1F4E5} Encontradas ${allNotifications.length} notifica\xE7\xF5es no total`);
+        res.json({
+          count: allNotifications.length,
+          notifications: allNotifications
+        });
+      }
+    } catch (error) {
+      console.error("\u274C Debug notifications error:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
     }
   });
   app2.get("/api/point-activities", async (req, res) => {

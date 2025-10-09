@@ -3500,10 +3500,15 @@ app.delete("/api/relationships/active/:interestedId", async (req, res) => {
     try {
       const userId = parseInt(req.params.userId);
       const limit = parseInt(req.query.limit as string) || 50;
+      console.log(`📥 GET /api/notifications/${userId} (limit: ${limit})`);
+      
       const notifications = await storage.getNotificationsByUser(userId, limit);
+      console.log(`✅ Retornando ${notifications.length} notificações para user ${userId}`);
+      console.log(`📋 Notificações:`, notifications);
+      
       res.json(notifications);
     } catch (error) {
-      console.error("Get notifications error:", error);
+      console.error("❌ Get notifications error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -3614,6 +3619,8 @@ app.delete("/api/relationships/active/:interestedId", async (req, res) => {
     try {
       const { title, message, type, userId, hasImage, hasAudio, imageData, audioData } = req.body;
 
+      console.log('📨 POST /api/push/send recebido:', { title, message, type, userId });
+
       if (!title || !message) {
         res.status(400).json({ error: "Title and message are required" });
         return;
@@ -3622,23 +3629,42 @@ app.delete("/api/relationships/active/:interestedId", async (req, res) => {
       // Determinar destinatários
       let targetUserIds: number[] = [];
       if (userId && userId !== 'all' && userId !== null) {
-        targetUserIds = [Number(userId)];
+        // Buscar o usuário pelo ID ou email/username
+        const targetUserId = Number(userId);
+        console.log(`🎯 Enviando para usuário específico: ${targetUserId}`);
+        
+        // Verificar se o usuário existe
+        const user = await storage.getUserById(targetUserId);
+        if (user) {
+          targetUserIds = [targetUserId];
+          console.log(`✅ Usuário encontrado: ${user.name} (ID: ${user.id})`);
+        } else {
+          console.error(`❌ Usuário com ID ${targetUserId} não encontrado`);
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
       } else {
         // Buscar todos os usuários com subscriptions ativas
         const allSubscriptions = await storage.getAllPushSubscriptions();
         const activeSubscriptions = allSubscriptions.filter(sub => sub.is_active !== false && sub.isActive !== false);
         targetUserIds = [...new Set(activeSubscriptions.map(sub => sub.user_id || sub.userId))];
+        console.log(`📢 Enviando para todos (${targetUserIds.length} usuários)`);
       }
+
+      console.log(`🎯 Target User IDs:`, targetUserIds);
 
       // Salvar notificação no banco para cada usuário
       const savedNotifications = await Promise.all(
         targetUserIds.map(async (uid) => {
-          return await storage.createNotification({
+          console.log(`💾 Salvando notificação para user_id: ${uid}`);
+          const saved = await storage.createNotification({
             userId: uid,
             title,
             message,
             type: type || 'general'
           });
+          console.log(`✅ Notificação salva:`, saved);
+          return saved;
         })
       );
 
@@ -3651,11 +3677,41 @@ app.delete("/api/relationships/active/:interestedId", async (req, res) => {
         success: true, 
         sentTo: targetUserIds.length,
         savedNotifications: savedNotifications.length,
+        notificationIds: savedNotifications.map(n => n.id),
         message: "Notificações enviadas e salvas com sucesso"
       });
     } catch (error) {
-      console.error("Send push notification error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      console.error("❌ Send push notification error:", error);
+      res.status(500).json({ error: "Internal server error", details: (error as Error).message });
+    }
+  });
+
+  // Endpoint de debug para verificar notificações
+  app.get("/api/debug/notifications", async (req, res) => {
+    try {
+      const userId = req.query.userId ? parseInt(req.query.userId as string) : null;
+      
+      if (userId) {
+        console.log(`🔍 Buscando notificações para user_id: ${userId}`);
+        const notifications = await storage.getNotificationsByUser(userId, 100);
+        console.log(`📥 Encontradas ${notifications.length} notificações`);
+        res.json({
+          userId,
+          count: notifications.length,
+          notifications
+        });
+      } else {
+        console.log(`🔍 Buscando TODAS as notificações`);
+        const allNotifications = await storage.getAllNotifications();
+        console.log(`📥 Encontradas ${allNotifications.length} notificações no total`);
+        res.json({
+          count: allNotifications.length,
+          notifications: allNotifications
+        });
+      }
+    } catch (error) {
+      console.error("❌ Debug notifications error:", error);
+      res.status(500).json({ error: "Internal server error", details: (error as Error).message });
     }
   });
 
