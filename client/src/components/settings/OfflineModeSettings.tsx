@@ -395,39 +395,88 @@ Depois de instalado como PWA, funciona 100% offline!
         </div>
       </Alert>
 
-      {/* Card de Instalação Local */}
+      {/* Card Principal - Cache Automático de Dados */}
+      <Card className="border-green-500">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5 text-green-600" />
+            ✨ Cache Automático de Dados (Service Worker v27)
+          </CardTitle>
+          <CardDescription>
+            Os dados são automaticamente salvos e funcionam offline!
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            <AlertDescription>
+              <strong className="text-green-700 dark:text-green-400">🎉 Como funciona:</strong>
+              <ol className="list-decimal ml-5 mt-2 space-y-2 text-sm">
+                <li>
+                  <strong>Online:</strong> Você usa o sistema normalmente
+                  <p className="text-xs text-muted-foreground">Service Worker salva automaticamente todas as respostas da API</p>
+                </li>
+                <li>
+                  <strong>Offline:</strong> Service Worker retorna dados do cache
+                  <p className="text-xs text-muted-foreground">Usuários, tarefas, interessados aparecem normalmente!</p>
+                </li>
+                <li>
+                  <strong>Volta online:</strong> Dados sincronizam automaticamente
+                  <p className="text-xs text-muted-foreground">Cache é atualizado com informações mais recentes</p>
+                </li>
+              </ol>
+            </AlertDescription>
+          </Alert>
+
+          <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg">
+            <p className="font-semibold text-blue-700 dark:text-blue-400 mb-2">
+              📦 O que é cacheado automaticamente:
+            </p>
+            <ul className="text-sm space-y-1">
+              <li>✅ <strong>Páginas:</strong> 97 arquivos (automático)</li>
+              <li>✅ <strong>Usuários:</strong> Cacheados conforme você acessa</li>
+              <li>✅ <strong>Tarefas:</strong> Cacheadas conforme você acessa</li>
+              <li>✅ <strong>Interessados:</strong> Cacheados conforme você acessa</li>
+              <li>✅ <strong>Eventos:</strong> Cacheados conforme você acessa</li>
+              <li>✅ <strong>Todos os dados da API!</strong></li>
+            </ul>
+          </div>
+
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              <strong>💡 Dica:</strong> Para ter todos os dados offline, navegue pelas páginas 
+              COM INTERNET primeiro. O Service Worker salvará automaticamente tudo em cache.
+              Depois pode desconectar e usar offline com todos os dados!
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+
+      {/* Card Opcional - Instalação Local */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <HardDrive className="h-5 w-5" />
-            Instalação Local Completa (Desktop/Mobile)
+            Instalação Local (Opcional - Desktop)
           </CardTitle>
           <CardDescription>
-            Instale uma versão local do 7care no seu dispositivo para funcionamento offline completo com dados
+            Para quem prefere servidor local ao invés de cache do navegador
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Button 
             onClick={() => setShowLocalInstallModal(true)}
-            className="w-full bg-purple-600 hover:bg-purple-700"
-            size="lg"
+            className="w-full"
+            variant="outline"
           >
             <Download className="h-5 w-5 mr-2" />
-            Instalar Versão Offline Local
+            Configurar Instalação Local
           </Button>
 
-          <Alert>
-            <Info className="h-4 w-4" />
-            <AlertDescription className="text-sm">
-              <strong>Vantagens da instalação local:</strong>
-              <ul className="list-disc ml-5 mt-2 space-y-1">
-                <li>✅ Páginas + Dados funcionam 100% offline</li>
-                <li>✅ Servidor local com todos os recursos</li>
-                <li>✅ Usuários, tarefas, interessados sempre disponíveis</li>
-                <li>✅ Funciona como localhost no seu dispositivo</li>
-              </ul>
-            </AlertDescription>
-          </Alert>
+          <p className="text-xs text-muted-foreground">
+            A instalação local é opcional. O cache automático de dados já funciona perfeitamente!
+          </p>
         </CardContent>
       </Card>
 

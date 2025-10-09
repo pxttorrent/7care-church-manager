@@ -196,34 +196,53 @@ self.addEventListener('fetch', (event) => {
         }
       }
 
-      // ========== API (Network First com Cache Fallback) ==========
+      // ========== API (Network First com Cache Persistente) ==========
       if (isAPI && isGET) {
         try {
+          // Tentar buscar da rede
           const networkResponse = await fetch(event.request.clone());
           
           if (networkResponse && networkResponse.ok) {
+            // Cachear SEMPRE respostas bem-sucedidas da API
             const cache = await caches.open(API_CACHE_NAME);
             cache.put(event.request, networkResponse.clone());
-            console.log(`💾 SW v27: API cached: ${url.pathname}`);
+            console.log(`💾 SW v27: API cached (dados salvos): ${url.pathname}`);
           }
           
           return networkResponse;
         } catch (error) {
-          console.log('📡 SW v27: API OFFLINE - Buscando do cache:', url.pathname);
+          // OFFLINE - Buscar do cache de API
+          console.log('📡 SW v27: OFFLINE - Buscando dados do cache:', url.pathname);
           
           const cachedResponse = await caches.match(event.request);
           if (cachedResponse) {
-            console.log(`✅ SW v27: API do cache: ${url.pathname}`);
-            return cachedResponse;
+            // Retornar dados do cache
+            const clonedResponse = cachedResponse.clone();
+            const data = await clonedResponse.json();
+            
+            console.log(`✅ SW v27: Dados do cache: ${url.pathname} (${Array.isArray(data) ? data.length : 'N/A'} itens)`);
+            
+            // Adicionar header indicando que veio do cache
+            return new Response(JSON.stringify(data), {
+              status: 200,
+              headers: { 
+                'Content-Type': 'application/json',
+                'X-Cached': 'true',
+                'X-Cache-Time': cachedResponse.headers.get('date') || 'unknown'
+              }
+            });
           }
           
-          // Retornar array vazio para não quebrar a UI
-          console.warn(`⚠️ SW v27: API sem cache: ${url.pathname}`);
+          // Se realmente não tiver nada em cache, retornar array vazio
+          console.warn(`⚠️ SW v27: Sem dados em cache: ${url.pathname}`);
           return new Response(
             JSON.stringify([]), 
             { 
               status: 200,
-              headers: { 'Content-Type': 'application/json' }
+              headers: { 
+                'Content-Type': 'application/json',
+                'X-Cached': 'false'
+              }
             }
           );
         }
