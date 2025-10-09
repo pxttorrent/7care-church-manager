@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { MobileHeader } from './MobileHeader';
 import { MobileBottomNav } from './MobileBottomNav';
 import { OfflineInstallModal } from '../offline/OfflineInstallModal';
+import { PWAInstallProgress } from '../offline/PWAInstallProgress';
 import { useAuth } from '@/hooks/useAuth';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { enableOfflineInterceptor } from '@/lib/offlineInterceptor';
@@ -59,6 +60,7 @@ export const MobileLayout = ({ children, showBottomNav = true }: MobileLayoutPro
     <div ref={containerRef} className="min-h-screen bg-background flex flex-col">
       {/* Modal de Instalação do Modo Offline (Admin Only) */}
       <OfflineInstallModal isAdmin={isAdmin} />
+      <PWAInstallProgress isAdmin={isAdmin} />
 
       {/* Indicador de Pull to Refresh */}
       <div 
