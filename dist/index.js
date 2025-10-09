@@ -1794,6 +1794,148 @@ var NeonAdapter = class {
       return false;
     }
   }
+  // ========== NOTIFICAÇÕES ==========
+  async getAllNotifications() {
+    try {
+      const notifications2 = await db.select().from(schema.notifications).orderBy(desc(schema.notifications.createdAt));
+      return notifications2;
+    } catch (error) {
+      console.error("Erro ao buscar todas as notifica\xE7\xF5es:", error);
+      return [];
+    }
+  }
+  async getNotificationById(id) {
+    try {
+      const notifications2 = await db.select().from(schema.notifications).where(eq(schema.notifications.id, id)).limit(1);
+      return notifications2[0] || null;
+    } catch (error) {
+      console.error("Erro ao buscar notifica\xE7\xE3o por ID:", error);
+      return null;
+    }
+  }
+  async getNotificationsByUser(userId, limit = 50) {
+    try {
+      const notifications2 = await db.select().from(schema.notifications).where(eq(schema.notifications.userId, userId)).orderBy(desc(schema.notifications.createdAt)).limit(limit);
+      return notifications2;
+    } catch (error) {
+      console.error("Erro ao buscar notifica\xE7\xF5es do usu\xE1rio:", error);
+      return [];
+    }
+  }
+  async createNotification(data) {
+    try {
+      const [notification] = await db.insert(schema.notifications).values({
+        title: data.title,
+        message: data.message,
+        userId: data.userId,
+        type: data.type || "general",
+        isRead: false,
+        createdAt: /* @__PURE__ */ new Date()
+      }).returning();
+      return notification;
+    } catch (error) {
+      console.error("Erro ao criar notifica\xE7\xE3o:", error);
+      throw error;
+    }
+  }
+  async updateNotification(id, updates) {
+    try {
+      const [notification] = await db.update(schema.notifications).set({
+        ...updates,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(schema.notifications.id, id)).returning();
+      return notification || null;
+    } catch (error) {
+      console.error("Erro ao atualizar notifica\xE7\xE3o:", error);
+      return null;
+    }
+  }
+  async markNotificationAsRead(id) {
+    try {
+      await db.update(schema.notifications).set({ isRead: true }).where(eq(schema.notifications.id, id));
+      return true;
+    } catch (error) {
+      console.error("Erro ao marcar notifica\xE7\xE3o como lida:", error);
+      return false;
+    }
+  }
+  async deleteNotification(id) {
+    try {
+      await db.delete(schema.notifications).where(eq(schema.notifications.id, id));
+      return true;
+    } catch (error) {
+      console.error("Erro ao deletar notifica\xE7\xE3o:", error);
+      return false;
+    }
+  }
+  // ========== PUSH SUBSCRIPTIONS ==========
+  async getAllPushSubscriptions() {
+    try {
+      const subscriptions = await db.select().from(schema.pushSubscriptions).orderBy(desc(schema.pushSubscriptions.createdAt));
+      return subscriptions;
+    } catch (error) {
+      console.error("Erro ao buscar push subscriptions:", error);
+      return [];
+    }
+  }
+  async getPushSubscriptionsByUser(userId) {
+    try {
+      const subscriptions = await db.select().from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.userId, userId)).orderBy(desc(schema.pushSubscriptions.createdAt));
+      return subscriptions;
+    } catch (error) {
+      console.error("Erro ao buscar push subscriptions do usu\xE1rio:", error);
+      return [];
+    }
+  }
+  async createPushSubscription(data) {
+    try {
+      const existing = await db.select().from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.endpoint, data.endpoint)).limit(1);
+      if (existing.length > 0) {
+        const [updated] = await db.update(schema.pushSubscriptions).set({
+          userId: data.userId,
+          p256dh: data.p256dh,
+          auth: data.auth,
+          isActive: true,
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq(schema.pushSubscriptions.id, existing[0].id)).returning();
+        return updated;
+      }
+      const [subscription] = await db.insert(schema.pushSubscriptions).values({
+        userId: data.userId,
+        endpoint: data.endpoint,
+        p256dh: data.p256dh,
+        auth: data.auth,
+        isActive: true,
+        createdAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).returning();
+      return subscription;
+    } catch (error) {
+      console.error("Erro ao criar push subscription:", error);
+      throw error;
+    }
+  }
+  async togglePushSubscription(id, isActive) {
+    try {
+      await db.update(schema.pushSubscriptions).set({
+        isActive,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(schema.pushSubscriptions.id, id));
+      return true;
+    } catch (error) {
+      console.error("Erro ao alternar push subscription:", error);
+      return false;
+    }
+  }
+  async deletePushSubscription(id) {
+    try {
+      await db.delete(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.id, id));
+      return true;
+    } catch (error) {
+      console.error("Erro ao deletar push subscription:", error);
+      return false;
+    }
+  }
 };
 
 // server/migrateToNeon.ts
@@ -6369,8 +6511,8 @@ async function registerRoutes(app2) {
   app2.get("/api/notifications/:userId", async (req, res) => {
     try {
       const userId = parseInt(req.params.userId);
-      const limit = parseInt(req.query.limit) || 20;
-      const notifications2 = [];
+      const limit = parseInt(req.query.limit) || 50;
+      const notifications2 = await storage.getNotificationsByUser(userId, limit);
       res.json(notifications2);
     } catch (error) {
       console.error("Get notifications error:", error);
@@ -6380,7 +6522,7 @@ async function registerRoutes(app2) {
   app2.put("/api/notifications/:id/read", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const success = true;
+      const success = await storage.markNotificationAsRead(id);
       if (!success) {
         res.status(404).json({ error: "Notification not found" });
         return;
@@ -6388,6 +6530,112 @@ async function registerRoutes(app2) {
       res.json({ success: true });
     } catch (error) {
       console.error("Mark notification read error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  app2.get("/api/push/subscriptions", async (req, res) => {
+    try {
+      const subscriptions = await storage.getAllPushSubscriptions();
+      const subscriptionsWithUsers = await Promise.all(
+        subscriptions.map(async (sub) => {
+          const user = await storage.getUserById(sub.user_id || sub.userId);
+          return {
+            ...sub,
+            user_id: sub.user_id || sub.userId,
+            user_name: user?.name || "Usu\xE1rio desconhecido",
+            user_email: user?.email || ""
+          };
+        })
+      );
+      res.json({ subscriptions: subscriptionsWithUsers });
+    } catch (error) {
+      console.error("Get push subscriptions error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  app2.post("/api/push/subscribe", async (req, res) => {
+    try {
+      const { userId, subscription } = req.body;
+      if (!userId || !subscription || !subscription.endpoint) {
+        res.status(400).json({ error: "Invalid subscription data" });
+        return;
+      }
+      const keys = subscription.keys;
+      const pushSubscription = await storage.createPushSubscription({
+        userId,
+        endpoint: subscription.endpoint,
+        p256dh: keys?.p256dh || "",
+        auth: keys?.auth || ""
+      });
+      res.json({ success: true, subscription: pushSubscription });
+    } catch (error) {
+      console.error("Subscribe to push error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  app2.patch("/api/push/subscriptions/:id/toggle", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { isActive } = req.body;
+      const success = await storage.togglePushSubscription(id, isActive);
+      if (!success) {
+        res.status(404).json({ error: "Subscription not found" });
+        return;
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Toggle push subscription error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  app2.delete("/api/push/subscriptions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deletePushSubscription(id);
+      if (!success) {
+        res.status(404).json({ error: "Subscription not found" });
+        return;
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete push subscription error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  app2.post("/api/push/send", async (req, res) => {
+    try {
+      const { title, message, type, userId, hasImage, hasAudio, imageData, audioData } = req.body;
+      if (!title || !message) {
+        res.status(400).json({ error: "Title and message are required" });
+        return;
+      }
+      let targetUserIds = [];
+      if (userId && userId !== "all" && userId !== null) {
+        targetUserIds = [Number(userId)];
+      } else {
+        const allSubscriptions = await storage.getAllPushSubscriptions();
+        const activeSubscriptions = allSubscriptions.filter((sub) => sub.is_active !== false && sub.isActive !== false);
+        targetUserIds = [...new Set(activeSubscriptions.map((sub) => sub.user_id || sub.userId))];
+      }
+      const savedNotifications = await Promise.all(
+        targetUserIds.map(async (uid) => {
+          return await storage.createNotification({
+            userId: uid,
+            title,
+            message,
+            type: type || "general"
+          });
+        })
+      );
+      console.log(`\u2705 ${savedNotifications.length} notifica\xE7\xF5es salvas no banco de dados`);
+      res.json({
+        success: true,
+        sentTo: targetUserIds.length,
+        savedNotifications: savedNotifications.length,
+        message: "Notifica\xE7\xF5es enviadas e salvas com sucesso"
+      });
+    } catch (error) {
+      console.error("Send push notification error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });

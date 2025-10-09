@@ -3499,9 +3499,8 @@ app.delete("/api/relationships/active/:interestedId", async (req, res) => {
   app.get("/api/notifications/:userId", async (req, res) => {
     try {
       const userId = parseInt(req.params.userId);
-      const limit = parseInt(req.query.limit as string) || 20;
-      // const notifications = await storage.getNotificationsByUser(userId, limit); // Método não implementado
-      const notifications = [];
+      const limit = parseInt(req.query.limit as string) || 50;
+      const notifications = await storage.getNotificationsByUser(userId, limit);
       res.json(notifications);
     } catch (error) {
       console.error("Get notifications error:", error);
@@ -3512,8 +3511,7 @@ app.delete("/api/relationships/active/:interestedId", async (req, res) => {
   app.put("/api/notifications/:id/read", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      // const success = await storage.markNotificationAsRead(id); // Método não implementado
-      const success = true;
+      const success = await storage.markNotificationAsRead(id);
       
       if (!success) {
         res.status(404).json({ error: "Notification not found" });
@@ -3523,6 +3521,140 @@ app.delete("/api/relationships/active/:interestedId", async (req, res) => {
       res.json({ success: true });
     } catch (error) {
       console.error("Mark notification read error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Push Notifications endpoints
+  app.get("/api/push/subscriptions", async (req, res) => {
+    try {
+      const subscriptions = await storage.getAllPushSubscriptions();
+      
+      // Buscar informações dos usuários para cada subscription
+      const subscriptionsWithUsers = await Promise.all(
+        subscriptions.map(async (sub) => {
+          const user = await storage.getUserById(sub.user_id || sub.userId);
+          return {
+            ...sub,
+            user_id: sub.user_id || sub.userId,
+            user_name: user?.name || 'Usuário desconhecido',
+            user_email: user?.email || ''
+          };
+        })
+      );
+      
+      res.json({ subscriptions: subscriptionsWithUsers });
+    } catch (error) {
+      console.error("Get push subscriptions error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/push/subscribe", async (req, res) => {
+    try {
+      const { userId, subscription } = req.body;
+      
+      if (!userId || !subscription || !subscription.endpoint) {
+        res.status(400).json({ error: "Invalid subscription data" });
+        return;
+      }
+
+      const keys = subscription.keys;
+      const pushSubscription = await storage.createPushSubscription({
+        userId,
+        endpoint: subscription.endpoint,
+        p256dh: keys?.p256dh || '',
+        auth: keys?.auth || ''
+      });
+
+      res.json({ success: true, subscription: pushSubscription });
+    } catch (error) {
+      console.error("Subscribe to push error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/push/subscriptions/:id/toggle", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { isActive } = req.body;
+      
+      const success = await storage.togglePushSubscription(id, isActive);
+      
+      if (!success) {
+        res.status(404).json({ error: "Subscription not found" });
+        return;
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Toggle push subscription error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/push/subscriptions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deletePushSubscription(id);
+      
+      if (!success) {
+        res.status(404).json({ error: "Subscription not found" });
+        return;
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete push subscription error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/push/send", async (req, res) => {
+    try {
+      const { title, message, type, userId, hasImage, hasAudio, imageData, audioData } = req.body;
+
+      if (!title || !message) {
+        res.status(400).json({ error: "Title and message are required" });
+        return;
+      }
+
+      // Determinar destinatários
+      let targetUserIds: number[] = [];
+      if (userId && userId !== 'all' && userId !== null) {
+        targetUserIds = [Number(userId)];
+      } else {
+        // Buscar todos os usuários com subscriptions ativas
+        const allSubscriptions = await storage.getAllPushSubscriptions();
+        const activeSubscriptions = allSubscriptions.filter(sub => sub.is_active !== false && sub.isActive !== false);
+        targetUserIds = [...new Set(activeSubscriptions.map(sub => sub.user_id || sub.userId))];
+      }
+
+      // Salvar notificação no banco para cada usuário
+      const savedNotifications = await Promise.all(
+        targetUserIds.map(async (uid) => {
+          return await storage.createNotification({
+            userId: uid,
+            title,
+            message,
+            type: type || 'general'
+          });
+        })
+      );
+
+      console.log(`✅ ${savedNotifications.length} notificações salvas no banco de dados`);
+
+      // Aqui você pode adicionar lógica futura para enviar via web push real
+      // Por enquanto, apenas salvamos no banco
+
+      res.json({ 
+        success: true, 
+        sentTo: targetUserIds.length,
+        savedNotifications: savedNotifications.length,
+        message: "Notificações enviadas e salvas com sucesso"
+      });
+    } catch (error) {
+      console.error("Send push notification error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });

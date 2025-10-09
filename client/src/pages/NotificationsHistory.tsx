@@ -25,37 +25,73 @@ export default function NotificationsHistory() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
 
-  // Carregar notificações do localStorage
+  // Carregar notificações do banco de dados E localStorage
   useEffect(() => {
-    const loadNotifications = () => {
+    const loadNotifications = async () => {
+      if (!user?.id) return;
+
       try {
-        const stored = localStorage.getItem(`notifications_${user?.id}`);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          setNotifications(parsed);
+        // 1. Buscar do banco de dados (fonte principal)
+        const res = await fetch(`/api/notifications/${user.id}?limit=50`);
+        if (res.ok) {
+          const dbNotifications = await res.json();
+          console.log('📥 Notificações do banco:', dbNotifications.length);
+          
+          // Converter formato do BD para o formato da interface
+          const formattedNotifications = dbNotifications.map((notif: any) => ({
+            id: notif.id.toString(),
+            title: notif.title,
+            message: notif.message,
+            type: notif.type,
+            hasAudio: false,
+            hasImage: false,
+            timestamp: notif.created_at || notif.createdAt,
+            read: notif.is_read || notif.isRead || false
+          }));
+
+          setNotifications(formattedNotifications);
+        } else {
+          // Fallback para localStorage se API falhar
+          const stored = localStorage.getItem(`notifications_${user.id}`);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            setNotifications(parsed);
+          }
         }
       } catch (error) {
         console.error('Erro ao carregar notificações:', error);
+        
+        // Fallback para localStorage
+        try {
+          const stored = localStorage.getItem(`notifications_${user.id}`);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            setNotifications(parsed);
+          }
+        } catch (e) {
+          console.error('Erro ao carregar do localStorage:', e);
+        }
       }
     };
 
     loadNotifications();
 
-    // Listener para novas notificações
+    // Recarregar a cada 30 segundos para pegar novas notificações
+    const interval = setInterval(loadNotifications, 30000);
+
+    // Listener para novas notificações (local)
     const handleNewNotification = (event: CustomEvent) => {
       const newNotif = event.detail;
-      setNotifications(prev => [newNotif, ...prev].slice(0, 50)); // Limitar a 50
-      
-      // Salvar no localStorage
-      const updated = [newNotif, ...notifications].slice(0, 50);
-      localStorage.setItem(`notifications_${user?.id}`, JSON.stringify(updated));
+      setNotifications(prev => [newNotif, ...prev].slice(0, 50));
     };
 
     window.addEventListener('newNotification', handleNewNotification as EventListener);
+    
     return () => {
+      clearInterval(interval);
       window.removeEventListener('newNotification', handleNewNotification as EventListener);
     };
-  }, [user?.id, notifications]);
+  }, [user?.id]);
 
   const playAudio = (notification: Notification) => {
     if (!notification.audioData) return;

@@ -157,9 +157,16 @@ export interface IStorage {
   deleteConversation(id: number): Promise<boolean>;
   getAllNotifications(): Promise<any[]>;
   getNotificationById(id: number): Promise<any | null>;
+  getNotificationsByUser(userId: number, limit?: number): Promise<any[]>;
   createNotification(data: any): Promise<any>;
   updateNotification(id: number, updates: any): Promise<any | null>;
+  markNotificationAsRead(id: number): Promise<boolean>;
   deleteNotification(id: number): Promise<boolean>;
+  getAllPushSubscriptions(): Promise<any[]>;
+  getPushSubscriptionsByUser(userId: number): Promise<any[]>;
+  createPushSubscription(data: any): Promise<any>;
+  togglePushSubscription(id: number, isActive: boolean): Promise<boolean>;
+  deletePushSubscription(id: number): Promise<boolean>;
   getAllAchievements(): Promise<any[]>;
   getAchievementById(id: number): Promise<any | null>;
   createAchievement(data: any): Promise<any>;
@@ -2050,6 +2057,198 @@ export class NeonAdapter implements IStorage {
       return true;
     } catch (error) {
       console.error('Erro ao deletar oração:', error);
+      return false;
+    }
+  }
+
+  // ========== NOTIFICAÇÕES ==========
+  async getAllNotifications(): Promise<any[]> {
+    try {
+      const notifications = await db.select()
+        .from(schema.notifications)
+        .orderBy(desc(schema.notifications.createdAt));
+      return notifications;
+    } catch (error) {
+      console.error('Erro ao buscar todas as notificações:', error);
+      return [];
+    }
+  }
+
+  async getNotificationById(id: number): Promise<any | null> {
+    try {
+      const notifications = await db.select()
+        .from(schema.notifications)
+        .where(eq(schema.notifications.id, id))
+        .limit(1);
+      return notifications[0] || null;
+    } catch (error) {
+      console.error('Erro ao buscar notificação por ID:', error);
+      return null;
+    }
+  }
+
+  async getNotificationsByUser(userId: number, limit: number = 50): Promise<any[]> {
+    try {
+      const notifications = await db.select()
+        .from(schema.notifications)
+        .where(eq(schema.notifications.userId, userId))
+        .orderBy(desc(schema.notifications.createdAt))
+        .limit(limit);
+      return notifications;
+    } catch (error) {
+      console.error('Erro ao buscar notificações do usuário:', error);
+      return [];
+    }
+  }
+
+  async createNotification(data: any): Promise<any> {
+    try {
+      const [notification] = await db.insert(schema.notifications)
+        .values({
+          title: data.title,
+          message: data.message,
+          userId: data.userId,
+          type: data.type || 'general',
+          isRead: false,
+          createdAt: new Date()
+        })
+        .returning();
+      return notification;
+    } catch (error) {
+      console.error('Erro ao criar notificação:', error);
+      throw error;
+    }
+  }
+
+  async updateNotification(id: number, updates: any): Promise<any | null> {
+    try {
+      const [notification] = await db.update(schema.notifications)
+        .set({
+          ...updates,
+          updatedAt: new Date()
+        })
+        .where(eq(schema.notifications.id, id))
+        .returning();
+      return notification || null;
+    } catch (error) {
+      console.error('Erro ao atualizar notificação:', error);
+      return null;
+    }
+  }
+
+  async markNotificationAsRead(id: number): Promise<boolean> {
+    try {
+      await db.update(schema.notifications)
+        .set({ isRead: true })
+        .where(eq(schema.notifications.id, id));
+      return true;
+    } catch (error) {
+      console.error('Erro ao marcar notificação como lida:', error);
+      return false;
+    }
+  }
+
+  async deleteNotification(id: number): Promise<boolean> {
+    try {
+      await db.delete(schema.notifications)
+        .where(eq(schema.notifications.id, id));
+      return true;
+    } catch (error) {
+      console.error('Erro ao deletar notificação:', error);
+      return false;
+    }
+  }
+
+  // ========== PUSH SUBSCRIPTIONS ==========
+  async getAllPushSubscriptions(): Promise<any[]> {
+    try {
+      const subscriptions = await db.select()
+        .from(schema.pushSubscriptions)
+        .orderBy(desc(schema.pushSubscriptions.createdAt));
+      return subscriptions;
+    } catch (error) {
+      console.error('Erro ao buscar push subscriptions:', error);
+      return [];
+    }
+  }
+
+  async getPushSubscriptionsByUser(userId: number): Promise<any[]> {
+    try {
+      const subscriptions = await db.select()
+        .from(schema.pushSubscriptions)
+        .where(eq(schema.pushSubscriptions.userId, userId))
+        .orderBy(desc(schema.pushSubscriptions.createdAt));
+      return subscriptions;
+    } catch (error) {
+      console.error('Erro ao buscar push subscriptions do usuário:', error);
+      return [];
+    }
+  }
+
+  async createPushSubscription(data: any): Promise<any> {
+    try {
+      // Verificar se já existe uma subscription com o mesmo endpoint
+      const existing = await db.select()
+        .from(schema.pushSubscriptions)
+        .where(eq(schema.pushSubscriptions.endpoint, data.endpoint))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // Atualizar a existente
+        const [updated] = await db.update(schema.pushSubscriptions)
+          .set({
+            userId: data.userId,
+            p256dh: data.p256dh,
+            auth: data.auth,
+            isActive: true,
+            updatedAt: new Date()
+          })
+          .where(eq(schema.pushSubscriptions.id, existing[0].id))
+          .returning();
+        return updated;
+      }
+
+      // Criar nova
+      const [subscription] = await db.insert(schema.pushSubscriptions)
+        .values({
+          userId: data.userId,
+          endpoint: data.endpoint,
+          p256dh: data.p256dh,
+          auth: data.auth,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .returning();
+      return subscription;
+    } catch (error) {
+      console.error('Erro ao criar push subscription:', error);
+      throw error;
+    }
+  }
+
+  async togglePushSubscription(id: number, isActive: boolean): Promise<boolean> {
+    try {
+      await db.update(schema.pushSubscriptions)
+        .set({ 
+          isActive,
+          updatedAt: new Date()
+        })
+        .where(eq(schema.pushSubscriptions.id, id));
+      return true;
+    } catch (error) {
+      console.error('Erro ao alternar push subscription:', error);
+      return false;
+    }
+  }
+
+  async deletePushSubscription(id: number): Promise<boolean> {
+    try {
+      await db.delete(schema.pushSubscriptions)
+        .where(eq(schema.pushSubscriptions.id, id));
+      return true;
+    } catch (error) {
+      console.error('Erro ao deletar push subscription:', error);
       return false;
     }
   }
