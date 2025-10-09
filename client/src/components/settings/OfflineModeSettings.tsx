@@ -15,9 +15,11 @@ import {
   WifiOff,
   Database,
   FileCheck,
-  Loader2
+  Loader2,
+  Info
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { LocalInstallModal } from '@/components/offline/LocalInstallModal';
 
 interface FileCheckResult {
   name: string;
@@ -76,6 +78,7 @@ export function OfflineModeSettings() {
   const [offlineStatus, setOfflineStatus] = useState<OfflineStatus | null>(null);
   const [verificationResults, setVerificationResults] = useState<FileCheckResult[]>([]);
   const [cacheInfo, setCacheInfo] = useState<any>(null);
+  const [showLocalInstallModal, setShowLocalInstallModal] = useState(false);
 
   // Monitorar status de conexão
   useEffect(() => {
@@ -375,6 +378,13 @@ Depois de instalado como PWA, funciona 100% offline!
 
   return (
     <div className="space-y-6">
+      {/* Modal de Instalação Local */}
+      <LocalInstallModal 
+        isOpen={showLocalInstallModal}
+        onClose={() => setShowLocalInstallModal(false)}
+        isAdmin={true}
+      />
+
       {/* Status de Conexão */}
       <Alert className={isOnline ? "border-green-500" : "border-orange-500"}>
         <div className="flex items-center gap-2">
@@ -384,6 +394,42 @@ Depois de instalado como PWA, funciona 100% offline!
           </AlertDescription>
         </div>
       </Alert>
+
+      {/* Card de Instalação Local */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HardDrive className="h-5 w-5" />
+            Instalação Local Completa (Desktop/Mobile)
+          </CardTitle>
+          <CardDescription>
+            Instale uma versão local do 7care no seu dispositivo para funcionamento offline completo com dados
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button 
+            onClick={() => setShowLocalInstallModal(true)}
+            className="w-full bg-purple-600 hover:bg-purple-700"
+            size="lg"
+          >
+            <Download className="h-5 w-5 mr-2" />
+            Instalar Versão Offline Local
+          </Button>
+
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              <strong>Vantagens da instalação local:</strong>
+              <ul className="list-disc ml-5 mt-2 space-y-1">
+                <li>✅ Páginas + Dados funcionam 100% offline</li>
+                <li>✅ Servidor local com todos os recursos</li>
+                <li>✅ Usuários, tarefas, interessados sempre disponíveis</li>
+                <li>✅ Funciona como localhost no seu dispositivo</li>
+              </ul>
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
 
       {/* Configuração do Caminho */}
       <Card>
