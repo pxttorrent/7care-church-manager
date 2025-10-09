@@ -116,14 +116,14 @@ export function OfflineModeSettings() {
     if ('caches' in window) {
       try {
         const cacheNames = await caches.keys();
-        const v24Cache = cacheNames.find(name => name.includes('7care-v24-offline-complete'));
+        const v25Cache = cacheNames.find(name => name.includes('7care-v25-auto-cache'));
         
-        if (v24Cache) {
-          const cache = await caches.open(v24Cache);
+        if (v25Cache) {
+          const cache = await caches.open(v25Cache);
           const keys = await cache.keys();
           
           setCacheInfo({
-            cacheName: v24Cache,
+            cacheName: v25Cache,
             totalItems: keys.length,
             items: keys.map(req => req.url)
           });
@@ -169,17 +169,17 @@ export function OfflineModeSettings() {
       // Verificar Cache Storage
       if ('caches' in window) {
         const cacheNames = await caches.keys();
-        const v24Cache = cacheNames.find(name => name.includes('7care-v24-offline-complete'));
+        const v25Cache = cacheNames.find(name => name.includes('7care-v25-auto-cache'));
         
-        if (v24Cache) {
-          const cache = await caches.open(v24Cache);
+        if (v25Cache) {
+          const cache = await caches.open(v25Cache);
           const keys = await cache.keys();
           
           results.push({
             name: 'Cache Storage',
             status: 'success',
             message: `${keys.length} itens em cache`,
-            size: `v24`
+            size: `v25`
           });
 
           // Verificar cada página requerida
@@ -203,7 +203,7 @@ export function OfflineModeSettings() {
           }
         } else {
           results.push({
-            name: 'Cache v24',
+            name: 'Cache v25',
             status: 'error',
             message: 'Cache offline não encontrado - visite a aplicação online primeiro'
           });
@@ -239,7 +239,7 @@ export function OfflineModeSettings() {
         totalFiles: results.length,
         totalSize: cacheInfo?.totalItems ? `${cacheInfo.totalItems} itens` : 'N/A',
         lastVerification: new Date().toLocaleString('pt-BR'),
-        serviceWorkerVersion: 'v24',
+        serviceWorkerVersion: 'v25',
         cacheStatus: errorCount > 0 ? 'inactive' : warningCount > 0 ? 'outdated' : 'active'
       };
 

@@ -9,6 +9,7 @@ import { MobileLayout } from "./components/layout/MobileLayout";
 import { FirstAccessWelcome } from "./components/auth/FirstAccessWelcome";
 import { createQueryClient, setupPerformanceListeners, prefetchImportantData } from "./lib/queryClient";
 import { cleanConsoleInProduction } from "./lib/performance";
+import { useOfflineCache } from "./hooks/useOfflineCache";
 
 // Lazy load all pages for better performance
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -47,6 +48,9 @@ const PageLoader = () => (
 const queryClient = createQueryClient();
 
 const App = () => {
+  // Hook para cache automático offline
+  const offlineCache = useOfflineCache();
+  
   // Setup performance optimizations
   useEffect(() => {
     // Clean console logs in production
@@ -65,6 +69,15 @@ const App = () => {
     
     return () => clearInterval(cleanupInterval);
   }, []);
+
+  // Log do status do cache offline
+  useEffect(() => {
+    if (offlineCache.isCaching) {
+      console.log(`📦 Cacheando para offline: ${offlineCache.progress}%`);
+    } else if (offlineCache.cachedCount > 0) {
+      console.log(`✅ Cache offline completo: ${offlineCache.cachedCount}/${offlineCache.totalCount} páginas`);
+    }
+  }, [offlineCache.isCaching, offlineCache.progress, offlineCache.cachedCount, offlineCache.totalCount]);
 
   return (
     <QueryClientProvider client={queryClient}>
