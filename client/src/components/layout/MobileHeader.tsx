@@ -1,4 +1,4 @@
-import { Bell, MessageCircle, Settings as SettingsIcon, User, LogOut, Sparkles } from 'lucide-react';
+import { Bell, MessageCircle, Settings as SettingsIcon, User, LogOut, Sparkles, Cloud, CloudOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -25,6 +25,37 @@ export const MobileHeader = () => {
     welcome: { offsetX: 0, offsetY: 0 },
     actions: { offsetX: 0, offsetY: 0 }
   });
+
+  // Estado offline simples (apenas para admin)
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const isAdmin = user?.role === 'admin';
+
+  // Listener de online/offline (ADMIN ONLY - ULTRA SIMPLIFICADO)
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      toast({ title: '🟢 Você está online!', description: 'Conexão restaurada.' });
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      toast({ 
+        title: '🔴 Você está offline', 
+        description: 'Algumas funcionalidades podem não estar disponíveis.',
+        duration: 5000
+      });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [isAdmin, toast]);
 
 
 
@@ -159,6 +190,27 @@ export const MobileHeader = () => {
             transform: `translateX(${mobileHeaderLayout.actions.offsetX}px) translateY(${mobileHeaderLayout.actions.offsetY}px)`
           }}
         >
+          {/* Indicador de Status Online/Offline (ADMIN ONLY - ULTRA SIMPLES) */}
+          {isAdmin && (
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                isOnline 
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-red-100 text-red-700'
+              }`}
+              title={isOnline ? 'Você está online' : 'Você está offline'}
+            >
+              {isOnline ? (
+                <Cloud className="w-3.5 h-3.5" />
+              ) : (
+                <CloudOff className="w-3.5 h-3.5" />
+              )}
+              <span className="hidden sm:inline">
+                {isOnline ? 'Online' : 'Offline'}
+              </span>
+            </div>
+          )}
+
           <Button 
             variant="ghost" 
             size="sm" 
