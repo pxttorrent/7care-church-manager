@@ -14,76 +14,52 @@ import {
   Wifi,
   WifiOff,
   Database,
-  FileCheck,
   Loader2,
-  Info
+  Info,
+  Zap
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { LocalInstallModal } from '@/components/offline/LocalInstallModal';
 
-interface FileCheckResult {
+interface CacheStats {
   name: string;
-  status: 'success' | 'error' | 'warning';
+  status: 'success' | 'warning' | 'error';
   message: string;
-  size?: string;
+  count?: number;
 }
 
-interface OfflineStatus {
-  isConfigured: boolean;
-  path: string;
-  totalFiles: number;
-  totalSize: string;
-  lastVerification: string;
-  serviceWorkerVersion: string;
-  cacheStatus: 'active' | 'inactive' | 'outdated';
+interface CacheInfo {
+  cacheName: string;
+  totalItems: number;
+  apiItems: number;
+  pageItems: number;
+  lastUpdate: string;
 }
-
-const REQUIRED_PAGES = [
-  { path: '/dashboard', name: 'Dashboard' },
-  { path: '/menu', name: 'Menu' },
-  { path: '/calendar', name: 'Calendário' },
-  { path: '/users', name: 'Usuários' },
-  { path: '/tasks', name: 'Tarefas' },
-  { path: '/interested', name: 'Interessados' },
-  { path: '/my-interested', name: 'Meus Interessados' },
-  { path: '/chat', name: 'Chat' },
-  { path: '/settings', name: 'Configurações' },
-  { path: '/gamification', name: 'Gamificação' },
-  { path: '/prayers', name: 'Orações' },
-  { path: '/push-notifications', name: 'Push Notifications' },
-  { path: '/notifications', name: 'Histórico de Notificações' },
-  { path: '/contact', name: 'Contato' },
-  { path: '/meu-cadastro', name: 'Meu Cadastro' },
-  { path: '/elections', name: 'Eleições' },
-  { path: '/election-config', name: 'Config. Eleições' },
-  { path: '/election-voting', name: 'Votação' },
-  { path: '/election-dashboard', name: 'Dashboard Eleições' },
-  { path: '/election-manage', name: 'Gerenciar Eleições' }
-];
-
-const REQUIRED_FILES = [
-  { path: '/index.html', name: 'Index HTML' },
-  { path: '/sw.js', name: 'Service Worker' },
-  { path: '/manifest.json', name: 'Manifest PWA' },
-  { path: '/favicon.ico', name: 'Favicon' },
-  { path: '/7care-logo.png', name: 'Logo Principal' },
-  { path: '/pwa-192x192.png', name: 'Ícone PWA 192' },
-  { path: '/pwa-512x512.png', name: 'Ícone PWA 512' }
-];
 
 export function OfflineModeSettings() {
   const { toast } = useToast();
-  const [isVerifying, setIsVerifying] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [offlineStatus, setOfflineStatus] = useState<OfflineStatus | null>(null);
-  const [verificationResults, setVerificationResults] = useState<FileCheckResult[]>([]);
-  const [cacheInfo, setCacheInfo] = useState<any>(null);
-  const [showLocalInstallModal, setShowLocalInstallModal] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [cacheInfo, setCacheInfo] = useState<CacheInfo | null>(null);
+  const [cacheStats, setCacheStats] = useState<CacheStats[]>([]);
 
   // Monitorar status de conexão
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => {
+      setIsOnline(true);
+      toast({
+        title: "Conexão restaurada",
+        description: "Dados serão sincronizados automaticamente",
+      });
+    };
+    
+    const handleOffline = () => {
+      setIsOnline(false);
+      toast({
+        title: "Modo offline ativado",
+        description: "Usando dados em cache",
+        variant: "default"
+      });
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -94,143 +70,145 @@ export function OfflineModeSettings() {
     };
   }, []);
 
-  // Carregar status salvo e verificar cache
+  // Carregar informações do cache ao montar
   useEffect(() => {
-    loadOfflineStatus();
     checkCacheStatus();
   }, []);
 
-  const loadOfflineStatus = () => {
-    const status = localStorage.getItem('offline-status');
-    if (status) {
-      setOfflineStatus(JSON.parse(status));
-    }
-  };
-
   const checkCacheStatus = async () => {
-    if ('caches' in window) {
-      try {
-        const cacheNames = await caches.keys();
-        const v27Cache = cacheNames.find(name => name.includes('7care-v27-precache-total'));
-        
-        if (v27Cache) {
-          const cache = await caches.open(v27Cache);
-          const keys = await cache.keys();
-          
-          setCacheInfo({
-            cacheName: v27Cache,
-            totalItems: keys.length,
-            items: keys.map(req => req.url)
-          });
-        }
-      } catch (error) {
-        console.error('Erro ao verificar cache:', error);
-      }
-    }
-  };
-
-  const verifyOfflineInstallation = async () => {
     setIsVerifying(true);
-    const results: FileCheckResult[] = [];
-
+    
     try {
+      if (!('caches' in window)) {
+        toast({
+          title: "Cache não suportado",
+          description: "Seu navegador não suporta CacheStorage",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const cacheNames = await caches.keys();
+      const stats: CacheStats[] = [];
+      
       // Verificar Service Worker
       if ('serviceWorker' in navigator) {
         const registration = await navigator.serviceWorker.getRegistration();
-        if (registration) {
-          results.push({
+        if (registration?.active) {
+          stats.push({
             name: 'Service Worker',
             status: 'success',
-            message: `Ativo - ${registration.active?.scriptURL || 'N/A'}`
+            message: 'Ativo e funcionando'
           });
         } else {
-          results.push({
+          stats.push({
             name: 'Service Worker',
-            status: 'error',
-            message: 'Não registrado'
+            status: 'warning',
+            message: 'Não registrado - recarregue a página'
           });
         }
       }
 
-      // Verificar Cache Storage
-      if ('caches' in window) {
-        const cacheNames = await caches.keys();
-        const v27Cache = cacheNames.find(name => name.includes('7care-v27-precache-total'));
+      // Verificar cache de páginas (v27)
+      const pageCache = cacheNames.find(name => name.includes('7care-v27-precache-total'));
+      if (pageCache) {
+        const cache = await caches.open(pageCache);
+        const keys = await cache.keys();
         
-        if (v27Cache) {
-          const cache = await caches.open(v27Cache);
-          const keys = await cache.keys();
-          
-          results.push({
-            name: 'Cache Storage',
+        stats.push({
+          name: 'Cache de Páginas',
+          status: 'success',
+          message: 'Todas as páginas disponíveis offline',
+          count: keys.length
+        });
+      } else {
+        stats.push({
+          name: 'Cache de Páginas',
+          status: 'warning',
+          message: 'Recarregue a página para instalar'
+        });
+      }
+
+      // Verificar cache de API
+      const apiCache = cacheNames.find(name => name.includes('7care-api-v27'));
+      if (apiCache) {
+        const cache = await caches.open(apiCache);
+        const keys = await cache.keys();
+        
+        const apiEndpoints = keys.filter(req => req.url.includes('/api/'));
+        
+        stats.push({
+          name: 'Cache de Dados (API)',
+          status: apiEndpoints.length > 0 ? 'success' : 'warning',
+          message: apiEndpoints.length > 0 
+            ? 'Dados disponíveis offline' 
+            : 'Navegue pelas páginas online para cachear dados',
+          count: apiEndpoints.length
+        });
+
+        // Verificar endpoints específicos
+        const usersCache = apiEndpoints.find(req => req.url.includes('/api/users'));
+        if (usersCache) {
+          stats.push({
+            name: 'Usuários',
             status: 'success',
-            message: `${keys.length} itens em cache`,
-            size: `v27`
+            message: 'Dados cacheados'
           });
+        }
 
-          // Verificar cada página requerida
-          for (const page of REQUIRED_PAGES) {
-            const cached = keys.some(req => req.url.includes(page.path) || req.url.endsWith('/index.html'));
-            results.push({
-              name: page.name,
-              status: cached ? 'success' : 'warning',
-              message: cached ? 'Disponível offline' : 'Precisa ser visitada primeiro'
-            });
-          }
+        const tasksCache = apiEndpoints.find(req => req.url.includes('/api/tasks'));
+        if (tasksCache) {
+          stats.push({
+            name: 'Tarefas',
+            status: 'success',
+            message: 'Dados cacheados'
+          });
+        }
 
-          // Verificar arquivos essenciais
-          for (const file of REQUIRED_FILES) {
-            const cached = keys.some(req => req.url.includes(file.path));
-            results.push({
-              name: file.name,
-              status: cached ? 'success' : 'error',
-              message: cached ? 'Cacheado' : 'Não encontrado no cache'
-            });
-          }
-        } else {
-          results.push({
-            name: 'Cache v27',
-            status: 'error',
-            message: 'Cache offline não encontrado - recarregue a aplicação para instalar'
+        const interestedCache = apiEndpoints.find(req => req.url.includes('/api/interested'));
+        if (interestedCache) {
+          stats.push({
+            name: 'Interessados',
+            status: 'success',
+            message: 'Dados cacheados'
+          });
+        }
+
+        const eventsCache = apiEndpoints.find(req => req.url.includes('/api/events'));
+        if (eventsCache) {
+          stats.push({
+            name: 'Eventos',
+            status: 'success',
+            message: 'Dados cacheados'
           });
         }
       }
 
-      // Verificar PWA instalado
-      const isInstalled = window.matchMedia('(display-mode: standalone)').matches ||
-                         (window.navigator as any).standalone === true;
-      
-      results.push({
+      // PWA instalado?
+      const isPWAInstalled = window.matchMedia('(display-mode: standalone)').matches;
+      stats.push({
         name: 'Instalação PWA',
-        status: isInstalled ? 'success' : 'warning',
-        message: isInstalled ? 'Instalado como aplicativo' : 'Acesse via navegador (pode instalar como PWA)'
+        status: isPWAInstalled ? 'success' : 'warning',
+        message: isPWAInstalled ? 'Instalado como aplicativo' : 'Pode instalar via Menu → Instalar'
       });
 
-      // Salvar resultados
-      setVerificationResults(results);
-      
-      // Calcular status geral
-      const successCount = results.filter(r => r.status === 'success').length;
-      const errorCount = results.filter(r => r.status === 'error').length;
-      const warningCount = results.filter(r => r.status === 'warning').length;
+      setCacheStats(stats);
 
-      const newStatus: OfflineStatus = {
-        isConfigured: errorCount === 0,
-        path: 'Cache do navegador (v27)',
-        totalFiles: results.length,
-        totalSize: cacheInfo?.totalItems ? `${cacheInfo.totalItems} itens` : 'N/A',
-        lastVerification: new Date().toLocaleString('pt-BR'),
-        serviceWorkerVersion: 'v27',
-        cacheStatus: errorCount > 0 ? 'inactive' : warningCount > 0 ? 'outdated' : 'active'
-      };
+      // Calcular info geral
+      const totalPages = pageCache ? (await (await caches.open(pageCache)).keys()).length : 0;
+      const totalAPI = apiCache ? (await (await caches.open(apiCache)).keys()).length : 0;
 
-      setOfflineStatus(newStatus);
-      localStorage.setItem('offline-status', JSON.stringify(newStatus));
+      setCacheInfo({
+        cacheName: pageCache || 'N/A',
+        totalItems: totalPages + totalAPI,
+        pageItems: totalPages,
+        apiItems: totalAPI,
+        lastUpdate: new Date().toLocaleString('pt-BR')
+      });
 
       toast({
         title: "Verificação concluída",
-        description: `${successCount} OK, ${warningCount} avisos, ${errorCount} erros`,
-        variant: errorCount > 0 ? "destructive" : "default"
+        description: `${stats.filter(s => s.status === 'success').length}/${stats.length} verificações OK`,
       });
 
     } catch (error) {
@@ -245,349 +223,170 @@ export function OfflineModeSettings() {
     }
   };
 
-  const clearOfflineCache = async () => {
-    if ('caches' in window) {
-      try {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map(name => caches.delete(name)));
-        
-        setCacheInfo(null);
-        setOfflineStatus(null);
-        setVerificationResults([]);
-        
-        toast({
-          title: "Cache limpo",
-          description: "Todos os dados offline foram removidos"
-        });
-      } catch (error) {
-        toast({
-          title: "Erro ao limpar cache",
-          description: error instanceof Error ? error.message : "Erro desconhecido",
-          variant: "destructive"
-        });
-      }
+  const clearAllCache = async () => {
+    try {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map(name => caches.delete(name)));
+      
+      setCacheInfo(null);
+      setCacheStats([]);
+      
+      toast({
+        title: "Cache limpo",
+        description: "Recarregue a página para criar novo cache",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao limpar cache",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive"
+      });
     }
   };
 
   const downloadInstructions = () => {
     const instructions = `
-# Guia de Instalação Offline - 7care v27
+# 7care - Modo Offline (PWA Puro)
 
 ## Como funciona:
 
-O 7care agora usa Service Worker v27 com PRE-CACHE completo!
-TODAS as páginas funcionam offline automaticamente após a primeira instalação.
+O 7care usa Service Worker v27 que automaticamente cacheia:
+- ✅ 97 arquivos da aplicação (páginas, JS, CSS)
+- ✅ Respostas da API (usuários, tarefas, interessados, etc)
 
-## Instalação Automática:
+## Para ter dados offline:
 
-1. Acesse: https://7care.netlify.app
-2. Aguarde o Service Worker instalar (veja no console)
-3. Todos os arquivos JS/CSS serão cacheados automaticamente
-4. Pronto! Pode usar offline
+1. Acesse https://7care.netlify.app COM INTERNET
+2. Navegue pelas páginas que usa:
+   - /users (usuários)
+   - /tasks (tarefas)
+   - /interested (interessados)
+   - /dashboard (dashboard)
+   - Outras páginas que precisar
 
-## Verificar instalação:
+3. O Service Worker salvará automaticamente os dados
 
-1. Abra DevTools (F12) > Console
-2. Procure por: "✅ SW v27: Pre-cache completo!"
-3. Application > Cache Storage
-4. Deve ter: 7care-v27-precache-total com 100+ itens
+4. Desconecte da internet
 
-## Páginas disponíveis offline (automaticamente):
-${REQUIRED_PAGES.map(p => `- ${p.name} (${p.path})`).join('\n')}
+5. Navegue pelas mesmas páginas
+   → Os dados aparecerão normalmente!
 
-## Status atual da verificação:
-${verificationResults.map(r => `- ${r.name}: ${r.message}`).join('\n')}
+## Status atual do cache:
+
+${cacheStats.map(s => `- ${s.name}: ${s.message}${s.count ? ` (${s.count} itens)` : ''}`).join('\n')}
+
+## Verificação:
+
+Para ver o cache:
+1. Abra DevTools (F12)
+2. Application → Cache Storage
+3. Veja:
+   - 7care-v27-precache-total (páginas)
+   - 7care-api-v27 (dados)
 
 ## Instalar como PWA:
 
-Chrome/Edge: Menu > Instalar 7care
-Safari iOS: Compartilhar > Adicionar à Tela Inicial
+Desktop: Menu → Instalar 7care
+Mobile: Compartilhar → Adicionar à Tela Inicial
 
-Depois de instalado como PWA, funciona 100% offline!
+Versão: Service Worker v27
+Data: ${new Date().toLocaleDateString('pt-BR')}
 `;
 
     const blob = new Blob([instructions], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'instalacao-offline-7care-v27.txt';
+    a.download = 'modo-offline-7care.txt';
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const forceFullOfflineInstall = async () => {
-    if (!('serviceWorker' in navigator)) {
-      toast({
-        title: "Service Worker não suportado",
-        description: "Seu navegador não suporta Service Workers",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsVerifying(true);
-
-    try {
-      toast({
-        title: "Instalando para offline...",
-        description: "Baixando todos os recursos. Isso pode levar alguns minutos.",
-      });
-
-      // Forçar registro do Service Worker
-      const registration = await navigator.serviceWorker.register('/sw.js', {
-        updateViaCache: 'none'
-      });
-
-      // Aguardar instalação
-      if (registration.installing) {
-        await new Promise((resolve) => {
-          registration.installing.addEventListener('statechange', (e) => {
-            if ((e.target as any).state === 'activated') {
-              resolve(true);
-            }
-          });
-        });
-      }
-
-      // Aguardar um pouco para o cache completar
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
-      // Verificar cache
-      await checkCacheStatus();
-
-      toast({
-        title: "Instalação offline concluída!",
-        description: "Todas as páginas agora funcionam offline. Pode desconectar da internet!",
-      });
-
-    } catch (error) {
-      console.error('Erro na instalação offline:', error);
-      toast({
-        title: "Erro na instalação",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
-        variant: "destructive"
-      });
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  const successCount = verificationResults.filter(r => r.status === 'success').length;
-  const totalCount = verificationResults.length;
+  const successCount = cacheStats.filter(s => s.status === 'success').length;
+  const totalCount = cacheStats.length;
   const percentage = totalCount > 0 ? (successCount / totalCount) * 100 : 0;
 
   return (
     <div className="space-y-6">
-      {/* Modal de Instalação Local */}
-      <LocalInstallModal 
-        isOpen={showLocalInstallModal}
-        onClose={() => setShowLocalInstallModal(false)}
-        isAdmin={true}
-      />
-
       {/* Status de Conexão */}
       <Alert className={isOnline ? "border-green-500" : "border-orange-500"}>
         <div className="flex items-center gap-2">
-          {isOnline ? <Wifi className="h-5 w-5 text-green-600" /> : <WifiOff className="h-5 w-5 text-orange-600" />}
-          <AlertDescription>
-            {isOnline ? "Sistema online - Todas as funcionalidades disponíveis" : "Sistema offline - Usando cache local"}
-          </AlertDescription>
+          {isOnline ? (
+            <>
+              <Wifi className="h-5 w-5 text-green-600" />
+              <AlertDescription className="flex-1">
+                <strong>Sistema online</strong> - Dados sendo salvos automaticamente no cache
+              </AlertDescription>
+              <Badge className="bg-green-600">Online</Badge>
+            </>
+          ) : (
+            <>
+              <WifiOff className="h-5 w-5 text-orange-600" />
+              <AlertDescription className="flex-1">
+                <strong>Sistema offline</strong> - Usando dados do cache
+              </AlertDescription>
+              <Badge className="bg-orange-600">Offline</Badge>
+            </>
+          )}
         </div>
       </Alert>
 
-      {/* Card Principal - Cache Automático de Dados */}
-      <Card className="border-green-500">
+      {/* Card Principal - Como Funciona */}
+      <Card className="border-blue-500">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-green-600" />
-            ✨ Cache Automático de Dados (Service Worker v27)
+            <Zap className="h-5 w-5 text-blue-600" />
+            Como Funciona o Modo Offline
           </CardTitle>
           <CardDescription>
-            Os dados são automaticamente salvos e funcionam offline!
+            Service Worker v27 com cache automático de páginas e dados
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription>
-              <strong className="text-green-700 dark:text-green-400">🎉 Como funciona:</strong>
-              <ol className="list-decimal ml-5 mt-2 space-y-2 text-sm">
-                <li>
-                  <strong>Online:</strong> Você usa o sistema normalmente
-                  <p className="text-xs text-muted-foreground">Service Worker salva automaticamente todas as respostas da API</p>
-                </li>
-                <li>
-                  <strong>Offline:</strong> Service Worker retorna dados do cache
-                  <p className="text-xs text-muted-foreground">Usuários, tarefas, interessados aparecem normalmente!</p>
-                </li>
-                <li>
-                  <strong>Volta online:</strong> Dados sincronizam automaticamente
-                  <p className="text-xs text-muted-foreground">Cache é atualizado com informações mais recentes</p>
-                </li>
-              </ol>
-            </AlertDescription>
-          </Alert>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="h-8 w-8 bg-green-600 rounded-full flex items-center justify-center text-white font-bold">1</div>
+                <h4 className="font-semibold text-green-700 dark:text-green-400">Online</h4>
+              </div>
+              <p className="text-sm">
+                Use o sistema normalmente. O Service Worker salva automaticamente páginas e dados da API em cache.
+              </p>
+            </div>
 
-          <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg">
-            <p className="font-semibold text-blue-700 dark:text-blue-400 mb-2">
-              📦 O que é cacheado automaticamente:
-            </p>
-            <ul className="text-sm space-y-1">
-              <li>✅ <strong>Páginas:</strong> 97 arquivos (automático)</li>
-              <li>✅ <strong>Usuários:</strong> Cacheados conforme você acessa</li>
-              <li>✅ <strong>Tarefas:</strong> Cacheadas conforme você acessa</li>
-              <li>✅ <strong>Interessados:</strong> Cacheados conforme você acessa</li>
-              <li>✅ <strong>Eventos:</strong> Cacheados conforme você acessa</li>
-              <li>✅ <strong>Todos os dados da API!</strong></li>
-            </ul>
+            <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-lg border border-orange-200">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="h-8 w-8 bg-orange-600 rounded-full flex items-center justify-center text-white font-bold">2</div>
+                <h4 className="font-semibold text-orange-700 dark:text-orange-400">Offline</h4>
+              </div>
+              <p className="text-sm">
+                Sem internet, o Service Worker serve páginas e dados do cache. Tudo continua funcionando!
+              </p>
+            </div>
+
+            <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">3</div>
+                <h4 className="font-semibold text-blue-700 dark:text-blue-400">Sincronização</h4>
+              </div>
+              <p className="text-sm">
+                Ao voltar online, novos dados são baixados e o cache é atualizado automaticamente.
+              </p>
+            </div>
           </div>
 
           <Alert>
             <Info className="h-4 w-4" />
-            <AlertDescription className="text-sm">
-              <strong>💡 Dica:</strong> Para ter todos os dados offline, navegue pelas páginas 
-              COM INTERNET primeiro. O Service Worker salvará automaticamente tudo em cache.
-              Depois pode desconectar e usar offline com todos os dados!
+            <AlertDescription>
+              <strong>💡 Dica para cache completo:</strong> Navegue pelas páginas que você usa 
+              (usuários, tarefas, interessados, etc) COM INTERNET primeiro. O Service Worker 
+              cacheará automaticamente todos os dados. Depois pode usar offline com tudo disponível!
             </AlertDescription>
           </Alert>
         </CardContent>
       </Card>
 
-      {/* Card Opcional - Instalação Local */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HardDrive className="h-5 w-5" />
-            Instalação Local (Opcional - Desktop)
-          </CardTitle>
-          <CardDescription>
-            Para quem prefere servidor local ao invés de cache do navegador
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button 
-            onClick={() => setShowLocalInstallModal(true)}
-            className="w-full"
-            variant="outline"
-          >
-            <Download className="h-5 w-5 mr-2" />
-            Configurar Instalação Local
-          </Button>
-
-          <p className="text-xs text-muted-foreground">
-            A instalação local é opcional. O cache automático de dados já funciona perfeitamente!
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Configuração do Caminho */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HardDrive className="h-5 w-5" />
-            Instalação Offline Automática (Service Worker v27)
-          </CardTitle>
-          <CardDescription>
-            O PWA agora funciona 100% offline usando apenas o cache do navegador. Sem necessidade de pasta local!
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Button 
-                onClick={verifyOfflineInstallation} 
-                disabled={isVerifying}
-                className="flex-1"
-                variant="outline"
-              >
-                {isVerifying ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Verificando...
-                  </>
-                ) : (
-                  <>
-                    <FileCheck className="h-4 w-4 mr-2" />
-                    Verificar Status Offline
-                  </>
-                )}
-              </Button>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              ✨ Service Worker v27 cacheia automaticamente todos os 98 assets no primeiro acesso
-            </p>
-          </div>
-
-          {offlineStatus && (
-            <div className="p-4 bg-muted rounded-lg space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Status:</span>
-                <Badge variant={offlineStatus.cacheStatus === 'active' ? 'default' : 'destructive'}>
-                  {offlineStatus.cacheStatus === 'active' ? 'Ativo' : offlineStatus.cacheStatus === 'outdated' ? 'Incompleto' : 'Inativo'}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Itens verificados:</span>
-                <span className="text-sm">{offlineStatus.totalFiles}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Cache:</span>
-                <span className="text-sm">{offlineStatus.totalSize}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Última verificação:</span>
-                <span className="text-sm">{offlineStatus.lastVerification}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Service Worker:</span>
-                <span className="text-sm">{offlineStatus.serviceWorkerVersion}</span>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Resultados da Verificação */}
-      {verificationResults.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5" />
-              Resultados da Verificação
-            </CardTitle>
-            <CardDescription>
-              {successCount} de {totalCount} verificações bem-sucedidas
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Progress value={percentage} className="h-2" />
-            
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {verificationResults.map((result, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    {result.status === 'success' && <CheckCircle className="h-5 w-5 text-green-600" />}
-                    {result.status === 'error' && <XCircle className="h-5 w-5 text-red-600" />}
-                    {result.status === 'warning' && <AlertTriangle className="h-5 w-5 text-orange-600" />}
-                    <div>
-                      <p className="font-medium text-sm">{result.name}</p>
-                      <p className="text-xs text-muted-foreground">{result.message}</p>
-                    </div>
-                  </div>
-                  {result.size && (
-                    <Badge variant="outline">{result.size}</Badge>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Cache Info */}
+      {/* Informações do Cache */}
       {cacheInfo && (
         <Card>
           <CardHeader>
@@ -596,17 +395,70 @@ Depois de instalado como PWA, funciona 100% offline!
               Informações do Cache
             </CardTitle>
             <CardDescription>
-              Cache do Service Worker ativo
+              Status atual do cache offline
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Nome do Cache:</span>
-              <code className="text-xs bg-muted px-2 py-1 rounded">{cacheInfo.cacheName}</code>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="text-xs text-muted-foreground mb-1">Páginas em Cache</p>
+                <p className="text-2xl font-bold">{cacheInfo.pageItems}</p>
+                <p className="text-xs text-muted-foreground">arquivos</p>
+              </div>
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="text-xs text-muted-foreground mb-1">Dados da API</p>
+                <p className="text-2xl font-bold">{cacheInfo.apiItems}</p>
+                <p className="text-xs text-muted-foreground">endpoints</p>
+              </div>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Itens em Cache:</span>
-              <Badge>{cacheInfo.totalItems}</Badge>
+
+            <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+              <span className="text-sm font-medium">Total em Cache:</span>
+              <Badge className="bg-blue-600">{cacheInfo.totalItems} itens</Badge>
+            </div>
+
+            <div className="text-xs text-muted-foreground text-center">
+              Última atualização: {cacheInfo.lastUpdate}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Verificação Detalhada */}
+      {cacheStats.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Status Detalhado
+            </CardTitle>
+            <CardDescription>
+              {successCount} de {totalCount} verificações OK
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Progress value={percentage} className="h-2" />
+            
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {cacheStats.map((stat, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 bg-muted rounded-lg"
+                >
+                  <div className="flex items-center gap-3">
+                    {stat.status === 'success' && <CheckCircle className="h-5 w-5 text-green-600" />}
+                    {stat.status === 'error' && <XCircle className="h-5 w-5 text-red-600" />}
+                    {stat.status === 'warning' && <AlertTriangle className="h-5 w-5 text-orange-600" />}
+                    <div>
+                      <p className="font-medium text-sm">{stat.name}</p>
+                      <p className="text-xs text-muted-foreground">{stat.message}</p>
+                    </div>
+                  </div>
+                  {stat.count && (
+                    <Badge variant="outline">{stat.count}</Badge>
+                  )}
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -615,59 +467,50 @@ Depois de instalado como PWA, funciona 100% offline!
       {/* Ações */}
       <Card>
         <CardHeader>
-          <CardTitle>Ações de Manutenção</CardTitle>
+          <CardTitle>Ações</CardTitle>
           <CardDescription>
-            Ferramentas para gerenciar a instalação offline
+            Ferramentas de gerenciamento do cache offline
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <Button 
-              onClick={forceFullOfflineInstall} 
-              variant="default"
+              onClick={checkCacheStatus} 
               disabled={isVerifying}
-              className="bg-blue-600 hover:bg-blue-700"
+              variant="default"
             >
               {isVerifying ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Instalando...
+                  Verificando...
                 </>
               ) : (
                 <>
-                  <Download className="h-4 w-4 mr-2" />
-                  Instalar para Offline Completo
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Verificar Status
                 </>
               )}
             </Button>
-            <Button onClick={checkCacheStatus} variant="outline">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Atualizar Cache Info
-            </Button>
             <Button onClick={downloadInstructions} variant="outline">
               <Download className="h-4 w-4 mr-2" />
-              Baixar Instruções
+              Baixar Guia
             </Button>
-            <Button onClick={clearOfflineCache} variant="destructive">
+            <Button onClick={clearAllCache} variant="destructive">
               <XCircle className="h-4 w-4 mr-2" />
               Limpar Cache
             </Button>
           </div>
 
           <Alert className="border-blue-500">
-            <HardDrive className="h-4 w-4" />
-            <AlertDescription>
-              <strong>✨ Service Worker v27 - Instalação Automática!</strong>
+            <Info className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              <strong>Como preparar para offline:</strong>
               <ol className="list-decimal ml-5 mt-2 space-y-1">
-                <li><strong>Clique no botão azul acima</strong> "Instalar para Offline Completo"</li>
-                <li>OU simplesmente <strong>recarregue a página</strong> (Ctrl+R)</li>
-                <li>O Service Worker v27 cacheará <strong>TODOS os assets automaticamente</strong></li>
-                <li><strong>TODAS as 20+ páginas</strong> funcionarão offline imediatamente!</li>
-                <li>Não precisa mais visitar cada página manualmente 🎉</li>
+                <li>Acesse o sistema COM INTERNET</li>
+                <li>Navegue por: Dashboard, Usuários, Tarefas, Interessados</li>
+                <li>Aguarde as páginas carregarem completamente</li>
+                <li>Desconecte e use offline - dados estarão disponíveis!</li>
               </ol>
-              <p className="mt-3 text-sm font-semibold text-blue-600">
-                💡 Após a instalação, pode desconectar da internet e usar normalmente!
-              </p>
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -676,51 +519,43 @@ Depois de instalado como PWA, funciona 100% offline!
       {/* Guia Rápido */}
       <Card>
         <CardHeader>
-          <CardTitle>📚 Guia Rápido - Como Funciona o Offline</CardTitle>
+          <CardTitle>📚 Guia Rápido</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent>
           <div className="space-y-3 text-sm">
-            <div>
-              <p className="font-semibold text-blue-600 mb-2">✨ Service Worker v27 - Totalmente Automático!</p>
-              <p>Não precisa mais de pasta local ou servidor. Tudo funciona pelo cache do navegador!</p>
-            </div>
-
-            <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg">
-              <p className="font-semibold mb-2">🚀 Como usar offline:</p>
-              <ol className="list-decimal ml-5 space-y-1">
-                <li>Acesse <strong>https://7care.netlify.app</strong> (COM internet)</li>
-                <li>Aguarde o Service Worker instalar (5-10 segundos)</li>
-                <li>Veja no console: "✅ SW v27: Pre-cache completo!"</li>
-                <li><strong>Pronto!</strong> Agora pode desconectar e usar offline</li>
-              </ol>
-            </div>
-
             <div className="bg-green-50 dark:bg-green-950 p-3 rounded-lg">
-              <p className="font-semibold mb-2">📦 O que é cacheado automaticamente:</p>
+              <p className="font-semibold text-green-700 dark:text-green-400 mb-2">
+                ✅ O que é cacheado automaticamente:
+              </p>
               <ul className="list-disc ml-5 space-y-1">
-                <li><strong>98 arquivos</strong> incluindo todos os chunks JS das páginas</li>
-                <li><strong>Dashboard, Users, Calendar, Tasks, Chat</strong> e todas as outras</li>
-                <li><strong>Biblioteca React, UI components, CSS</strong></li>
-                <li><strong>Ícones, imagens, manifest PWA</strong></li>
+                <li><strong>Páginas:</strong> 97 arquivos (HTML, JS, CSS, imagens)</li>
+                <li><strong>Dados:</strong> Respostas de todas as APIs que você acessar</li>
+                <li><strong>Usuários:</strong> Lista completa ao abrir /users</li>
+                <li><strong>Tarefas:</strong> Suas tarefas ao abrir /tasks</li>
+                <li><strong>Interessados:</strong> Lista ao abrir /interested</li>
               </ul>
             </div>
 
-            <div className="bg-purple-50 dark:bg-purple-950 p-3 rounded-lg">
-              <p className="font-semibold mb-2">📱 Instalar como PWA:</p>
+            <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg">
+              <p className="font-semibold text-blue-700 dark:text-blue-400 mb-2">
+                📱 Como instalar como PWA:
+              </p>
               <ul className="list-disc ml-5 space-y-1">
                 <li><strong>Chrome/Edge:</strong> Menu → Instalar 7care</li>
                 <li><strong>Safari iOS:</strong> Compartilhar → Adicionar à Tela Inicial</li>
-                <li>Depois de instalado, funciona como app nativo offline!</li>
+                <li><strong>Chrome Android:</strong> Menu → Instalar app</li>
               </ul>
             </div>
 
             <div className="bg-orange-50 dark:bg-orange-950 p-3 rounded-lg">
-              <p className="font-semibold mb-2">🔍 Como verificar:</p>
+              <p className="font-semibold text-orange-700 dark:text-orange-400 mb-2">
+                🔍 Como verificar o cache:
+              </p>
               <ol className="list-decimal ml-5 space-y-1">
-                <li>Abra <strong>DevTools (F12)</strong></li>
+                <li>Abra DevTools (F12)</li>
                 <li>Vá em <strong>Application → Cache Storage</strong></li>
-                <li>Procure: <strong>7care-v27-precache-total</strong></li>
-                <li>Deve ter <strong>98+ itens</strong></li>
+                <li>Veja <strong>7care-v27-precache-total</strong> (páginas)</li>
+                <li>Veja <strong>7care-api-v27</strong> (dados da API)</li>
               </ol>
             </div>
           </div>
@@ -729,4 +564,3 @@ Depois de instalado como PWA, funciona 100% offline!
     </div>
   );
 }
-
