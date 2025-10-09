@@ -24,27 +24,56 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Fetch event
+// Fetch event - com cache dinâmico
 self.addEventListener('fetch', (event) => {
-  // Não responder a requisições que não devem ser interceptadas
+  const url = new URL(event.request.url);
+  
+  // Não responder a requisições externas
   if (!event.request.url.startsWith(self.location.origin)) {
     return;
   }
   
+  // Detectar se é asset estático
+  const isAsset = url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|ico)$/i);
+  
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Cache hit - return response
-        if (response) {
-          return response;
+    (async () => {
+      // Tentar cache primeiro para assets
+      const cachedResponse = await caches.match(event.request);
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      
+      try {
+        // Buscar da rede
+        const networkResponse = await fetch(event.request.clone());
+        
+        // Cachear assets automaticamente
+        if (networkResponse && networkResponse.status === 200 && isAsset) {
+          const cache = await caches.open(CACHE_NAME);
+          cache.put(event.request, networkResponse.clone());
         }
-        return fetch(event.request);
-      })
-      .catch((error) => {
-        console.error('Fetch error:', error);
-        // Fallback para requisições que falharam
-        return new Response('Network error', { status: 408 });
-      })
+        
+        return networkResponse;
+      } catch (error) {
+        // Offline ou erro de rede
+        // Se for navegação, tentar servir index.html do cache
+        if (event.request.mode === 'navigate') {
+          const indexCache = await caches.match('/index.html') || await caches.match('/');
+          if (indexCache) {
+            return indexCache;
+          }
+        }
+        
+        // Para outros recursos, retornar erro apenas se for importante
+        if (isAsset) {
+          // Não logar para evitar spam no console
+          return new Response('', { status: 503 });
+        }
+        
+        return new Response('Network error', { status: 503 });
+      }
+    })()
   );
 });
 
