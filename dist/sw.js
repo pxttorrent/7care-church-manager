@@ -1,6 +1,6 @@
-// Service Worker for 7care PWA - v25 com Auto-Cache Completo
-const CACHE_NAME = '7care-v25-auto-cache';
-const API_CACHE_NAME = '7care-api-v25';
+// Service Worker for 7care PWA - v26 com Offline Total Garantido
+const CACHE_NAME = '7care-v26-offline-total';
+const API_CACHE_NAME = '7care-api-v26';
 
 // URLs essenciais para cache inicial
 const ESSENTIAL_URLS = [
@@ -40,30 +40,64 @@ const APP_ROUTES = [
   '/login'
 ];
 
-// Install event - Cache inicial essencial
+// Install event - Cache inicial completo
 self.addEventListener('install', (event) => {
-  console.log('🔄 SW v25: Instalando Service Worker...', CACHE_NAME);
+  console.log('🔄 SW v26: Instalando Service Worker...', CACHE_NAME);
   
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('💾 SW v25: Cacheando recursos essenciais...');
-        // Cachear apenas recursos essenciais no install
-        return cache.addAll(ESSENTIAL_URLS.map(url => new Request(url, { cache: 'reload' })))
-          .catch(err => {
-            console.warn('⚠️ SW v25: Erro ao cachear essenciais:', err);
-            return Promise.resolve();
-          });
+      .then(async (cache) => {
+        console.log('💾 SW v26: Cacheando recursos essenciais...');
+        
+        // Cachear recursos essenciais
+        try {
+          await cache.addAll(ESSENTIAL_URLS.map(url => new Request(url, { cache: 'reload' })));
+          console.log('✅ SW v26: Recursos essenciais cacheados');
+          
+          // Buscar e cachear assets dinamicamente do index.html
+          const indexResponse = await cache.match('/index.html');
+          if (indexResponse) {
+            const html = await indexResponse.text();
+            
+            // Extrair todos os assets (JS, CSS) do HTML
+            const jsMatches = html.match(/src="([^"]+\.js)"/g) || [];
+            const cssMatches = html.match(/href="([^"]+\.css)"/g) || [];
+            
+            const assetUrls = [
+              ...jsMatches.map(m => m.match(/src="([^"]+)"/)?.[1]).filter(Boolean),
+              ...cssMatches.map(m => m.match(/href="([^"]+)"/)?.[1]).filter(Boolean)
+            ];
+            
+            console.log(`📦 SW v26: Encontrados ${assetUrls.length} assets para cachear`);
+            
+            // Cachear assets em paralelo
+            await Promise.allSettled(
+              assetUrls.map(url => 
+                fetch(url)
+                  .then(response => {
+                    if (response.ok) {
+                      cache.put(url, response);
+                      console.log(`✅ Cached asset: ${url}`);
+                    }
+                  })
+                  .catch(err => console.warn(`⚠️ Falha ao cachear ${url}:`, err))
+              )
+            );
+          }
+          
+          console.log('✅ SW v26: Cache inicial completo - App pronto para offline');
+        } catch (err) {
+          console.warn('⚠️ SW v26: Erro no cache inicial:', err);
+        }
       })
-      .then(() => console.log('✅ SW v25: Cache essencial completo'))
   );
   
   self.skipWaiting();
 });
 
-// Activate event - Limpar caches antigos e cachear aplicação completa
+// Activate event - Limpar caches antigos e ativar
 self.addEventListener('activate', (event) => {
-  console.log('🚀 SW v25: Ativando Service Worker...');
+  console.log('🚀 SW v26: Ativando Service Worker...');
   
   event.waitUntil(
     Promise.all([
@@ -72,48 +106,20 @@ self.addEventListener('activate', (event) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
             if (cacheName !== CACHE_NAME && cacheName !== API_CACHE_NAME) {
-              console.log('🗑️ SW v25: Removendo cache antigo:', cacheName);
+              console.log('🗑️ SW v26: Removendo cache antigo:', cacheName);
               return caches.delete(cacheName);
             }
           })
         );
       }),
-      // Tomar controle imediatamente
+      // Tomar controle imediatamente de todas as páginas
       self.clients.claim()
     ]).then(() => {
-      console.log('✅ SW v25: Service Worker ativado e controlando');
-      
-      // Após ativação, cachear a aplicação completa em background
-      cacheAppShell();
+      console.log('✅ SW v26: Service Worker ativado e controlando todas as páginas');
+      console.log('🎉 SW v26: Aplicação pronta para funcionar offline!');
     })
   );
 });
-
-// Função para cachear o shell da aplicação completo
-async function cacheAppShell() {
-  try {
-    const cache = await caches.open(CACHE_NAME);
-    console.log('📦 SW v25: Cacheando shell da aplicação...');
-    
-    // Cachear rotas da aplicação (todas retornam index.html)
-    await Promise.allSettled(
-      APP_ROUTES.map(route => 
-        fetch(route)
-          .then(response => {
-            if (response.ok) {
-              cache.put(route, response.clone());
-              console.log(`✅ Cached: ${route}`);
-            }
-          })
-          .catch(err => console.warn(`⚠️ Erro ao cachear ${route}:`, err))
-      )
-    );
-    
-    console.log('✅ SW v25: Shell da aplicação cacheado');
-  } catch (error) {
-    console.error('❌ SW v25: Erro ao cachear app shell:', error);
-  }
-}
 
 // Fetch event - Estratégia inteligente de cache
 self.addEventListener('fetch', (event) => {
@@ -142,44 +148,40 @@ self.addEventListener('fetch', (event) => {
             // Cachear a resposta
             const cache = await caches.open(CACHE_NAME);
             cache.put(event.request, networkResponse.clone());
-            // Também cachear pela URL específica
             cache.put(url.pathname, networkResponse.clone());
-            console.log(`📝 SW v25: Cached (navigate): ${url.pathname}`);
+            console.log(`📝 SW v26: Cached (navigate): ${url.pathname}`);
           }
           
           return networkResponse;
         } catch (error) {
-          // Offline - tentar do cache
-          console.log('📡 SW v25: OFFLINE - Buscando do cache:', url.pathname);
+          // Offline - SEMPRE retornar index.html para SPA
+          console.log('📡 SW v26: OFFLINE - Modo SPA para:', url.pathname);
           
-          // Tentar cache pela requisição exata
-          let cachedResponse = await caches.match(event.request);
-          if (cachedResponse) {
-            console.log(`✅ Cache hit (request): ${url.pathname}`);
-            return cachedResponse;
-          }
-          
-          // Tentar cache pela URL
-          cachedResponse = await caches.match(url.pathname);
-          if (cachedResponse) {
-            console.log(`✅ Cache hit (pathname): ${url.pathname}`);
-            return cachedResponse;
-          }
-          
-          // Fallback para index.html (SPA)
-          console.log(`🏠 SW v25: Fallback para index.html: ${url.pathname}`);
-          const indexResponse = await caches.match('/index.html') || await caches.match('/');
+          // Para SPA, SEMPRE retornar index.html do cache
+          // O React Router cuidará da navegação interna
+          const indexResponse = await caches.match('/index.html');
           if (indexResponse) {
+            console.log(`✅ SW v26: Servindo index.html para: ${url.pathname}`);
             return indexResponse;
           }
           
-          // Se nada funcionar, retornar erro
-          console.error(`❌ SW v25: Sem cache disponível para: ${url.pathname}`);
-          return new Response('Offline - Por favor, visite esta página online primeiro', {
-            status: 503,
-            statusText: 'Service Unavailable',
-            headers: { 'Content-Type': 'text/plain' }
-          });
+          // Fallback alternativo
+          const rootResponse = await caches.match('/');
+          if (rootResponse) {
+            console.log(`✅ SW v26: Servindo / para: ${url.pathname}`);
+            return rootResponse;
+          }
+          
+          // Se realmente não tiver nada em cache
+          console.error(`❌ SW v26: Sem index.html em cache!`);
+          return new Response(
+            '<!DOCTYPE html><html><body><h1>Offline</h1><p>O aplicativo está offline. Por favor, conecte-se à internet.</p></body></html>',
+            {
+              status: 200,
+              statusText: 'OK',
+              headers: { 'Content-Type': 'text/html' }
+            }
+          );
         }
       }
 
@@ -191,21 +193,21 @@ self.addEventListener('fetch', (event) => {
           if (networkResponse && networkResponse.ok) {
             const cache = await caches.open(API_CACHE_NAME);
             cache.put(event.request, networkResponse.clone());
-            console.log(`💾 SW v25: API cached: ${url.pathname}`);
+            console.log(`💾 SW v26: API cached: ${url.pathname}`);
           }
           
           return networkResponse;
         } catch (error) {
-          console.log('📡 SW v25: API OFFLINE - Buscando do cache:', url.pathname);
+          console.log('📡 SW v26: API OFFLINE - Buscando do cache:', url.pathname);
           
           const cachedResponse = await caches.match(event.request);
           if (cachedResponse) {
-            console.log(`✅ SW v25: API do cache: ${url.pathname}`);
+            console.log(`✅ SW v26: API do cache: ${url.pathname}`);
             return cachedResponse;
           }
           
           // Retornar array vazio para não quebrar a UI
-          console.warn(`⚠️ SW v25: API sem cache: ${url.pathname}`);
+          console.warn(`⚠️ SW v26: API sem cache: ${url.pathname}`);
           return new Response(
             JSON.stringify([]), 
             { 
@@ -232,12 +234,12 @@ self.addEventListener('fetch', (event) => {
           if (networkResponse && networkResponse.ok) {
             const cache = await caches.open(CACHE_NAME);
             cache.put(event.request, networkResponse.clone());
-            console.log(`📦 SW v25: Asset cached: ${url.pathname}`);
+            console.log(`📦 SW v26: Asset cached: ${url.pathname}`);
           }
           
           return networkResponse;
         } catch (error) {
-          console.error(`❌ SW v25: Asset não disponível offline: ${url.pathname}`);
+          console.error(`❌ SW v26: Asset não disponível offline: ${url.pathname}`);
           
           // Para imagens, retornar placeholder
           if (url.pathname.match(/\.(png|jpg|jpeg|gif|svg|webp)$/i)) {
@@ -258,7 +260,7 @@ self.addEventListener('fetch', (event) => {
         if (networkResponse && networkResponse.ok && isGET) {
           const cache = await caches.open(CACHE_NAME);
           cache.put(event.request, networkResponse.clone());
-          console.log(`📦 SW v25: Cached (other): ${url.pathname}`);
+          console.log(`📦 SW v26: Cached (other): ${url.pathname}`);
         }
         
         return networkResponse;
@@ -277,7 +279,7 @@ self.addEventListener('fetch', (event) => {
 
 // Push event - VERSÃO COM HISTÓRICO
 self.addEventListener('push', (event) => {
-  console.log('📱 SW v25: Push event recebido');
+  console.log('📱 SW v26: Push event recebido');
   
   const extractCleanMessage = (data) => {
     if (!data || data.trim() === '') {
@@ -299,7 +301,7 @@ self.addEventListener('push', (event) => {
         
         return 'Nova notificação do 7care';
       } catch (e) {
-        console.log('⚠️ SW v25: JSON inválido, limpando texto');
+        console.log('⚠️ SW v26: JSON inválido, limpando texto');
         return trimmed.replace(/[{}[\]"]/g, '').substring(0, 200) || 'Nova notificação';
       }
     }
@@ -319,7 +321,7 @@ self.addEventListener('push', (event) => {
   try {
     if (event.data) {
       const rawText = event.data.text();
-      console.log('📦 SW v25: Raw text recebido (primeiros 150 chars):', rawText.substring(0, 150));
+      console.log('📦 SW v26: Raw text recebido (primeiros 150 chars):', rawText.substring(0, 150));
       
       let parsed = null;
       let isJSON = false;
@@ -327,9 +329,9 @@ self.addEventListener('push', (event) => {
       try {
         parsed = JSON.parse(rawText);
         isJSON = true;
-        console.log('✅ SW v25: JSON parseado com sucesso');
+        console.log('✅ SW v26: JSON parseado com sucesso');
       } catch (e) {
-        console.log('ℹ️ SW v25: Não é JSON, usando texto simples');
+        console.log('ℹ️ SW v26: Não é JSON, usando texto simples');
       }
       
       if (isJSON && parsed) {
@@ -340,29 +342,29 @@ self.addEventListener('push', (event) => {
           iconUrl = parsed.image;
           imageData = parsed.image;
           hasImage = true;
-          console.log('📷 SW v25: Imagem detectada e salva');
+          console.log('📷 SW v26: Imagem detectada e salva');
         }
         
         if (parsed.audio && typeof parsed.audio === 'string' && parsed.audio.startsWith('data:audio')) {
           audioData = parsed.audio;
           hasAudio = true;
-          console.log('🎵 SW v25: Áudio detectado e salvo');
+          console.log('🎵 SW v26: Áudio detectado e salvo');
         }
         
         if (parsed.type) {
           notificationType = parsed.type;
-          console.log('📋 SW v25: Tipo de notificação:', notificationType);
+          console.log('📋 SW v26: Tipo de notificação:', notificationType);
         }
       } else {
         message = extractCleanMessage(rawText);
       }
       
       if (message.includes('{') || message.includes('}')) {
-        console.log('⚠️ SW v25: Mensagem ainda tem JSON, limpando...');
+        console.log('⚠️ SW v26: Mensagem ainda tem JSON, limpando...');
         message = extractCleanMessage(message);
       }
       
-      console.log('✅ SW v25: Dados finais:', {
+      console.log('✅ SW v26: Dados finais:', {
         title: title,
         message: message.substring(0, 100),
         hasAudio: hasAudio,
@@ -370,7 +372,7 @@ self.addEventListener('push', (event) => {
       });
     }
   } catch (err) {
-    console.error('❌ SW v25: Erro ao processar:', err);
+    console.error('❌ SW v26: Erro ao processar:', err);
     message = 'Nova notificação do 7care';
   }
   
@@ -404,7 +406,7 @@ self.addEventListener('push', (event) => {
     ];
   }
   
-  console.log('📬 SW v25: Salvando notificação no histórico e exibindo');
+  console.log('📬 SW v26: Salvando notificação no histórico e exibindo');
 
   event.waitUntil(
     (async () => {
@@ -422,14 +424,14 @@ self.addEventListener('push', (event) => {
       };
 
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      console.log('👥 SW v25: Clientes encontrados:', clients.length);
+      console.log('👥 SW v26: Clientes encontrados:', clients.length);
       
       clients.forEach(client => {
         client.postMessage({
           type: 'SAVE_NOTIFICATION',
           notification: notificationData
         });
-        console.log('✅ SW v25: Mensagem enviada para cliente');
+        console.log('✅ SW v26: Mensagem enviada para cliente');
       });
 
       await self.registration.showNotification(title, notificationOptions);
@@ -439,7 +441,7 @@ self.addEventListener('push', (event) => {
 
 // Notification click event
 self.addEventListener('notificationclick', (event) => {
-  console.log('🖱️ SW v25: Notificação clicada:', event.action);
+  console.log('🖱️ SW v26: Notificação clicada:', event.action);
   
   event.notification.close();
   
@@ -453,7 +455,7 @@ self.addEventListener('notificationclick', (event) => {
     }
     
     if (hasAudio || hasImage) {
-      console.log('📱 SW v25: Abrindo página de notificações (tem mídia)');
+      console.log('📱 SW v26: Abrindo página de notificações (tem mídia)');
       
       event.waitUntil(
         (async () => {
@@ -462,10 +464,10 @@ self.addEventListener('notificationclick', (event) => {
             let client = clientList.find(c => c.url.includes(self.location.origin));
             
             if (!client) {
-              console.log('📱 SW v25: Abrindo nova janela em /notifications');
+              console.log('📱 SW v26: Abrindo nova janela em /notifications');
               await clients.openWindow('/notifications');
             } else {
-              console.log('📱 SW v25: Focando janela existente e navegando para /notifications');
+              console.log('📱 SW v26: Focando janela existente e navegando para /notifications');
               await client.focus();
               client.postMessage({
                 type: 'NAVIGATE',
@@ -473,7 +475,7 @@ self.addEventListener('notificationclick', (event) => {
               });
             }
           } catch (err) {
-            console.error('❌ SW v25: Erro ao abrir página de notificações:', err);
+            console.error('❌ SW v26: Erro ao abrir página de notificações:', err);
           }
         })()
       );
@@ -496,10 +498,10 @@ self.addEventListener('notificationclick', (event) => {
             return clients.openWindow(targetUrl);
           }
         })
-        .catch(err => console.error('❌ SW v25: Erro ao abrir janela:', err))
+        .catch(err => console.error('❌ SW v26: Erro ao abrir janela:', err))
     );
   } catch (error) {
-    console.error('❌ SW v25: Erro no clique:', error);
+    console.error('❌ SW v26: Erro no clique:', error);
   }
 });
 
@@ -511,7 +513,7 @@ self.addEventListener('sync', (event) => {
 });
 
 function doBackgroundSync() {
-  console.log('🔄 SW v25: Background sync triggered');
+  console.log('🔄 SW v26: Background sync triggered');
   return Promise.resolve();
 }
 
@@ -523,7 +525,7 @@ self.addEventListener('message', (event) => {
         try {
           event.ports[0].postMessage(data);
         } catch (err) {
-          console.warn('⚠️ SW v25: Could not post message to port:', err);
+          console.warn('⚠️ SW v26: Could not post message to port:', err);
         }
       }
     };
@@ -545,15 +547,15 @@ self.addEventListener('message', (event) => {
       respond({ success: true, message: 'Message received' });
     }
   } catch (error) {
-    console.error('❌ SW v25: Error in message listener:', error);
+    console.error('❌ SW v26: Error in message listener:', error);
     if (event.ports && event.ports[0]) {
       try {
         event.ports[0].postMessage({ success: false, error: error.message });
       } catch (err) {
-        console.warn('⚠️ SW v25: Could not post error message to port:', err);
+        console.warn('⚠️ SW v26: Could not post error message to port:', err);
       }
     }
   }
 });
 
-console.log('✅ SW v25: Service Worker carregado - Auto-Cache Completo ativo');
+console.log('✅ SW v26: Service Worker carregado - Auto-Cache Completo ativo');
