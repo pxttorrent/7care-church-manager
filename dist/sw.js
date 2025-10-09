@@ -1,5 +1,5 @@
-// Service Worker for 7care PWA
-const CACHE_NAME = '7care-v18-fix-audio-save';
+// Service Worker for 7care PWA - v22 Clean & Stable
+const CACHE_NAME = '7care-v22-clean-stable';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
