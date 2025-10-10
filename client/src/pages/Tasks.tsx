@@ -210,70 +210,110 @@ export default function Tasks() {
     };
   }, [syncConfig, addTasksToSheet]);
 
-  // 🆕 Sincronização BIDIRECIONAL: Google Sheets → App (a cada 2 segundos)
+  // 🆕 Sincronização BIDIRECIONAL: Google Sheets → App (polling inteligente)
   useEffect(() => {
     if (!syncConfig?.spreadsheetUrl || !isOnline) {
-      return; // Não sincronizar se não configurado ou offline
+      console.log('⚠️ Sincronização bidirecional desativada:', 
+        !syncConfig?.spreadsheetUrl ? 'Google Sheets não configurado' : 'Offline');
+      return;
     }
 
-    console.log('🔄 Iniciando sincronização bidirecional com Google Sheets (2s)');
+    console.log('🔄 Iniciando sincronização bidirecional com Google Sheets');
     let syncCount = 0;
+    let lastTaskCount = 0;
 
     const syncFromGoogleSheets = async () => {
       try {
         syncCount++;
         
-        // A cada 2 segundos: Importar do Google Sheets para o servidor
+        // Log apenas na primeira sincronização
+        if (syncCount === 1) {
+          console.log('📊 Primeira sincronização com Google Sheets...');
+        }
+        
+        // Importar do Google Sheets para o servidor
         const success = await syncTasksNow();
         
-        if (success) {
-          // Buscar tarefas do servidor (já com dados do Sheets)
-          const tasksResponse = await fetch('/api/tasks', {
-            headers: { 'x-user-id': '1' }
-          });
-          
-          if (tasksResponse.ok) {
-            const tasksData = await tasksResponse.json();
-            const serverTasks = tasksData.tasks || [];
-            
-            // Comparar com dados locais para ver se houve mudanças
-            const localTasks = await offlineStorage.getAll('tasks');
-            
-            // Se houve diferença, atualizar
-            if (JSON.stringify(serverTasks.map(t => t.id).sort()) !== 
-                JSON.stringify(localTasks.map((t: any) => t.id).sort())) {
-              
-              console.log(`🔄 Detectadas mudanças no Google Sheets (sync #${syncCount})`);
-              
-              // Atualizar IndexedDB
-              await offlineStorage.clear('tasks');
-              for (const task of serverTasks) {
-                await offlineStorage.save('tasks', {
-                  ...task,
-                  _synced: true
-                });
-              }
-              
-              // Atualizar UI
-              queryClient.invalidateQueries({ queryKey: ['tasks'] });
-              
-              console.log(`✅ ${serverTasks.length} tarefas atualizadas do Google Sheets`);
-            }
+        if (!success) {
+          if (syncCount === 1) {
+            console.error('❌ Falha ao importar do Google Sheets');
           }
+          return;
         }
+        
+        // Buscar tarefas do servidor (já atualizadas com dados do Sheets)
+        const tasksResponse = await fetch('/api/tasks', {
+          headers: { 'x-user-id': '1' }
+        });
+        
+        if (!tasksResponse.ok) {
+          if (syncCount === 1) {
+            console.error('❌ Erro ao buscar tarefas do servidor');
+          }
+          return;
+        }
+
+        const tasksData = await tasksResponse.json();
+        const serverTasks = tasksData.tasks || [];
+        
+        // Detectar mudanças por contagem ou IDs
+        const currentCount = serverTasks.length;
+        const localTasks = await offlineStorage.getAll('tasks');
+        
+        const serverIds = new Set(serverTasks.map(t => t.id));
+        const localIds = new Set(localTasks.map((t: any) => t.id));
+        
+        // Verificar se houve mudanças (adições, remoções ou contagem diferente)
+        const hasDifferences = 
+          currentCount !== localTasks.length ||
+          serverIds.size !== localIds.size ||
+          ![...serverIds].every(id => localIds.has(id));
+        
+        if (hasDifferences) {
+          console.log(`\n🔄 Mudanças detectadas no Google Sheets (sync #${syncCount}):`);
+          console.log(`   Servidor: ${currentCount} tarefas`);
+          console.log(`   Local: ${localTasks.length} tarefas`);
+          
+          // Identificar o que mudou
+          const added = [...serverIds].filter(id => !localIds.has(id));
+          const removed = [...localIds].filter(id => !serverIds.has(id));
+          
+          if (added.length > 0) console.log(`   ➕ Adicionadas: ${added.length}`);
+          if (removed.length > 0) console.log(`   ➖ Removidas: ${removed.length}`);
+          
+          // Atualizar IndexedDB completamente
+          await offlineStorage.clear('tasks');
+          for (const task of serverTasks) {
+            await offlineStorage.save('tasks', {
+              ...task,
+              _synced: true
+            });
+          }
+          
+          // Forçar atualização da UI
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+          queryClient.refetchQueries({ queryKey: ['tasks'] });
+          
+          console.log(`   ✅ IndexedDB e UI atualizados\n`);
+        } else if (syncCount === 1) {
+          console.log(`✅ Sincronização inicial concluída (${currentCount} tarefas)`);
+        }
+        
+        lastTaskCount = currentCount;
+        
       } catch (error) {
-        // Silenciar erros para não poluir console
+        // Mostrar erro apenas na primeira tentativa
         if (syncCount === 1) {
-          console.error('⚠️ Erro na sincronização com Google Sheets:', error);
+          console.error('❌ Erro na sincronização bidirecional:', error);
         }
       }
     };
 
-    // Sincronizar a cada 2 segundos
-    const interval = setInterval(syncFromGoogleSheets, 2000);
-
-    // Sincronizar imediatamente ao montar
+    // Sincronizar IMEDIATAMENTE ao montar
     syncFromGoogleSheets();
+    
+    // Depois sincronizar a cada 5 segundos (mais razoável que 2s)
+    const interval = setInterval(syncFromGoogleSheets, 5000);
 
     return () => {
       clearInterval(interval);
