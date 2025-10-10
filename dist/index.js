@@ -5268,7 +5268,8 @@ async function registerRoutes(app2) {
         const activeRelationships = relationships2.filter((rel) => rel.status === "active");
         console.log(`\u2705 Relacionamentos com status 'active': ${activeRelationships.length}`);
         const interestedWithMentors = new Set(
-          activeRelationships.map((rel) => rel.interestedId || rel.interested_id)
+          activeRelationships.map((rel) => rel.interested_id || rel.interestedId).filter((id) => id != null)
+          // Remover nulls/undefined
         );
         interestedBeingDiscipled = interestedWithMentors.size;
         console.log(`\u{1F465} Interessados \xFAnicos sendo discipulados: ${interestedBeingDiscipled}`);

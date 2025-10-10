@@ -1936,8 +1936,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const activeRelationships = relationships.filter(rel => rel.status === 'active');
         console.log(`✅ Relacionamentos com status 'active': ${activeRelationships.length}`);
         
+        // Usar snake_case que é o formato do banco
         const interestedWithMentors = new Set(
-          activeRelationships.map(rel => rel.interestedId || rel.interested_id)
+          activeRelationships
+            .map(rel => rel.interested_id || rel.interestedId)
+            .filter(id => id != null) // Remover nulls/undefined
         );
         interestedBeingDiscipled = interestedWithMentors.size;
         

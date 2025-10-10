@@ -669,10 +669,38 @@ exports.handler = async (event, context) => {
         WHERE status = 'pending'
       `;
       
+      // Contar interessados sendo discipulados
+      let interestedBeingDiscipled = 0;
+      try {
+        const relationships = await sql`
+          SELECT * FROM relationships
+        `;
+        
+        console.log(`🔍 DEBUG - Total de relacionamentos: ${relationships.length}`);
+        
+        // Filtrar apenas ativos
+        const activeRelationships = relationships.filter(rel => rel.status === 'active');
+        console.log(`✅ Relacionamentos ativos: ${activeRelationships.length}`);
+        
+        // Contar interessados únicos
+        const uniqueInterested = new Set(
+          activeRelationships
+            .map(rel => rel.interested_id)
+            .filter(id => id != null)
+        );
+        
+        interestedBeingDiscipled = uniqueInterested.size;
+        console.log(`👥 Interessados únicos com discipulador: ${interestedBeingDiscipled}`);
+        console.log(`📋 IDs: [${Array.from(uniqueInterested).join(', ')}]`);
+      } catch (error) {
+        console.error('⚠️ Erro ao contar interessados sendo discipulados:', error);
+      }
+      
       const stats = {
         totalUsers: parseInt(users[0].count),
         totalEvents: parseInt(events[0].count),
         totalInterested: parseInt(interested[0].count),
+        interestedBeingDiscipled: interestedBeingDiscipled,
         totalMembers: parseInt(members[0].count),
         totalAdmins: parseInt(admins[0].count),
         totalMissionaries: parseInt(missionaries[0].count),
