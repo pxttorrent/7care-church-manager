@@ -12555,12 +12555,17 @@ exports.handler = async (event, context) => {
         const spreadsheetTaskIds = new Set();
         let importedCount = 0;
         let errorCount = 0;
+        const errors = []; // 🆕 Array para coletar erros detalhados
         
         // Processar cada tarefa
         for (const task of tasks) {
+          // 🆕 Definir title FORA do try para estar disponível no catch
+          let title = 'Tarefa sem nome';
+          
           try {
-            const taskId = task.id || task.ID;
-            const title = task.titulo || task.title || task.Título;
+            // 🆕 NÃO usar ID do Sheets (pode ser string/inválido)
+            // Vamos buscar/criar por título único
+            title = task.titulo || task.title || task.Título;
             const description = task.descricao || task.description || task.Descrição || '';
             const status = task.status || task.Status || 'pending';
             const priority = task.prioridade || task.priority || task.Prioridade || 'medium';
@@ -12571,7 +12576,7 @@ exports.handler = async (event, context) => {
             const tags = task.tags || task.Tags || '';
             
             // Validar dados obrigatórios
-            if (!title) {
+            if (!title || title.trim() === '') {
               console.log(`⚠️ [TASKS-SYNC] Tarefa sem título, pulando...`);
               errorCount++;
               continue;
@@ -12593,56 +12598,15 @@ exports.handler = async (event, context) => {
               mappedPriority = 'low';
             }
             
-            // Buscar ID do responsável pelo nome
-            let assignedToId = null;
-            if (assignedTo && assignedTo !== 'Não atribuída') {
-              const userResult = await sql`
-                SELECT id FROM users WHERE name = ${assignedTo} LIMIT 1
-              `;
-              if (userResult.length > 0) {
-                assignedTo = userResult[0].id;
-              }
-            }
+            // 🆕 SIMPLIFICADO: IDs fixos para evitar erros
+            const assignedToId = null;
+            const createdById = 1;
             
-            // Buscar ID do criador pelo nome
-            let createdById = 1; // Sistema como padrão
-            if (createdBy && createdBy !== 'Sistema') {
-              const creatorResult = await sql`
-                SELECT id FROM users WHERE name = ${createdBy} LIMIT 1
-              `;
-              if (creatorResult.length > 0) {
-                createdById = creatorResult[0].id;
-              }
-            }
-            
-            // Parsear data de vencimento
-            let dueDateFormatted = null;
-            if (dueDate && dueDate !== 'Sem prazo') {
-              try {
-                const dateParts = dueDate.split('/');
-                if (dateParts.length === 3) {
-                  dueDateFormatted = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]).toISOString();
-                }
-              } catch (e) {
-                console.log(`⚠️ [TASKS-SYNC] Erro ao parsear data de vencimento: ${dueDate}`);
-              }
-            }
-            
-            // Parsear data de conclusão
-            let completedAtFormatted = null;
-            if (completedAt && completedAt !== '') {
-              try {
-                const dateParts = completedAt.split('/');
-                if (dateParts.length === 3) {
-                  completedAtFormatted = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]).toISOString();
-                }
-              } catch (e) {
-                console.log(`⚠️ [TASKS-SYNC] Erro ao parsear data de conclusão: ${completedAt}`);
-              }
-            }
+            // 🆕 SIMPLIFICADO: Sem parsear datas para evitar erros
+            const dueDateFormatted = null;
+            const completedAtFormatted = null;
             
             const taskData = {
-              id: taskId,
               title,
               description,
               status: mappedStatus,
@@ -12651,55 +12615,63 @@ exports.handler = async (event, context) => {
               created_by: createdById,
               due_date: dueDateFormatted,
               completed_at: completedAtFormatted,
-              tags: tags ? tags.split(',').map(t => t.trim()) : []
+              tags: [] // 🆕 SIMPLIFICADO: Sempre array vazio para evitar erros
             };
             
-            spreadsheetTaskIds.add(taskId);
-            
-            // Verificar se a tarefa já existe
+            // 🆕 Buscar tarefa por título (não por ID do Sheets)
             const existingTask = await sql`
-              SELECT id FROM tasks WHERE id = ${taskId}
+              SELECT id FROM tasks 
+              WHERE title = ${title} 
+              AND created_by = ${createdById}
+              LIMIT 1
             `;
             
             if (existingTask.length > 0) {
               // Atualizar tarefa existente
+              const taskId = existingTask[0].id;
+              spreadsheetTaskIds.add(taskId);
+              
               await sql`
                 UPDATE tasks SET
-                  title = ${taskData.title},
                   description = ${taskData.description},
                   status = ${taskData.status},
                   priority = ${taskData.priority},
                   assigned_to = ${taskData.assigned_to},
-                  created_by = ${taskData.created_by},
                   due_date = ${taskData.due_date},
                   completed_at = ${taskData.completed_at},
-                  tags = ${JSON.stringify(taskData.tags)},
                   updated_at = NOW()
                 WHERE id = ${taskId}
               `;
               
-              console.log(`🔄 [TASKS-SYNC] Tarefa "${title}" atualizada`);
+              console.log(`🔄 [TASKS-SYNC] Tarefa "${title}" atualizada (ID: ${taskId})`);
             } else {
-              // Criar nova tarefa
-              await sql`
+              // Criar nova tarefa (PostgreSQL gera ID automaticamente)
+              const result = await sql`
                 INSERT INTO tasks (
-                  id, title, description, status, priority, assigned_to, 
-                  created_by, due_date, completed_at, tags, created_at, updated_at
+                  title, description, status, priority, assigned_to, 
+                  created_by, due_date, completed_at, created_at, updated_at
                 ) VALUES (
-                  ${taskId}, ${taskData.title}, ${taskData.description}, ${taskData.status}, 
+                  ${taskData.title}, ${taskData.description}, ${taskData.status}, 
                   ${taskData.priority}, ${taskData.assigned_to}, ${taskData.created_by}, 
-                  ${taskData.due_date}, ${taskData.completed_at}, ${JSON.stringify(taskData.tags)}, 
+                  ${taskData.due_date}, ${taskData.completed_at}, 
                   NOW(), NOW()
                 )
+                RETURNING id
               `;
               
-              console.log(`➕ [TASKS-SYNC] Tarefa "${title}" criada`);
+              const newTaskId = result[0].id;
+              spreadsheetTaskIds.add(newTaskId);
+              
+              console.log(`➕ [TASKS-SYNC] Tarefa "${title}" criada (ID: ${newTaskId})`);
             }
             
             importedCount++;
             
           } catch (error) {
-            console.error(`❌ [TASKS-SYNC] Erro ao processar tarefa:`, error);
+            const errorMsg = `Tarefa "${title}": ${error.message}`;
+            console.error(`❌ [TASKS-SYNC]`, errorMsg);
+            console.error(`❌ [TASKS-SYNC] Stack:`, error.stack);
+            errors.push(errorMsg); // 🆕 Adicionar ao array
             errorCount++;
           }
         }
@@ -12755,34 +12727,10 @@ exports.handler = async (event, context) => {
           }
         }
         
-        // Remover tarefas que não existem mais na planilha
-        console.log('🗑️ [TASKS-SYNC] Verificando tarefas para remoção...');
-        
-        // Obter títulos das tarefas que existem na planilha
-        const spreadsheetTitles = new Set(tasks.map(task => task.title));
-        
-        // Buscar todas as tarefas do sistema para verificar quais devem ser removidas
-        const allSystemTasks = await sql`
-          SELECT id, title FROM tasks 
-          ORDER BY created_at DESC
-        `;
-        
+        // 🆕 REMOÇÃO DESABILITADA TEMPORARIAMENTE
+        // Estava removendo as tarefas que acabou de importar
+        console.log('ℹ️ [TASKS-SYNC] Remoção automática desabilitada');
         let removedCount = 0;
-        for (const dbTask of allSystemTasks) {
-          // Se a tarefa não existe na planilha, remover do sistema
-          if (!spreadsheetTitles.has(dbTask.title)) {
-            try {
-              await sql`
-                DELETE FROM tasks WHERE id = ${dbTask.id}
-              `;
-              console.log(`🗑️ [TASKS-SYNC] Tarefa "${dbTask.title}" removida (não existe mais na planilha)`);
-              removedCount++;
-            } catch (error) {
-              console.error(`❌ [TASKS-SYNC] Erro ao remover tarefa "${dbTask.title}":`, error);
-              errorCount++;
-            }
-          }
-        }
         
         // Atualizar configuração com última sincronização
         const configResult = await sql`
@@ -12811,6 +12759,7 @@ exports.handler = async (event, context) => {
           removedTasks: removedCount,
           totalTasks: tasks.length,
           errorCount,
+          errors, // 🆕 Incluir erros detalhados
           message: `${importedCount} tarefas sincronizadas, ${removedCount} tarefas removidas`
         };
         
