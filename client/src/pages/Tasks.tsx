@@ -172,6 +172,115 @@ export default function Tasks() {
     };
   }, [syncConfig, addTasksToSheet]);
 
+  // 🆕 Integração: Sincronizar com Google Sheets após sincronização offline
+  useEffect(() => {
+    const handleSyncComplete = async (event: any) => {
+      const result = event.detail;
+      
+      if (result && result.success > 0) {
+        console.log('🔗 Sincronização offline concluída, iniciando sync com Google Sheets...');
+        
+        // Se Google Sheets está configurado, sincronizar
+        if (syncConfig?.spreadsheetUrl) {
+          try {
+            // Buscar todas as tarefas atualizadas
+            const tasksResponse = await fetch('/api/tasks', {
+              headers: { 'x-user-id': '1' }
+            });
+            
+            if (tasksResponse.ok) {
+              const tasksData = await tasksResponse.json();
+              const tasks = tasksData.tasks || [];
+              
+              // Sincronizar com Google Sheets
+              await addTasksToSheet(tasks);
+              console.log('✅ Tarefas sincronizadas com Google Sheets');
+            }
+          } catch (error) {
+            console.error('⚠️ Erro ao sincronizar com Google Sheets:', error);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('syncComplete', handleSyncComplete);
+    
+    return () => {
+      window.removeEventListener('syncComplete', handleSyncComplete);
+    };
+  }, [syncConfig, addTasksToSheet]);
+
+  // 🆕 Sincronização BIDIRECIONAL: Google Sheets → App (a cada 2 segundos)
+  useEffect(() => {
+    if (!syncConfig?.spreadsheetUrl || !isOnline) {
+      return; // Não sincronizar se não configurado ou offline
+    }
+
+    console.log('🔄 Iniciando sincronização bidirecional com Google Sheets (2s)');
+    let syncCount = 0;
+
+    const syncFromGoogleSheets = async () => {
+      try {
+        syncCount++;
+        
+        // A cada 2 segundos: Importar do Google Sheets para o servidor
+        const success = await syncTasksNow();
+        
+        if (success) {
+          // Buscar tarefas do servidor (já com dados do Sheets)
+          const tasksResponse = await fetch('/api/tasks', {
+            headers: { 'x-user-id': '1' }
+          });
+          
+          if (tasksResponse.ok) {
+            const tasksData = await tasksResponse.json();
+            const serverTasks = tasksData.tasks || [];
+            
+            // Comparar com dados locais para ver se houve mudanças
+            const localTasks = await offlineStorage.getAll('tasks');
+            
+            // Se houve diferença, atualizar
+            if (JSON.stringify(serverTasks.map(t => t.id).sort()) !== 
+                JSON.stringify(localTasks.map((t: any) => t.id).sort())) {
+              
+              console.log(`🔄 Detectadas mudanças no Google Sheets (sync #${syncCount})`);
+              
+              // Atualizar IndexedDB
+              await offlineStorage.clear('tasks');
+              for (const task of serverTasks) {
+                await offlineStorage.save('tasks', {
+                  ...task,
+                  _synced: true
+                });
+              }
+              
+              // Atualizar UI
+              queryClient.invalidateQueries({ queryKey: ['tasks'] });
+              
+              console.log(`✅ ${serverTasks.length} tarefas atualizadas do Google Sheets`);
+            }
+          }
+        }
+      } catch (error) {
+        // Silenciar erros para não poluir console
+        if (syncCount === 1) {
+          console.error('⚠️ Erro na sincronização com Google Sheets:', error);
+        }
+      }
+    };
+
+    // Sincronizar a cada 2 segundos
+    const interval = setInterval(syncFromGoogleSheets, 2000);
+
+    // Sincronizar imediatamente ao montar
+    syncFromGoogleSheets();
+
+    return () => {
+      clearInterval(interval);
+      console.log('🛑 Sincronização bidirecional parada');
+    };
+  }, [syncConfig, isOnline, syncTasksNow, queryClient]);
+
   // Buscar usuários
   const { data: usersData } = useQuery({
     queryKey: ['tasks-users'],
