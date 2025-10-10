@@ -134,6 +134,44 @@ export default function Tasks() {
     });
   }, []);
 
+  // 🆕 Integração: Sincronizar com Google Sheets após sincronização offline
+  useEffect(() => {
+    const handleSyncComplete = async (event: any) => {
+      const result = event.detail;
+      
+      if (result && result.success > 0) {
+        console.log('🔗 Sincronização offline concluída, iniciando sync com Google Sheets...');
+        
+        // Se Google Sheets está configurado, sincronizar
+        if (syncConfig?.spreadsheetUrl) {
+          try {
+            // Buscar todas as tarefas atualizadas
+            const tasksResponse = await fetch('/api/tasks', {
+              headers: { 'x-user-id': '1' }
+            });
+            
+            if (tasksResponse.ok) {
+              const tasksData = await tasksResponse.json();
+              const tasks = tasksData.tasks || [];
+              
+              // Sincronizar com Google Sheets
+              await addTasksToSheet(tasks);
+              console.log('✅ Tarefas sincronizadas com Google Sheets');
+            }
+          } catch (error) {
+            console.error('⚠️ Erro ao sincronizar com Google Sheets:', error);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('syncComplete', handleSyncComplete);
+    
+    return () => {
+      window.removeEventListener('syncComplete', handleSyncComplete);
+    };
+  }, [syncConfig, addTasksToSheet]);
+
   // Buscar usuários
   const { data: usersData } = useQuery({
     queryKey: ['tasks-users'],
@@ -166,7 +204,7 @@ export default function Tasks() {
         tags: newTask.tags
       };
 
-      await createTask(taskData as any);
+      const createdTask = await createTask(taskData as any);
 
       setIsCreateDialogOpen(false);
       setNewTask({
@@ -181,6 +219,16 @@ export default function Tasks() {
       // Mensagem diferente se estiver offline
       if (isOnline) {
         toast.success('Tarefa criada com sucesso!');
+        
+        // 🆕 Sincronizar com Google Sheets imediatamente (se online)
+        if (syncConfig?.spreadsheetUrl) {
+          try {
+            await addTasksToSheet([createdTask]);
+            console.log('📊 Tarefa enviada para Google Sheets');
+          } catch (error) {
+            console.error('⚠️ Erro ao sincronizar com Google Sheets:', error);
+          }
+        }
       } else {
         toast.success('Tarefa salva offline. Será sincronizada quando conectar.', {
           icon: '📴'
@@ -214,7 +262,7 @@ export default function Tasks() {
     if (!editingTask) return;
 
     try {
-      await updateTask(editingTask.id, {
+      const updatedTask = await updateTask(editingTask.id, {
         title: editingTask.title,
         description: editingTask.description,
         priority: editingTask.priority,
@@ -228,6 +276,16 @@ export default function Tasks() {
 
       if (isOnline) {
         toast.success('Tarefa atualizada com sucesso!');
+        
+        // 🆕 Sincronizar com Google Sheets imediatamente (se online)
+        if (syncConfig?.spreadsheetUrl) {
+          try {
+            await addTasksToSheet([updatedTask]);
+            console.log('📊 Tarefa atualizada enviada para Google Sheets');
+          } catch (error) {
+            console.error('⚠️ Erro ao sincronizar com Google Sheets:', error);
+          }
+        }
       } else {
         toast.success('Tarefa atualizada offline. Será sincronizada quando conectar.', {
           icon: '📴'
@@ -262,12 +320,22 @@ export default function Tasks() {
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
     
     try {
-      await updateTask(task.id, { 
+      const updatedTask = await updateTask(task.id, { 
         status: newStatus,
         completed_at: newStatus === 'completed' ? new Date().toISOString() : undefined
       });
 
-      if (!isOnline) {
+      if (isOnline) {
+        // 🆕 Sincronizar com Google Sheets (se online)
+        if (syncConfig?.spreadsheetUrl) {
+          try {
+            await addTasksToSheet([updatedTask]);
+            console.log('📊 Status da tarefa atualizado no Google Sheets');
+          } catch (error) {
+            console.error('⚠️ Erro ao sincronizar com Google Sheets:', error);
+          }
+        }
+      } else {
         toast.success('Status atualizado offline', { icon: '📴' });
       }
     } catch (error) {
