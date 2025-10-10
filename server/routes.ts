@@ -1907,9 +1907,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Contar usuários com role missionary (excluindo Super Admin)
       const totalMissionaries = regularUsers.filter(u => u.role === 'missionary').length;
 
+      // Buscar relacionamentos ativos para contar interessados sendo discipulados
+      let interestedBeingDiscipled = 0;
+      try {
+        const relationships = await storage.getAllRelationships();
+        // Contar interessados únicos que têm pelo menos um relacionamento ativo
+        const interestedWithMentors = new Set(
+          relationships
+            .filter(rel => rel.status === 'active')
+            .map(rel => rel.interestedId || rel.interested_id)
+        );
+        interestedBeingDiscipled = interestedWithMentors.size;
+      } catch (error) {
+        console.log('⚠️ Erro ao contar interessados sendo discipulados:', error);
+      }
+
       const stats = {
         totalUsers: regularUsers.length,
         totalInterested: usersByRole.interested || 0,
+        interestedBeingDiscipled: interestedBeingDiscipled,
         totalMembers: usersByRole.member || 0,
         totalMissionaries: totalMissionaries,
         totalAdmins: usersByRole.admin || 0,

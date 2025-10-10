@@ -5247,9 +5247,20 @@ async function registerRoutes(app2) {
       const churches2 = await storage.getAllChurches();
       const churchesCount = churches2.length;
       const totalMissionaries = regularUsers.filter((u) => u.role === "missionary").length;
+      let interestedBeingDiscipled = 0;
+      try {
+        const relationships2 = await storage.getAllRelationships();
+        const interestedWithMentors = new Set(
+          relationships2.filter((rel) => rel.status === "active").map((rel) => rel.interestedId || rel.interested_id)
+        );
+        interestedBeingDiscipled = interestedWithMentors.size;
+      } catch (error) {
+        console.log("\u26A0\uFE0F Erro ao contar interessados sendo discipulados:", error);
+      }
       const stats = {
         totalUsers: regularUsers.length,
         totalInterested: usersByRole.interested || 0,
+        interestedBeingDiscipled,
         totalMembers: usersByRole.member || 0,
         totalMissionaries,
         totalAdmins: usersByRole.admin || 0,

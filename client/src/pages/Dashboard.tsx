@@ -355,6 +355,7 @@ const Dashboard = React.memo(() => {
     const calculatedStats = (dashboardStats as any) || {
       totalUsers: 0,
       totalInterested: 0,
+      interestedBeingDiscipled: 0,
       totalChurches: 0,
       pendingApprovals: 0,
       thisWeekEvents: 0,
@@ -586,11 +587,21 @@ const Dashboard = React.memo(() => {
               <Heart className="h-3 w-3 lg:h-4 lg:w-4" />
             </div>
           </CardHeader>
-          <CardContent className="relative z-10 p-3 lg:p-6">
-            <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
-              {isLoading ? '...' : stats.totalInterested}
+          <CardContent className="relative z-10 p-3 lg:p-6 space-y-2">
+            <div className="flex items-baseline gap-2">
+              <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
+                {isLoading ? '...' : stats.totalInterested}
+              </div>
+              <span className="text-xs lg:text-sm text-white/80">na base</span>
             </div>
-            <p className="text-xs lg:text-sm text-white/80 mt-1">Estão Sendo Discipuladas - Interessados que tem discipulador identificado.</p>
+            <div className="flex items-center gap-2 pt-1 border-t border-white/20">
+              <div className="text-lg lg:text-2xl font-bold text-white/90 drop-shadow">
+                {isLoading ? '...' : stats.interestedBeingDiscipled || 0}
+              </div>
+              <span className="text-xs lg:text-sm text-white/80 leading-tight">
+                Estão Sendo Discipuladas
+              </span>
+            </div>
           </CardContent>
         </Card>
 
