@@ -1,0 +1,142 @@
+// ========== DIAGNÓSTICO COMPLETO - Cole no Console (F12) ==========
+
+(async function diagnosticoCompleto() {
+  console.clear();
+  console.log('%c🔍 DIAGNÓSTICO OFFLINE SYNC v28', 'font-size: 20px; font-weight: bold; color: #667eea;');
+  console.log('%c═══════════════════════════════════════', 'color: #667eea;');
+  
+  // 1. Verificar Service Worker
+  console.log('\n%c1️⃣ SERVICE WORKER STATUS', 'font-size: 16px; font-weight: bold; color: #333;');
+  console.log('─────────────────────────');
+  
+  const reg = await navigator.serviceWorker.getRegistration();
+  if (reg) {
+    console.log('✅ SW Registrado:', {
+      ativo: !!reg.active,
+      waiting: !!reg.waiting,
+      installing: !!reg.installing,
+      controlador: !!navigator.serviceWorker.controller
+    });
+  } else {
+    console.log('❌ NENHUM SW REGISTRADO!');
+    return;
+  }
+  
+  // 2. Verificar Caches
+  console.log('\n%c2️⃣ CACHES', 'font-size: 16px; font-weight: bold; color: #333;');
+  console.log('─────────────────────────');
+  
+  const cacheNames = await caches.keys();
+  console.log('Caches encontrados:', cacheNames);
+  const hasV28 = cacheNames.some(c => c.includes('v28'));
+  console.log(hasV28 ? '✅ Cache v28 EXISTE' : '❌ Cache v28 NÃO existe (ainda v27 ou nada)');
+  
+  // 3. Verificar IndexedDB
+  console.log('\n%c3️⃣ INDEXEDDB', 'font-size: 16px; font-weight: bold; color: #333;');
+  console.log('─────────────────────────');
+  
+  const dbs = await indexedDB.databases();
+  console.log('Databases:', dbs.map(d => d.name));
+  
+  if (dbs.some(d => d.name === '7care-sync-db')) {
+    const db = await new Promise((resolve) => {
+      const req = indexedDB.open('7care-sync-db', 2);
+      req.onsuccess = () => resolve(req.result);
+    });
+    
+    console.log('Database: 7care-sync-db v' + db.version);
+    console.log('Stores:', Array.from(db.objectStoreNames));
+    
+    if (db.objectStoreNames.contains('sync-queue')) {
+      const tx = db.transaction(['sync-queue'], 'readonly');
+      const store = tx.objectStore('sync-queue');
+      const items = await new Promise(r => { const req = store.getAll(); req.onsuccess = () => r(req.result); });
+      console.log('✅ Sync Queue:', items.length, 'itens');
+    } else {
+      console.log('❌ sync-queue NÃO EXISTE');
+    }
+    
+    if (db.objectStoreNames.contains('local-data')) {
+      const tx = db.transaction(['local-data'], 'readonly');
+      const store = tx.objectStore('local-data');
+      const items = await new Promise(r => { const req = store.getAll(); req.onsuccess = () => r(req.result); });
+      console.log('✅ Local Data:', items.length, 'itens');
+      if (items.length > 0) {
+        console.log('   Itens:', items.map(i => i.data.title));
+      }
+    } else {
+      console.log('❌ local-data NÃO EXISTE!');
+      console.log('💡 PROBLEMA: SW v28 não criou o store local-data');
+      console.log('💡 SOLUÇÃO: Precisa forçar atualização do SW');
+    }
+  } else {
+    console.log('❌ Database 7care-sync-db NÃO EXISTE!');
+  }
+  
+  // 4. TESTE: Simular criação offline
+  console.log('\n%c4️⃣ TESTE: CRIAR EVENTO OFFLINE', 'font-size: 16px; font-weight: bold; color: #333;');
+  console.log('─────────────────────────');
+  console.log('Enviando POST /api/events...');
+  
+  try {
+    const response = await fetch('/api/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'TESTE DIAGNÓSTICO ' + Date.now(),
+        date: new Date().toISOString(),
+        location: 'Teste',
+        type: 'Reunião',
+        description: 'Teste de criação'
+      })
+    });
+    
+    const data = await response.json();
+    
+    console.log('Status:', response.status);
+    console.log('Headers:', {
+      'X-Offline-Created': response.headers.get('X-Offline-Created'),
+      'X-Pending-Sync': response.headers.get('X-Pending-Sync')
+    });
+    console.log('Resposta:', data);
+    
+    if (data._offlineCreated) {
+      console.log('✅ Criado OFFLINE com sucesso!');
+      console.log('ID temporário:', data.id);
+      
+      // Verificar se salvou no IndexedDB
+      console.log('\nVerificando se salvou...');
+      setTimeout(async () => {
+        const db = await new Promise((resolve) => {
+          const req = indexedDB.open('7care-sync-db', 2);
+          req.onsuccess = () => resolve(req.result);
+        });
+        
+        if (db.objectStoreNames.contains('local-data')) {
+          const tx = db.transaction(['local-data'], 'readonly');
+          const store = tx.objectStore('local-data');
+          const items = await new Promise(r => { const req = store.getAll(); req.onsuccess = () => r(req.result); });
+          console.log('💾 Local Data AGORA:', items.length, 'itens');
+          if (items.length > 0) {
+            console.log('%c✅ EVENTO SALVO NO LOCAL DATA!', 'color: green; font-weight: bold;');
+          } else {
+            console.log('%c❌ EVENTO NÃO FOI SALVO!', 'color: red; font-weight: bold;');
+          }
+        }
+      }, 500);
+      
+    } else {
+      console.log('ℹ️ Criado ONLINE (você está conectado)');
+    }
+    
+  } catch (error) {
+    console.error('❌ Erro ao criar:', error);
+  }
+  
+  // 5. CONCLUSÃO
+  console.log('\n%c═══════════════════════════════════════', 'color: #667eea;');
+  console.log('%c📊 DIAGNÓSTICO COMPLETO!', 'font-size: 16px; font-weight: bold; color: #667eea;');
+  console.log('\nVerifique os resultados acima.');
+  console.log('Se encontrou problemas, me envie os logs!');
+  
+})();

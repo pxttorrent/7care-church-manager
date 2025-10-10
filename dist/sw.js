@@ -262,14 +262,23 @@ self.addEventListener('fetch', (event) => {
           console.log(`📝 SW v28: OFFLINE - Salvando operação para sincronizar: ${event.request.method} ${url.pathname}`);
           
           try {
+            console.log(`🔍 SW v28: Passo 1 - Lendo body da requisição...`);
             // Ler o body da requisição
             const requestClone = event.request.clone();
-            const body = await requestClone.json().catch(() => null);
+            const body = await requestClone.json().catch((e) => {
+              console.error(`❌ SW v28: Erro ao ler body:`, e);
+              return null;
+            });
+            
+            console.log(`🔍 SW v28: Passo 2 - Body lido:`, body ? 'OK' : 'NULL');
             
             // Abrir IndexedDB
+            console.log(`🔍 SW v28: Passo 3 - Abrindo IndexedDB...`);
             const db = await openSyncDB();
+            console.log(`🔍 SW v28: Passo 4 - DB aberto, stores:`, Array.from(db.objectStoreNames));
             
             // 1. Salvar na fila de sincronização
+            console.log(`🔍 SW v28: Passo 5 - Salvando na sync-queue...`);
             await addToSyncQueue(db, {
               url: event.request.url,
               method: event.request.method,
@@ -282,6 +291,7 @@ self.addEventListener('fetch', (event) => {
             
             // 2. Se for POST (criar), salvar nos dados locais também
             if (event.request.method === 'POST' && body) {
+              console.log(`🔍 SW v28: Passo 6 - É POST, salvando em local-data...`);
               const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
               const localData = {
                 ...body,
@@ -293,11 +303,19 @@ self.addEventListener('fetch', (event) => {
                 created_at: new Date().toISOString()
               };
               
+              console.log(`🔍 SW v28: Dados preparados:`, localData);
+              
               // Extrair endpoint base (sem query params e sem /api)
               const endpointBase = url.pathname;
               
-              await saveLocalData(db, endpointBase, localData);
-              console.log(`💾 SW v28: Dados locais salvos para ${endpointBase} com ID ${tempId}`);
+              console.log(`🔍 SW v28: Passo 7 - Salvando em local-data para endpoint: ${endpointBase}`);
+              try {
+                await saveLocalData(db, endpointBase, localData);
+                console.log(`💾 SW v28: Dados locais salvos para ${endpointBase} com ID ${tempId}`);
+              } catch (saveError) {
+                console.error(`❌ SW v28: ERRO ao salvar local-data:`, saveError);
+                throw saveError;
+              }
               
               // Retornar resposta simulada com dados completos
               return new Response(JSON.stringify(localData), {

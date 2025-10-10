@@ -201,19 +201,50 @@ syncQueue.init().catch(console.error);
 // Auto-sync quando voltar online
 if (typeof window !== 'undefined') {
   window.addEventListener('online', async () => {
-    console.log('🌐 Voltou online! Iniciando sincronização...');
-    try {
-      const result = await syncQueue.syncPendingItems();
-      if (result.success > 0) {
-        console.log(`✅ ${result.success} itens sincronizados com sucesso!`);
+    console.log('🌐 Voltou online! Iniciando sincronização em 2 segundos...');
+    
+    // Aguardar 2 segundos para conexão estabilizar
+    setTimeout(async () => {
+      try {
+        console.log('🔄 Disparando sincronização...');
+        const result = await syncQueue.syncPendingItems();
         
-        // Disparar evento para atualizar UI
-        window.dispatchEvent(new CustomEvent('syncComplete', { 
-          detail: result 
-        }));
+        if (result.success > 0) {
+          console.log(`✅ ${result.success} itens sincronizados com sucesso!`);
+          
+          // Disparar evento para atualizar UI
+          window.dispatchEvent(new CustomEvent('syncComplete', { 
+            detail: result 
+          }));
+          
+          // Recarregar para pegar dados reais
+          setTimeout(() => {
+            console.log('🔄 Recarregando página para atualizar dados...');
+            window.location.reload();
+          }, 2000);
+        } else if (result.failed > 0) {
+          console.error(`❌ ${result.failed} itens falharam na sincronização`);
+        } else {
+          console.log('ℹ️ Nenhum item para sincronizar');
+        }
+      } catch (error) {
+        console.error('❌ Erro na sincronização automática:', error);
       }
-    } catch (error) {
-      console.error('❌ Erro na sincronização automática:', error);
+    }, 2000);
+  });
+  
+  // Também tentar sincronizar quando a página ganhar foco
+  document.addEventListener('visibilitychange', async () => {
+    if (!document.hidden && navigator.onLine) {
+      const pendingCount = await syncQueue.getPendingCount();
+      if (pendingCount > 0) {
+        console.log(`🔄 Página voltou ao foco com ${pendingCount} itens pendentes, sincronizando...`);
+        try {
+          await syncQueue.syncPendingItems();
+        } catch (error) {
+          console.error('❌ Erro na sincronização:', error);
+        }
+      }
     }
   });
 }
