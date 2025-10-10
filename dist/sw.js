@@ -9,77 +9,32 @@ const LOCAL_DATA_STORE = 'local-data';
 
 function openSyncDB() {
   return new Promise((resolve, reject) => {
-    console.log(`🔍 openSyncDB: Tentando abrir ${SYNC_DB_NAME}...`);
+    // Abrir versão 1 (simples, sem upgrade)
+    const request = indexedDB.open(SYNC_DB_NAME, 1);
     
-    // Timeout de 5 segundos
-    const timeout = setTimeout(() => {
-      console.error('❌ openSyncDB: TIMEOUT após 5s!');
-      reject(new Error('IndexedDB open timeout'));
-    }, 5000);
+    request.onerror = () => {
+      console.error('❌ openSyncDB: Erro');
+      reject(request.error);
+    };
     
-    try {
-      const request = indexedDB.open(SYNC_DB_NAME, 2);
-      
-      request.onerror = (e) => {
-        clearTimeout(timeout);
-        console.error('❌ openSyncDB: Erro ao abrir DB:', e);
-        reject(request.error);
-      };
-      
-      request.onsuccess = (e) => {
-        clearTimeout(timeout);
-        const db = request.result;
-        console.log(`✅ openSyncDB: DB aberto com sucesso, stores:`, Array.from(db.objectStoreNames));
-        resolve(db);
-      };
-      
-      request.onupgradeneeded = (event) => {
-        console.log(`🔄 openSyncDB: Upgrade necessário para v2`);
-        const db = event.target.result;
-        
-        try {
-          // Store de fila de sincronização
-          if (!db.objectStoreNames.contains(SYNC_STORE_NAME)) {
-            console.log(`📝 openSyncDB: Criando ${SYNC_STORE_NAME}...`);
-            const store = db.createObjectStore(SYNC_STORE_NAME, { 
-              keyPath: 'id', 
-              autoIncrement: true 
-            });
-            store.createIndex('status', 'status', { unique: false });
-            store.createIndex('timestamp', 'timestamp', { unique: false });
-            console.log(`✅ openSyncDB: ${SYNC_STORE_NAME} criado`);
-          }
-          
-          // Store de dados locais (itens criados offline)
-          if (!db.objectStoreNames.contains(LOCAL_DATA_STORE)) {
-            console.log(`📝 openSyncDB: Criando ${LOCAL_DATA_STORE}...`);
-            const dataStore = db.createObjectStore(LOCAL_DATA_STORE, { 
-              keyPath: 'id'
-            });
-            dataStore.createIndex('endpoint', 'endpoint', { unique: false });
-            dataStore.createIndex('timestamp', 'timestamp', { unique: false });
-            console.log(`✅ openSyncDB: ${LOCAL_DATA_STORE} criado`);
-          }
-          
-          console.log(`✅ openSyncDB: Upgrade completo`);
-        } catch (upgradeError) {
-          console.error(`❌ openSyncDB: Erro no upgrade:`, upgradeError);
-          clearTimeout(timeout);
-          reject(upgradeError);
-        }
-      };
-      
-      request.onblocked = (e) => {
-        console.error('⚠️ openSyncDB: DB está BLOQUEADO! Feche outras abas.');
-        clearTimeout(timeout);
-        reject(new Error('Database blocked - close other tabs'));
-      };
-      
-    } catch (error) {
-      clearTimeout(timeout);
-      console.error('❌ openSyncDB: Exceção ao tentar abrir:', error);
-      reject(error);
-    }
+    request.onsuccess = () => {
+      const db = request.result;
+      console.log(`✅ openSyncDB: DB aberto`);
+      resolve(db);
+    };
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      // Criar apenas sync-queue se não existir
+      if (!db.objectStoreNames.contains(SYNC_STORE_NAME)) {
+        const store = db.createObjectStore(SYNC_STORE_NAME, { 
+          keyPath: 'id', 
+          autoIncrement: true 
+        });
+        store.createIndex('status', 'status', { unique: false });
+        console.log(`✅ Sync-queue criado`);
+      }
+    };
   });
 }
 
@@ -302,97 +257,59 @@ self.addEventListener('fetch', (event) => {
           const networkResponse = await fetch(event.request.clone());
           return networkResponse;
         } catch (error) {
-          // OFFLINE - Salvar APENAS na fila (simplificado, sem local-data para evitar travamento)
-          console.log(`📝 SW v28: OFFLINE - Salvando operação: ${event.request.method} ${url.pathname}`);
+          // OFFLINE - Salvar na sync-queue (IndexedDB simples)
+          console.log(`📝 SW v28: OFFLINE - Salvando: ${event.request.method} ${url.pathname}`);
           
           try {
-            // Ler o body da requisição
             const requestClone = event.request.clone();
             const body = await requestClone.json().catch(() => null);
             
             if (!body) {
-              console.error(`❌ SW v28: Body vazio ou inválido`);
-              return new Response(JSON.stringify({ error: 'Invalid request body' }), {
+              return new Response(JSON.stringify({ error: 'Invalid body' }), {
                 status: 400,
                 headers: { 'Content-Type': 'application/json' }
               });
             }
             
-            console.log(`✅ SW v28: Body lido com sucesso`);
-            
-            // Salvar em localStorage como fallback mais confiável
             const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            const queueItem = {
+            
+            // Salvar na IndexedDB sync-queue
+            try {
+              const db = await openSyncDB();
+              await addToSyncQueue(db, {
+                url: event.request.url,
+                method: event.request.method,
+                body: { ...body, id: tempId },
+                timestamp: Date.now()
+              });
+              console.log(`✅ SW v28: Salvo na fila, ID: ${tempId}`);
+            } catch (dbErr) {
+              console.error(`❌ SW v28: Erro DB:`, dbErr);
+            }
+            
+            // Retornar resposta simulada
+            const mockResponse = {
+              ...body,
               id: tempId,
-              url: event.request.url,
-              method: event.request.method,
-              body: body,
-              timestamp: Date.now(),
-              status: 'pending'
+              _tempId: tempId,
+              _pendingSync: true,
+              _offlineCreated: true,
+              createdAt: new Date().toISOString()
             };
             
-            // Usar localStorage para fila de sync (mais simples e confiável)
-            try {
-              const queueKey = '7care-sync-queue';
-              const existingQueue = JSON.parse(localStorage.getItem(queueKey) || '[]');
-              existingQueue.push(queueItem);
-              localStorage.setItem(queueKey, JSON.stringify(existingQueue));
-              console.log(`✅ SW v28: Operação salva na fila (localStorage), ID: ${tempId}`);
-            } catch (lsError) {
-              console.error(`❌ SW v28: Erro ao salvar no localStorage:`, lsError);
-            }
+            console.log(`✅ SW v28: Resposta offline criada`);
             
-            // Se for POST, preparar resposta com dados completos
-            if (event.request.method === 'POST') {
-              const mockResponse = {
-                ...body,
-                id: tempId,
-                _tempId: tempId,
-                _pendingSync: true,
-                _offlineCreated: true,
-                createdAt: new Date().toISOString(),
-                created_at: new Date().toISOString()
-              };
-              
-              // Salvar também em localStorage para exibição imediata
-              const endpoint = url.pathname.replace(/^\/api\//, '').replace(/\//g, '_');
-              const localDataKey = `7care-local-${endpoint}`;
-              try {
-                const existingLocal = JSON.parse(localStorage.getItem(localDataKey) || '[]');
-                existingLocal.push(mockResponse);
-                localStorage.setItem(localDataKey, JSON.stringify(existingLocal));
-                console.log(`💾 SW v28: Dados locais salvos no localStorage: ${localDataKey}`);
-              } catch (ldError) {
-                console.error(`❌ SW v28: Erro ao salvar dados locais:`, ldError);
+            return new Response(JSON.stringify(mockResponse), {
+              status: 201,
+              headers: { 
+                'Content-Type': 'application/json',
+                'X-Offline-Created': 'true'
               }
-              
-              console.log(`✅ SW v28: Evento criado offline com ID ${tempId}`);
-              
-              return new Response(JSON.stringify(mockResponse), {
-                status: 201,
-                headers: { 
-                  'Content-Type': 'application/json',
-                  'X-Offline-Created': 'true',
-                  'X-Pending-Sync': 'true'
-                }
-              });
-            }
-            
-            // Para PUT/PATCH/DELETE
-            return new Response(JSON.stringify({ 
-              success: true,
-              _pendingSync: true
-            }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json', 'X-Pending-Sync': 'true' }
             });
             
           } catch (error) {
-            console.error('❌ SW v28: Erro geral:', error);
-            return new Response(JSON.stringify({ 
-              error: 'Offline - operação não pôde ser salva',
-              details: error.message
-            }), {
+            console.error('❌ SW v28: Erro:', error);
+            return new Response(JSON.stringify({ error: error.message }), {
               status: 503,
               headers: { 'Content-Type': 'application/json' }
             });
@@ -445,53 +362,39 @@ self.addEventListener('fetch', (event) => {
             
             console.log(`✅ SW v28: ${Array.isArray(data) ? data.length : 'N/A'} itens retornados do cache`);
             
-            // Buscar dados locais pendentes do localStorage (mais simples!)
+            // Buscar dados da sync-queue do IndexedDB e mesclar
             try {
-              // Normalizar endpoint para chave do localStorage
-              const possibleKeys = [
-                `7care-local-${url.pathname.replace(/^\/api\//, '').replace(/\//g, '_')}`,
-                '7care-local-calendar_events',  // Para /api/calendar/events
-                '7care-local-events'            // Para /api/events
-              ];
+              const db = await openSyncDB();
+              const tx = db.transaction([SYNC_STORE_NAME], 'readonly');
+              const store = tx.objectStore(SYNC_STORE_NAME);
+              const queueReq = store.getAll();
               
-              console.log(`🔍 SW v28: Buscando dados locais no localStorage...`);
+              const queueItems = await new Promise((res, rej) => {
+                queueReq.onsuccess = () => res(queueReq.result || []);
+                queueReq.onerror = () => rej(queueReq.error);
+              });
               
-              let localData = [];
-              for (const key of possibleKeys) {
-                try {
-                  const items = JSON.parse(localStorage.getItem(key) || '[]');
-                  if (items.length > 0) {
-                    localData.push(...items);
-                    console.log(`📥 SW v28: ${items.length} itens encontrados em ${key}`);
-                  }
-                } catch (e) {
-                  // Ignora erro de parse
-                }
-              }
+              console.log(`🔍 SW v28: ${queueItems.length} itens na sync-queue`);
               
-              // Remover duplicatas
-              const uniqueLocal = [];
-              const seenIds = new Set();
-              for (const item of localData) {
-                const id = item._tempId || item.id;
-                if (!seenIds.has(id)) {
-                  seenIds.add(id);
-                  uniqueLocal.push(item);
-                }
-              }
+              // Filtrar apenas POST para este endpoint (eventos criados)
+              const localEvents = queueItems
+                .filter(item => item.method === 'POST' && item.url.includes(url.pathname.split('?')[0]))
+                .map(item => ({
+                  ...item.body,
+                  _pendingSync: true,
+                  _offlineCreated: true
+                }));
               
-              if (uniqueLocal.length > 0) {
-                console.log(`🔀 SW v28: Mesclando ${uniqueLocal.length} itens locais com ${Array.isArray(data) ? data.length : 0} do cache`);
+              if (localEvents.length > 0) {
+                console.log(`🔀 SW v28: Mesclando ${localEvents.length} eventos offline com ${Array.isArray(data) ? data.length : 0} do cache`);
                 
                 if (Array.isArray(data)) {
-                  data = [...uniqueLocal, ...data];
-                  console.log(`✅ SW v28: Total após mesclagem: ${data.length} itens`);
+                  data = [...localEvents, ...data];
+                  console.log(`✅ SW v28: Total: ${data.length} itens`);
                 }
-              } else {
-                console.log(`ℹ️ SW v28: Nenhum dado local no localStorage`);
               }
-            } catch (mergeError) {
-              console.warn('⚠️ SW v28: Erro ao mesclar:', mergeError);
+            } catch (mergeErr) {
+              console.warn('⚠️ SW v28: Erro ao mesclar da queue:', mergeErr);
             }
             
             // Adicionar header indicando que veio do cache
