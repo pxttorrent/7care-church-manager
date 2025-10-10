@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atualizar Service Worker v28</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: white;
+            color: #333;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        h1 { color: #667eea; margin-top: 0; }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+            font-weight: 600;
+        }
+        button:hover { background: #5568d3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .status { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        .step { margin: 15px 0; padding-left: 25px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Forçar Atualização do Service Worker v28</h1>
+        
+        <p><strong>Esta página vai:</strong></p>
+        <ul>
+            <li>Desregistrar Service Workers antigos</li>
+            <li>Limpar todos os caches</li>
+            <li>Limpar IndexedDB</li>
+            <li>Registrar Service Worker v28 limpo</li>
+        </ul>
+        
+        <div id="status" class="status"></div>
+        
+        <button onclick="forceUpdate()">🔄 Forçar Atualização Completa</button>
+        <button onclick="checkStatus()">🔍 Verificar Status</button>
+        <button onclick="clearAll()">🗑️ Limpar Tudo</button>
+        
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logsDiv = document.getElementById('logs');
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.textContent = message;
+            logsDiv.appendChild(div);
+            console.log(message);
+        }
+        
+        async function checkStatus() {
+            document.getElementById('logs').innerHTML = '';
+            log('🔍 Verificando status atual...', 'info');
+            
+            try {
+                // Verificar SW
+                if ('serviceWorker' in navigator) {
+                    const reg = await navigator.serviceWorker.getRegistration();
+                    if (reg) {
+                        log(`✅ Service Worker registrado`, 'success');
+                        log(`   Ativo: ${!!reg.active}`, 'info');
+                        log(`   Waiting: ${!!reg.waiting}`, 'info');
+                        log(`   Installing: ${!!reg.installing}`, 'info');
+                        log(`   Controlador: ${!!navigator.serviceWorker.controller}`, 'info');
+                    } else {
+                        log('❌ Nenhum Service Worker registrado', 'error');
+                    }
+                    
+                    // Verificar caches
+                    const cacheNames = await caches.keys();
+                    log(`📦 Caches encontrados: ${cacheNames.length}`, 'info');
+                    cacheNames.forEach(name => {
+                        log(`   - ${name}`, 'info');
+                    });
+                    
+                    const hasV28 = cacheNames.some(n => n.includes('v28'));
+                    if (hasV28) {
+                        log('✅ Cache v28 encontrado!', 'success');
+                    } else {
+                        log('⚠️ Cache v28 NÃO encontrado (versão antiga)', 'error');
+                    }
+                    
+                    // Verificar IndexedDB
+                    const dbs = await indexedDB.databases();
+                    log(`💾 IndexedDB databases: ${dbs.length}`, 'info');
+                    dbs.forEach(db => {
+                        log(`   - ${db.name} v${db.version}`, 'info');
+                    });
+                } else {
+                    log('❌ Service Worker não suportado neste navegador', 'error');
+                }
+            } catch (error) {
+                log(`❌ Erro: ${error.message}`, 'error');
+            }
+        }
+        
+        async function clearAll() {
+            document.getElementById('logs').innerHTML = '';
+            log('🗑️ Limpando tudo...', 'info');
+            
+            try {
+                // 1. Desregistrar todos os SWs
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (let registration of registrations) {
+                    await registration.unregister();
+                    log('✅ Service Worker desregistrado', 'success');
+                }
+                
+                // 2. Limpar todos os caches
+                const cacheNames = await caches.keys();
+                for (let cacheName of cacheNames) {
+                    await caches.delete(cacheName);
+                    log(`🗑️ Cache removido: ${cacheName}`, 'success');
+                }
+                
+                // 3. Limpar IndexedDB
+                const dbs = await indexedDB.databases();
+                for (let db of dbs) {
+                    indexedDB.deleteDatabase(db.name);
+                    log(`🗑️ Database removido: ${db.name}`, 'success');
+                }
+                
+                log('✅ TUDO LIMPO! Recarregue a página.', 'success');
+                
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+                
+            } catch (error) {
+                log(`❌ Erro: ${error.message}`, 'error');
+            }
+        }
+        
+        async function forceUpdate() {
+            document.getElementById('logs').innerHTML = '';
+            log('🚀 Iniciando atualização forçada...', 'info');
+            
+            try {
+                // 1. Limpar tudo
+                log('1️⃣ Limpando Service Workers antigos...', 'info');
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (let registration of registrations) {
+                    await registration.unregister();
+                }
+                log('   ✅ SWs removidos', 'success');
+                
+                // 2. Limpar caches
+                log('2️⃣ Limpando caches...', 'info');
+                const cacheNames = await caches.keys();
+                for (let cacheName of cacheNames) {
+                    await caches.delete(cacheName);
+                }
+                log(`   ✅ ${cacheNames.length} caches removidos`, 'success');
+                
+                // 3. Limpar IndexedDB
+                log('3️⃣ Limpando IndexedDB...', 'info');
+                const dbs = await indexedDB.databases();
+                for (let db of dbs) {
+                    indexedDB.deleteDatabase(db.name);
+                }
+                log(`   ✅ ${dbs.length} databases removidos`, 'success');
+                
+                // 4. Aguardar um pouco
+                log('4️⃣ Aguardando limpeza...', 'info');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // 5. Registrar SW v28 novo
+                log('5️⃣ Registrando Service Worker v28...', 'info');
+                const registration = await navigator.serviceWorker.register('/sw.js', {
+                    scope: '/',
+                    updateViaCache: 'none'
+                });
+                log('   ✅ SW v28 registrado!', 'success');
+                
+                // 6. Aguardar instalação
+                log('6️⃣ Aguardando instalação...', 'info');
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                // 7. Verificar
+                const reg = await navigator.serviceWorker.getRegistration();
+                if (reg && reg.active) {
+                    log('✅ SW v28 ATIVO E FUNCIONANDO!', 'success');
+                    log('🎉 Redirecionando para aplicação...', 'success');
+                    
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 2000);
+                } else if (reg && reg.waiting) {
+                    log('⏳ SW instalado mas em waiting...', 'info');
+                    log('🔄 Ativando...', 'info');
+                    reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 2000);
+                } else {
+                    log('⚠️ SW instalado, recarregue a página manualmente', 'info');
+                }
+                
+            } catch (error) {
+                log(`❌ Erro: ${error.message}`, 'error');
+            }
+        }
+        
+        // Verificar status ao carregar
+        window.onload = () => {
+            checkStatus();
+        };
+    </script>
+</body>
+</html>
+

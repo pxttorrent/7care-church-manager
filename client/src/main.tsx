@@ -9,9 +9,12 @@ window.addEventListener('unhandledrejection', (event) => {
   // Suppress Chrome extension and service worker message channel errors
   if (errorMessage.includes('message channel closed before a response was received') ||
       errorMessage.includes('listener indicated an asynchronous response') ||
-      errorMessage.includes('SKIP_WAITING')) {
+      errorMessage.includes('SKIP_WAITING') ||
+      errorMessage.includes('message channel closed') ||
+      errorMessage.includes('asynchronous response')) {
     event.preventDefault();
-    console.warn('Service worker/extension message channel error suppressed:', event.reason);
+    // Silently suppress
+    return;
   }
 });
 
@@ -21,9 +24,11 @@ window.addEventListener('error', (event) => {
   
   // Suppress service worker related errors
   if (errorMessage.includes('message channel closed') ||
-      errorMessage.includes('asynchronous response')) {
+      errorMessage.includes('asynchronous response') ||
+      errorMessage.includes('listener indicated')) {
     event.preventDefault();
-    console.warn('Service worker error suppressed:', event.error);
+    // Silently suppress
+    return;
   }
 });
 
@@ -32,13 +37,15 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
   try {
     chrome.runtime.onMessage?.addListener((message, sender, sendResponse) => {
       // Handle messages properly to avoid channel closure errors
-      if (sendResponse) {
+      try {
         sendResponse({ success: true });
+      } catch (e) {
+        // Ignore channel closure errors
       }
-      return true; // Indicate we will send a response asynchronously
+      return false; // Don't keep channel open
     });
   } catch (error) {
-    console.warn('Chrome extension API not available:', error);
+    // Silently ignore extension API errors
   }
 }
 
