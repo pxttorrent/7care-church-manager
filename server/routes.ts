@@ -1911,13 +1911,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let interestedBeingDiscipled = 0;
       try {
         const relationships = await storage.getAllRelationships();
+        console.log(`\n🔍 DEBUG - Total de relacionamentos encontrados: ${relationships.length}`);
+        
+        // Debug: Ver todos os status únicos
+        const uniqueStatuses = [...new Set(relationships.map(r => r.status))];
+        console.log(`📊 Status únicos encontrados:`, uniqueStatuses);
+        
+        // Debug: Contar por status
+        const statusCount = relationships.reduce((acc, r) => {
+          acc[r.status || 'null'] = (acc[r.status || 'null'] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        console.log(`📊 Contagem por status:`, statusCount);
+        
+        // Debug: Ver alguns exemplos de relacionamentos
+        console.log(`📋 Primeiros 3 relacionamentos:`, relationships.slice(0, 3).map(r => ({
+          id: r.id,
+          interested_id: r.interestedId || r.interested_id,
+          missionary_id: r.missionaryId || r.missionary_id,
+          status: r.status
+        })));
+        
         // Contar interessados únicos que têm pelo menos um relacionamento ativo
+        const activeRelationships = relationships.filter(rel => rel.status === 'active');
+        console.log(`✅ Relacionamentos com status 'active': ${activeRelationships.length}`);
+        
         const interestedWithMentors = new Set(
-          relationships
-            .filter(rel => rel.status === 'active')
-            .map(rel => rel.interestedId || rel.interested_id)
+          activeRelationships.map(rel => rel.interestedId || rel.interested_id)
         );
         interestedBeingDiscipled = interestedWithMentors.size;
+        
+        console.log(`👥 Interessados únicos sendo discipulados: ${interestedBeingDiscipled}`);
+        console.log(`📋 IDs dos interessados:`, Array.from(interestedWithMentors));
       } catch (error) {
         console.log('⚠️ Erro ao contar interessados sendo discipulados:', error);
       }

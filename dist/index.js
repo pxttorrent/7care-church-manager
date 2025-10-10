@@ -5250,10 +5250,29 @@ async function registerRoutes(app2) {
       let interestedBeingDiscipled = 0;
       try {
         const relationships2 = await storage.getAllRelationships();
+        console.log(`
+\u{1F50D} DEBUG - Total de relacionamentos encontrados: ${relationships2.length}`);
+        const uniqueStatuses = [...new Set(relationships2.map((r) => r.status))];
+        console.log(`\u{1F4CA} Status \xFAnicos encontrados:`, uniqueStatuses);
+        const statusCount = relationships2.reduce((acc, r) => {
+          acc[r.status || "null"] = (acc[r.status || "null"] || 0) + 1;
+          return acc;
+        }, {});
+        console.log(`\u{1F4CA} Contagem por status:`, statusCount);
+        console.log(`\u{1F4CB} Primeiros 3 relacionamentos:`, relationships2.slice(0, 3).map((r) => ({
+          id: r.id,
+          interested_id: r.interestedId || r.interested_id,
+          missionary_id: r.missionaryId || r.missionary_id,
+          status: r.status
+        })));
+        const activeRelationships = relationships2.filter((rel) => rel.status === "active");
+        console.log(`\u2705 Relacionamentos com status 'active': ${activeRelationships.length}`);
         const interestedWithMentors = new Set(
-          relationships2.filter((rel) => rel.status === "active").map((rel) => rel.interestedId || rel.interested_id)
+          activeRelationships.map((rel) => rel.interestedId || rel.interested_id)
         );
         interestedBeingDiscipled = interestedWithMentors.size;
+        console.log(`\u{1F465} Interessados \xFAnicos sendo discipulados: ${interestedBeingDiscipled}`);
+        console.log(`\u{1F4CB} IDs dos interessados:`, Array.from(interestedWithMentors));
       } catch (error) {
         console.log("\u26A0\uFE0F Erro ao contar interessados sendo discipulados:", error);
       }
