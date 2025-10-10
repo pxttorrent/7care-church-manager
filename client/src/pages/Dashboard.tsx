@@ -358,6 +358,7 @@ const Dashboard = React.memo(() => {
       interestedBeingDiscipled: 0,
       totalChurches: 0,
       pendingApprovals: 0,
+      completedTasks: 0,
       thisWeekEvents: 0,
       totalEvents: 0,
       approvedUsers: 0,
@@ -609,19 +610,29 @@ const Dashboard = React.memo(() => {
           <div className="absolute inset-0 bg-gradient-to-br from-orange-600/20 to-orange-800/30 opacity-100 group-hover:from-orange-600/30 group-hover:to-orange-800/40 transition-all duration-300"></div>
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-orange-400/30 to-orange-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 lg:pb-2 relative z-10">
-            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Tarefas Pendentes</CardTitle>
+            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Tarefas</CardTitle>
             <div className="p-1 lg:p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
               <CheckSquare className="h-3 w-3 lg:h-4 lg:w-4" />
             </div>
           </CardHeader>
-          <CardContent className="relative z-10 p-3 lg:p-6">
-            <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
-              {isLoading ? '...' : stats.pendingApprovals}
+          <CardContent className="relative z-10 p-3 lg:p-6 space-y-2">
+            <div className="flex items-baseline gap-2">
+              <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
+                {isLoading ? '...' : stats.pendingApprovals}
+              </div>
+              <span className="text-xs lg:text-sm text-white/80">Pendentes</span>
             </div>
-            <p className="text-xs lg:text-sm text-white/80 mt-1">Tarefas para fazer</p>
+            <div className="flex items-center gap-2 pt-1 border-t border-white/20">
+              <div className="text-lg lg:text-2xl font-bold text-white/90 drop-shadow">
+                {isLoading ? '...' : stats.completedTasks || 0}
+              </div>
+              <span className="text-xs lg:text-sm text-white/80 leading-tight">
+                Concluídas
+              </span>
+            </div>
             <Button 
               onClick={() => navigate('/tasks')}
-              className="mt-2 lg:mt-3 h-7 lg:h-9 px-3 lg:px-4 text-xs lg:text-sm bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white shadow-md hover:shadow-lg transition-all duration-200 border-0"
+              className="mt-2 lg:mt-3 h-7 lg:h-9 px-3 lg:px-4 text-xs lg:text-sm bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white shadow-md hover:shadow-lg transition-all duration-200 border-0 w-full"
             >
               <CheckSquare className="h-2 w-2 lg:h-3 lg:w-3 mr-1" />
               <span className="hidden sm:inline">Gerenciar Tarefas</span>

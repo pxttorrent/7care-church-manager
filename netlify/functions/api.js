@@ -663,11 +663,18 @@ exports.handler = async (event, context) => {
         AND EXTRACT(DAY FROM birth_date) BETWEEN EXTRACT(DAY FROM NOW()) AND EXTRACT(DAY FROM NOW() + INTERVAL '7 days')
       `;
       
-      // Contar tarefas pendentes
+      // Contar tarefas pendentes e concluídas
       const pendingTasks = await sql`
         SELECT COUNT(*) as count FROM tasks 
         WHERE status = 'pending'
       `;
+      
+      const completedTasks = await sql`
+        SELECT COUNT(*) as count FROM tasks 
+        WHERE status = 'completed'
+      `;
+      
+      console.log(`📋 Tarefas - Pendentes: ${parseInt(pendingTasks[0].count)}, Concluídas: ${parseInt(completedTasks[0].count)}`);
       
       // Contar interessados sendo discipulados
       let interestedBeingDiscipled = 0;
@@ -705,6 +712,7 @@ exports.handler = async (event, context) => {
         totalAdmins: parseInt(admins[0].count),
         totalMissionaries: parseInt(missionaries[0].count),
         pendingApprovals: parseInt(pendingTasks[0].count), // Tarefas pendentes
+        completedTasks: parseInt(completedTasks[0].count), // Tarefas concluídas
         thisWeekEvents: parseInt(thisWeekEvents[0].count),
         thisMonthEvents: parseInt(thisMonthEvents[0].count),
         birthdaysToday: parseInt(birthdaysToday[0].count),
