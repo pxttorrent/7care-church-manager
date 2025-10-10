@@ -581,7 +581,7 @@ const Dashboard = React.memo(() => {
           <div className="absolute inset-0 bg-gradient-to-br from-red-600/20 to-red-800/30 opacity-100 group-hover:from-red-600/30 group-hover:to-red-800/40 transition-all duration-300"></div>
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-red-400/30 to-red-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 lg:pb-2 relative z-10">
-            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Interessados</CardTitle>
+            <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Pessoas interessadas</CardTitle>
             <div className="p-1 lg:p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
               <Heart className="h-3 w-3 lg:h-4 lg:w-4" />
             </div>
@@ -590,7 +590,7 @@ const Dashboard = React.memo(() => {
             <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
               {isLoading ? '...' : stats.totalInterested}
             </div>
-            <p className="text-xs lg:text-sm text-white/80 mt-1">Pessoas em processo de interesse</p>
+            <p className="text-xs lg:text-sm text-white/80 mt-1">Estão Sendo Discipuladas - Interessados que tem discipulador identificado.</p>
           </CardContent>
         </Card>
 
