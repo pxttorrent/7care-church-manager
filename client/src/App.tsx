@@ -11,6 +11,7 @@ import { createQueryClient, setupPerformanceListeners, prefetchImportantData } f
 import { cleanConsoleInProduction } from "./lib/performance";
 import { useOfflineCache } from "./hooks/useOfflineCache";
 import { SyncIndicator } from "./components/sync/SyncIndicator";
+import { offlineStorage } from "./lib/offlineStorage";
 
 // Lazy load all pages for better performance
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -56,6 +57,29 @@ const App = () => {
   useEffect(() => {
     // Clean console logs in production
     cleanConsoleInProduction();
+    
+    // Inicializar OfflineStorage
+    offlineStorage.init().then(() => {
+      console.log('✅ OfflineStorage inicializado globalmente');
+      
+      // Auto-sync ao conectar
+      const handleOnline = () => {
+        console.log('🌐 Online - sincronizando dados...');
+        offlineStorage.syncWithServer().then(result => {
+          if (result.success > 0) {
+            console.log(`✅ ${result.success} item(ns) sincronizado(s) com sucesso`);
+          }
+        });
+      };
+      
+      window.addEventListener('online', handleOnline);
+      
+      return () => {
+        window.removeEventListener('online', handleOnline);
+      };
+    }).catch(error => {
+      console.error('❌ Erro ao inicializar OfflineStorage:', error);
+    });
     
     // Setup performance listeners
     setupPerformanceListeners(queryClient);

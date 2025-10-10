@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, User, Tag, CheckCircle, Circle, AlertCircle, Clock, Trash2, Edit3, MoreVertical, PlusCircle, CheckSquare2, RefreshCw, Upload, Download, Settings } from 'lucide-react';
+import { Plus, Search, User, Tag, CheckCircle, Circle, AlertCircle, Clock, Trash2, Edit3, MoreVertical, PlusCircle, CheckSquare2, RefreshCw, Upload, Download, Settings, Wifi, WifiOff, CloudOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,6 +15,8 @@ import { MobileLayout } from '@/components/layout/MobileLayout';
 import { toast } from 'sonner';
 import { useTasksGoogleDriveSync } from '@/hooks/useTasksGoogleDriveSync';
 import { notificationService } from '@/lib/notificationService';
+import { useOfflineData } from '@/hooks/useOfflineData';
+import { offlineStorage } from '@/lib/offlineStorage';
 
 interface Task {
   id: number;
@@ -78,7 +80,7 @@ const statusConfig = {
 };
 
 export default function Tasks() {
-  console.log('🚀 Tasks component loaded - Botão de sincronização deve estar disponível');
+  console.log('🚀 Tasks component loaded com suporte offline');
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
@@ -106,24 +108,31 @@ export default function Tasks() {
     configureSync
   } = useTasksGoogleDriveSync();
 
-  // Estado para sincronização manual
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  // Buscar tarefas
-  const { data: tasksData, isLoading: tasksLoading } = useQuery({
-    queryKey: ['tasks', selectedStatus, selectedPriority],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (selectedStatus !== 'all') params.append('status', selectedStatus);
-      if (selectedPriority !== 'all') params.append('priority', selectedPriority);
-      
-      const response = await fetch(`/api/tasks?${params.toString()}`, {
-        headers: { 'x-user-id': '1' }
-      });
-      if (!response.ok) throw new Error('Erro ao buscar tarefas');
-      return response.json();
-    }
+  // 🆕 Hook de armazenamento offline
+  const {
+    data: allTasks,
+    loading: tasksLoading,
+    syncing,
+    isOnline,
+    create: createTask,
+    update: updateTask,
+    remove: deleteTask,
+    sync: syncOfflineData,
+    syncInfo
+  } = useOfflineData<Task>({
+    storeName: 'tasks',
+    endpoint: '/api/tasks',
+    queryKey: ['tasks'],
+    autoFetch: true,
+    syncInterval: 30000 // 30 segundos
   });
+
+  // Inicializar storage ao montar
+  useEffect(() => {
+    offlineStorage.init().then(() => {
+      console.log('✅ OfflineStorage inicializado para Tasks');
+    });
+  }, []);
 
   // Buscar usuários
   const { data: usersData } = useQuery({
@@ -137,39 +146,29 @@ export default function Tasks() {
     }
   });
 
-  const createTaskMutation = useMutation({
-    mutationFn: async (taskData: typeof newTask) => {
-      const response = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '1'
-        },
-        body: JSON.stringify({
-          ...taskData,
-          assigned_to: taskData.assigned_to && taskData.assigned_to !== 'none' ? parseInt(taskData.assigned_to) : null
-        })
-      });
-      
-      if (!response.ok) throw new Error('Erro ao criar tarefa');
-      return response.json();
-    },
-    onSuccess: async (data) => {
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
+  // 🆕 Handlers usando armazenamento offline
+
+  const handleCreateTask = async () => {
+    if (!newTask.title.trim()) {
+      toast.error('Título é obrigatório');
+      return;
+    }
+
+    try {
+      const taskData = {
+        title: newTask.title,
+        description: newTask.description,
+        priority: newTask.priority,
+        due_date: newTask.due_date || undefined,
+        assigned_to: newTask.assigned_to && newTask.assigned_to !== 'none' ? parseInt(newTask.assigned_to) : undefined,
+        status: 'pending' as const,
+        created_by: 1, // TODO: Pegar do contexto de autenticação
+        tags: newTask.tags
+      };
+
+      await createTask(taskData as any);
+
       setIsCreateDialogOpen(false);
-      
-      // Enviar notificação push para o usuário atribuído
-      if (data?.task && newTask.assigned_to && newTask.assigned_to !== 'none') {
-        try {
-          await notificationService.notifyTaskCreated(
-            newTask.title,
-            parseInt(newTask.assigned_to)
-          );
-        } catch (error) {
-          console.error('Erro ao enviar notificação de nova tarefa:', error);
-        }
-      }
-      
       setNewTask({
         title: '',
         description: '',
@@ -178,87 +177,32 @@ export default function Tasks() {
         assigned_to: 'none',
         tags: []
       });
-      
-      // Enviar para Google Sheets se configurado
-      if (syncConfig?.spreadsheetUrl && data?.task) {
-        try {
-          await addTasksToSheet([data.task]);
-          toast.success('Tarefa criada e sincronizada com sucesso!');
-        } catch (error) {
-          toast.success('Tarefa criada com sucesso!');
-          console.error('Erro ao sincronizar com Google Sheets:', error);
-        }
-      } else {
+
+      // Mensagem diferente se estiver offline
+      if (isOnline) {
         toast.success('Tarefa criada com sucesso!');
+      } else {
+        toast.success('Tarefa salva offline. Será sincronizada quando conectar.', {
+          icon: '📴'
+        });
       }
-    },
-    onError: () => {
+
+      // Notificar usuário atribuído (apenas se online)
+      if (isOnline && newTask.assigned_to && newTask.assigned_to !== 'none') {
+        try {
+          await notificationService.notifyTaskCreated(
+            newTask.title,
+            parseInt(newTask.assigned_to)
+          );
+        } catch (error) {
+          console.error('Erro ao enviar notificação:', error);
+        }
+      }
+
+    } catch (error) {
+      console.error('Erro ao criar tarefa:', error);
       toast.error('Erro ao criar tarefa');
     }
-  });
-
-  const updateTaskMutation = useMutation({
-    mutationFn: async ({ id, ...taskData }: Partial<Task> & { id: number }) => {
-      const response = await fetch(`/api/tasks/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '1'
-        },
-        body: JSON.stringify(taskData)
-      });
-      
-      if (!response.ok) throw new Error('Erro ao atualizar tarefa');
-      return response.json();
-    },
-    onSuccess: async (data) => {
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      setIsEditDialogOpen(false);
-      setEditingTask(null);
-      
-      // Enviar para Google Sheets se configurado
-      if (syncConfig?.spreadsheetUrl && data?.task) {
-        try {
-          await addTasksToSheet([data.task]);
-          toast.success('Tarefa atualizada e sincronizada com sucesso!');
-        } catch (error) {
-          toast.success('Tarefa atualizada com sucesso!');
-          console.error('Erro ao sincronizar com Google Sheets:', error);
-        }
-      } else {
-        toast.success('Tarefa atualizada com sucesso!');
-      }
-    },
-    onError: () => {
-      toast.error('Erro ao atualizar tarefa');
-    }
-  });
-
-  const deleteTaskMutation = useMutation({
-    mutationFn: async (taskId: number) => {
-      const response = await fetch(`/api/tasks/${taskId}`, {
-        method: 'DELETE',
-        headers: { 'x-user-id': '1' }
-      });
-      
-      if (!response.ok) throw new Error('Erro ao deletar tarefa');
-      return response.json();
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      toast.success('Tarefa deletada com sucesso!');
-    },
-    onError: () => {
-      toast.error('Erro ao deletar tarefa');
-    }
-  });
-
-  const handleCreateTask = () => {
-    if (!newTask.title.trim()) {
-      toast.error('Título é obrigatório');
-      return;
-    }
-    createTaskMutation.mutate(newTask);
   };
 
   const handleEditTask = (task: Task) => {
@@ -266,20 +210,70 @@ export default function Tasks() {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateTask = () => {
+  const handleUpdateTask = async () => {
     if (!editingTask) return;
-    updateTaskMutation.mutate(editingTask);
-  };
 
-  const handleDeleteTask = (taskId: number) => {
-    if (confirm('Tem certeza que deseja deletar esta tarefa?')) {
-      deleteTaskMutation.mutate(taskId);
+    try {
+      await updateTask(editingTask.id, {
+        title: editingTask.title,
+        description: editingTask.description,
+        priority: editingTask.priority,
+        due_date: editingTask.due_date,
+        assigned_to: editingTask.assigned_to,
+        status: editingTask.status
+      });
+
+      setIsEditDialogOpen(false);
+      setEditingTask(null);
+
+      if (isOnline) {
+        toast.success('Tarefa atualizada com sucesso!');
+      } else {
+        toast.success('Tarefa atualizada offline. Será sincronizada quando conectar.', {
+          icon: '📴'
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar tarefa:', error);
+      toast.error('Erro ao atualizar tarefa');
     }
   };
 
-  const handleToggleStatus = (task: Task) => {
+  const handleDeleteTask = async (taskId: number) => {
+    if (!confirm('Tem certeza que deseja deletar esta tarefa?')) return;
+
+    try {
+      await deleteTask(taskId);
+
+      if (isOnline) {
+        toast.success('Tarefa deletada com sucesso!');
+      } else {
+        toast.success('Tarefa deletada offline. Será sincronizada quando conectar.', {
+          icon: '📴'
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao deletar tarefa:', error);
+      toast.error('Erro ao deletar tarefa');
+    }
+  };
+
+  const handleToggleStatus = async (task: Task) => {
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
-    updateTaskMutation.mutate({ ...task, status: newStatus });
+    
+    try {
+      await updateTask(task.id, { 
+        status: newStatus,
+        completed_at: newStatus === 'completed' ? new Date().toISOString() : undefined
+      });
+
+      if (!isOnline) {
+        toast.success('Status atualizado offline', { icon: '📴' });
+      }
+    } catch (error) {
+      console.error('Erro ao alterar status:', error);
+      toast.error('Erro ao alterar status');
+    }
   };
 
   // Função para sincronização manual com Google Sheets
@@ -365,42 +359,60 @@ export default function Tasks() {
     }
   };
 
-  const tasks = tasksData?.tasks || [];
   const users = usersData?.users || [];
 
-  const filteredTasks = tasks.filter((task: Task) => {
+  // Filtrar tarefas (com suporte a filtros de status e prioridade)
+  const filteredTasks = allTasks.filter((task: Task) => {
+    // Filtro de busca
     const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          task.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          task.assigned_to_name?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
+    
+    // Filtro de status
+    const matchesStatus = selectedStatus === 'all' || task.status === selectedStatus;
+    
+    // Filtro de prioridade
+    const matchesPriority = selectedPriority === 'all' || task.priority === selectedPriority;
+    
+    return matchesSearch && matchesStatus && matchesPriority;
   });
 
   const pendingTasks = filteredTasks.filter((task: Task) => task.status === 'pending');
   const inProgressTasks = filteredTasks.filter((task: Task) => task.status === 'in_progress');
   const completedTasks = filteredTasks.filter((task: Task) => task.status === 'completed');
 
-  const TaskCard = ({ task }: { task: Task }) => (
-    <Card className="group relative overflow-hidden bg-white border-0 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 mb-4">
-      <div className="absolute inset-0 bg-gradient-to-r from-gray-50/50 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-      
-      <CardContent className="p-6 relative z-10">
-        <div className="flex items-start justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-3">
-              <button
-                onClick={() => handleToggleStatus(task)}
-                className="flex-shrink-0 transition-all duration-200 hover:scale-110"
-              >
-                {task.status === 'completed' ? (
-                  <CheckCircle className="h-5 w-5 text-green-500" />
-                ) : (
-                  <Circle className="h-5 w-5 text-gray-300 hover:text-gray-500" />
+  const TaskCard = ({ task }: { task: Task }) => {
+    const isNotSynced = (task as any)._synced === false || (task as any)._localCreated === true;
+    
+    return (
+      <Card className={`group relative overflow-hidden bg-white border-0 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 mb-4 ${isNotSynced ? 'border-l-4 border-l-yellow-400' : ''}`}>
+        <div className="absolute inset-0 bg-gradient-to-r from-gray-50/50 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        
+        <CardContent className="p-6 relative z-10">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 mb-3">
+                <button
+                  onClick={() => handleToggleStatus(task)}
+                  className="flex-shrink-0 transition-all duration-200 hover:scale-110"
+                >
+                  {task.status === 'completed' ? (
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <Circle className="h-5 w-5 text-gray-300 hover:text-gray-500" />
+                  )}
+                </button>
+                <h3 className="text-lg font-semibold text-gray-900 truncate">
+                  {task.title}
+                </h3>
+                {/* Indicador de não sincronizado */}
+                {isNotSynced && (
+                  <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200 text-xs">
+                    <CloudOff className="h-2 w-2 mr-1" />
+                    Pendente
+                  </Badge>
                 )}
-              </button>
-              <h3 className="text-lg font-semibold text-gray-900 truncate">
-                {task.title}
-              </h3>
-            </div>
+              </div>
             
             {task.description && (
               <p className="text-gray-600 text-sm mb-3 line-clamp-2">
@@ -462,7 +474,8 @@ export default function Tasks() {
         </div>
       </CardContent>
     </Card>
-  );
+    );
+  };
 
   const EmptyState = ({ icon: Icon, title, description }: { icon: any, title: string, description: string }) => (
     <div className="text-center py-12">
@@ -495,30 +508,72 @@ export default function Tasks() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 mb-8">
             <div className="flex-1">
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-2">
-                Tarefas
-              </h1>
-              <p className="text-gray-600 text-lg">Organize e acompanhe suas tarefas de forma eficiente</p>
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                  Tarefas
+                </h1>
+                
+                {/* 🆕 Indicador de Status Online/Offline */}
+                {isOnline ? (
+                  <Badge className="bg-green-100 text-green-700 border-green-200 flex items-center gap-1">
+                    <Wifi className="h-3 w-3" />
+                    Online
+                  </Badge>
+                ) : (
+                  <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200 flex items-center gap-1">
+                    <WifiOff className="h-3 w-3" />
+                    Offline
+                  </Badge>
+                )}
+
+                {/* Indicador de sincronização */}
+                {syncing && (
+                  <Badge className="bg-blue-100 text-blue-700 border-blue-200 flex items-center gap-1 animate-pulse">
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                    Sincronizando...
+                  </Badge>
+                )}
+
+                {/* Indicador de itens pendentes */}
+                {syncInfo.pendingCount > 0 && (
+                  <Badge className="bg-orange-100 text-orange-700 border-orange-200 flex items-center gap-1">
+                    <CloudOff className="h-3 w-3" />
+                    {syncInfo.pendingCount} pendente{syncInfo.pendingCount > 1 ? 's' : ''}
+                  </Badge>
+                )}
+              </div>
               
-              {/* Botão de Sincronização Destacado */}
+              <p className="text-gray-600 text-lg">
+                Organize e acompanhe suas tarefas de forma eficiente
+                {!isOnline && <span className="text-yellow-600 ml-2">• Modo offline - suas alterações serão sincronizadas quando conectar</span>}
+              </p>
               
-              {/* Status da Sincronização Automática */}
-              {syncConfig?.spreadsheetUrl && (
+              {/* Status da última sincronização */}
+              {syncInfo.lastSync && (
                 <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
-                  <div className={`w-2 h-2 rounded-full ${syncStatus.isRunning ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`}></div>
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
                   <span>
-                    {syncStatus.isRunning ? 'Sincronizando automaticamente...' : 'Sincronização automática ativa'}
+                    Última sincronização: {new Date(syncInfo.lastSync).toLocaleString('pt-BR')}
                   </span>
-                  {syncStatus.lastSync && (
-                    <span className="text-xs">
-                      (Última: {new Date(syncStatus.lastSync).toLocaleString('pt-BR')})
-                    </span>
-                  )}
                 </div>
               )}
             </div>
             
             <div className="flex gap-3 flex-wrap">
+              {/* Botão de sincronização manual */}
+              {isOnline && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => syncOfflineData()}
+                  disabled={syncing}
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+                  {syncing ? 'Sincronizando...' : 'Sincronizar'}
+                </Button>
+              )}
+              
               <Button
                 variant="outline"
                 size="sm"
@@ -526,7 +581,7 @@ export default function Tasks() {
                 className="flex items-center gap-2"
               >
                 <Settings className="h-4 w-4" />
-                Configurar Sincronização
+                Configurar
               </Button>
             
               <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -619,10 +674,10 @@ export default function Tasks() {
                       </Button>
                       <Button
                         onClick={handleCreateTask}
-                        disabled={createTaskMutation.isPending}
+                        disabled={tasksLoading || syncing}
                         className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-6"
                       >
-                        {createTaskMutation.isPending ? 'Criando...' : 'Criar Tarefa'}
+                        {syncing ? 'Salvando...' : 'Criar Tarefa'}
                       </Button>
                     </div>
                   </div>
@@ -819,10 +874,10 @@ export default function Tasks() {
                     </Button>
                     <Button
                       onClick={handleUpdateTask}
-                      disabled={updateTaskMutation.isPending}
+                      disabled={syncing}
                       className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-6"
                     >
-                      {updateTaskMutation.isPending ? 'Salvando...' : 'Salvar Alterações'}
+                      {syncing ? 'Salvando...' : 'Salvar Alterações'}
                     </Button>
                   </div>
                 </div>
