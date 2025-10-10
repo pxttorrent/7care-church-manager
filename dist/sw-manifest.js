@@ -1,5 +1,5 @@
 // Manifest de assets para cache offline - Gerado automaticamente
-// Total de assets: 97
+// Total de assets: 98
 self.OFFLINE_ASSETS = [
   "/7care-logo.png",
   "/7carelogonew.png",
@@ -97,5 +97,6 @@ self.OFFLINE_ASSETS = [
   "/manifest.json",
   "/placeholder.svg",
   "/pwa-192x192.png",
-  "/pwa-512x512.png"
+  "/pwa-512x512.png",
+  "/test-evento-offline.html"
 ];
