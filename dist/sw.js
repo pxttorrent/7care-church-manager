@@ -9,33 +9,77 @@ const LOCAL_DATA_STORE = 'local-data';
 
 function openSyncDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(SYNC_DB_NAME, 2); // v2 para adicionar local-data store
+    console.log(`🔍 openSyncDB: Tentando abrir ${SYNC_DB_NAME}...`);
     
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+    // Timeout de 5 segundos
+    const timeout = setTimeout(() => {
+      console.error('❌ openSyncDB: TIMEOUT após 5s!');
+      reject(new Error('IndexedDB open timeout'));
+    }, 5000);
     
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
+    try {
+      const request = indexedDB.open(SYNC_DB_NAME, 2);
       
-      // Store de fila de sincronização
-      if (!db.objectStoreNames.contains(SYNC_STORE_NAME)) {
-        const store = db.createObjectStore(SYNC_STORE_NAME, { 
-          keyPath: 'id', 
-          autoIncrement: true 
-        });
-        store.createIndex('status', 'status', { unique: false });
-        store.createIndex('timestamp', 'timestamp', { unique: false });
-      }
+      request.onerror = (e) => {
+        clearTimeout(timeout);
+        console.error('❌ openSyncDB: Erro ao abrir DB:', e);
+        reject(request.error);
+      };
       
-      // Store de dados locais (itens criados offline)
-      if (!db.objectStoreNames.contains(LOCAL_DATA_STORE)) {
-        const dataStore = db.createObjectStore(LOCAL_DATA_STORE, { 
-          keyPath: 'id'
-        });
-        dataStore.createIndex('endpoint', 'endpoint', { unique: false });
-        dataStore.createIndex('timestamp', 'timestamp', { unique: false });
-      }
-    };
+      request.onsuccess = (e) => {
+        clearTimeout(timeout);
+        const db = request.result;
+        console.log(`✅ openSyncDB: DB aberto com sucesso, stores:`, Array.from(db.objectStoreNames));
+        resolve(db);
+      };
+      
+      request.onupgradeneeded = (event) => {
+        console.log(`🔄 openSyncDB: Upgrade necessário para v2`);
+        const db = event.target.result;
+        
+        try {
+          // Store de fila de sincronização
+          if (!db.objectStoreNames.contains(SYNC_STORE_NAME)) {
+            console.log(`📝 openSyncDB: Criando ${SYNC_STORE_NAME}...`);
+            const store = db.createObjectStore(SYNC_STORE_NAME, { 
+              keyPath: 'id', 
+              autoIncrement: true 
+            });
+            store.createIndex('status', 'status', { unique: false });
+            store.createIndex('timestamp', 'timestamp', { unique: false });
+            console.log(`✅ openSyncDB: ${SYNC_STORE_NAME} criado`);
+          }
+          
+          // Store de dados locais (itens criados offline)
+          if (!db.objectStoreNames.contains(LOCAL_DATA_STORE)) {
+            console.log(`📝 openSyncDB: Criando ${LOCAL_DATA_STORE}...`);
+            const dataStore = db.createObjectStore(LOCAL_DATA_STORE, { 
+              keyPath: 'id'
+            });
+            dataStore.createIndex('endpoint', 'endpoint', { unique: false });
+            dataStore.createIndex('timestamp', 'timestamp', { unique: false });
+            console.log(`✅ openSyncDB: ${LOCAL_DATA_STORE} criado`);
+          }
+          
+          console.log(`✅ openSyncDB: Upgrade completo`);
+        } catch (upgradeError) {
+          console.error(`❌ openSyncDB: Erro no upgrade:`, upgradeError);
+          clearTimeout(timeout);
+          reject(upgradeError);
+        }
+      };
+      
+      request.onblocked = (e) => {
+        console.error('⚠️ openSyncDB: DB está BLOQUEADO! Feche outras abas.');
+        clearTimeout(timeout);
+        reject(new Error('Database blocked - close other tabs'));
+      };
+      
+    } catch (error) {
+      clearTimeout(timeout);
+      console.error('❌ openSyncDB: Exceção ao tentar abrir:', error);
+      reject(error);
+    }
   });
 }
 
