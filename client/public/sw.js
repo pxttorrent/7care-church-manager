@@ -403,16 +403,46 @@ self.addEventListener('fetch', (event) => {
             // Buscar dados locais pendentes para este endpoint
             try {
               const db = await openSyncDB();
-              const localData = await getLocalDataByEndpoint(db, url.pathname);
               
-              if (localData.length > 0) {
-                console.log(`🔀 SW v28: Mesclando ${localData.length} itens locais com ${Array.isArray(data) ? data.length : 0} do cache`);
+              // Tentar múltiplos endpoints para eventos (normalização)
+              const possibleEndpoints = [
+                url.pathname,                     // /api/events
+                '/api/calendar/events',           // Endpoint alternativo
+                url.pathname.replace(/\?.*/, '')  // Sem query params
+              ];
+              
+              console.log(`🔍 SW v28: Buscando local data em:`, possibleEndpoints);
+              
+              let localData = [];
+              for (const endpoint of possibleEndpoints) {
+                const items = await getLocalDataByEndpoint(db, endpoint);
+                if (items.length > 0) {
+                  localData.push(...items);
+                  console.log(`📥 SW v28: ${items.length} itens encontrados em ${endpoint}`);
+                }
+              }
+              
+              // Remover duplicatas (mesmo _tempId)
+              const uniqueLocal = [];
+              const seenIds = new Set();
+              for (const item of localData) {
+                const id = item._tempId || item.id;
+                if (!seenIds.has(id)) {
+                  seenIds.add(id);
+                  uniqueLocal.push(item);
+                }
+              }
+              
+              if (uniqueLocal.length > 0) {
+                console.log(`🔀 SW v28: Mesclando ${uniqueLocal.length} itens locais únicos com ${Array.isArray(data) ? data.length : 0} do cache`);
                 
                 // Mesclar: dados locais PRIMEIRO (são os mais recentes)
                 if (Array.isArray(data)) {
-                  data = [...localData, ...data];
+                  data = [...uniqueLocal, ...data];
                   console.log(`✅ SW v28: Total após mesclagem: ${data.length} itens`);
                 }
+              } else {
+                console.log(`ℹ️ SW v28: Nenhum dado local para mesclar`);
               }
             } catch (mergeError) {
               console.warn('⚠️ SW v28: Erro ao mesclar dados locais:', mergeError);
