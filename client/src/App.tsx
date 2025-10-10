@@ -10,6 +10,7 @@ import { FirstAccessWelcome } from "./components/auth/FirstAccessWelcome";
 import { createQueryClient, setupPerformanceListeners, prefetchImportantData } from "./lib/queryClient";
 import { cleanConsoleInProduction } from "./lib/performance";
 import { useOfflineCache } from "./hooks/useOfflineCache";
+import { SyncIndicator } from "./components/sync/SyncIndicator";
 
 // Lazy load all pages for better performance
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -84,6 +85,7 @@ const App = () => {
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <SyncIndicator />
         <BrowserRouter>
           <Suspense fallback={<PageLoader />}>
             <Routes>
