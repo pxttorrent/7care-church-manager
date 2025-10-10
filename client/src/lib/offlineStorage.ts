@@ -489,3 +489,33 @@ export class OfflineStorage {
 // ========================================
 
 export const offlineStorage = new OfflineStorage();
+
+// ========================================
+// AUTO-SYNC AO CONECTAR
+// ========================================
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', async () => {
+    console.log('🌐 Conexão restaurada! Iniciando sincronização automática...');
+    
+    try {
+      const result = await offlineStorage.syncWithServer();
+      
+      if (result.success > 0) {
+        console.log(`✅ ${result.success} item(ns) sincronizado(s) com sucesso!`);
+        
+        // Disparar evento para atualizar UI
+        window.dispatchEvent(new CustomEvent('syncComplete', { 
+          detail: result 
+        }));
+      }
+      
+      if (result.failed > 0) {
+        console.error(`❌ ${result.failed} item(ns) falharam na sincronização`);
+        console.error('Erros:', result.errors);
+      }
+    } catch (error) {
+      console.error('❌ Erro na sincronização automática:', error);
+    }
+  });
+}

@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
-import { syncQueue } from '@/lib/syncQueue';
+import { offlineStorage } from '@/lib/offlineStorage';
 
 interface SyncStatus {
   isPending: boolean;
   pendingCount: number;
   isSyncing: boolean;
-  lastSyncResult: { success: number; failed: number } | null;
+  lastSyncResult: { success: number; failed: number; errors: string[] } | null;
 }
 
 /**
  * Hook para gerenciar sincronização offline
+ * 🆕 Atualizado para usar o novo offlineStorage
  */
 export function useOfflineSync() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
@@ -21,11 +22,11 @@ export function useOfflineSync() {
 
   const updatePendingCount = async () => {
     try {
-      const count = await syncQueue.getPendingCount();
+      const info = await offlineStorage.getSyncInfo();
       setSyncStatus(prev => ({
         ...prev,
-        isPending: count > 0,
-        pendingCount: count
+        isPending: info.pendingCount > 0,
+        pendingCount: info.pendingCount
       }));
     } catch (error) {
       console.error('Erro ao verificar itens pendentes:', error);
@@ -35,7 +36,7 @@ export function useOfflineSync() {
   const syncNow = async () => {
     setSyncStatus(prev => ({ ...prev, isSyncing: true }));
     try {
-      const result = await syncQueue.syncPendingItems();
+      const result = await offlineStorage.syncWithServer();
       setSyncStatus(prev => ({
         ...prev,
         isSyncing: false,
@@ -51,6 +52,9 @@ export function useOfflineSync() {
   };
 
   useEffect(() => {
+    // Inicializar offlineStorage
+    offlineStorage.init().catch(console.error);
+
     // Verificar itens pendentes ao montar
     updatePendingCount();
 

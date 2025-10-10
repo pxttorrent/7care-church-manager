@@ -58,25 +58,9 @@ const App = () => {
     // Clean console logs in production
     cleanConsoleInProduction();
     
-    // Inicializar OfflineStorage
+    // Inicializar OfflineStorage (sem auto-sync aqui para evitar duplicação)
     offlineStorage.init().then(() => {
       console.log('✅ OfflineStorage inicializado globalmente');
-      
-      // Auto-sync ao conectar
-      const handleOnline = () => {
-        console.log('🌐 Online - sincronizando dados...');
-        offlineStorage.syncWithServer().then(result => {
-          if (result.success > 0) {
-            console.log(`✅ ${result.success} item(ns) sincronizado(s) com sucesso`);
-          }
-        });
-      };
-      
-      window.addEventListener('online', handleOnline);
-      
-      return () => {
-        window.removeEventListener('online', handleOnline);
-      };
     }).catch(error => {
       console.error('❌ Erro ao inicializar OfflineStorage:', error);
     });
