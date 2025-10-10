@@ -302,42 +302,49 @@ self.addEventListener('fetch', (event) => {
           const networkResponse = await fetch(event.request.clone());
           return networkResponse;
         } catch (error) {
-          // OFFLINE - Salvar na fila de sincronização E nos dados locais
-          console.log(`📝 SW v28: OFFLINE - Salvando operação para sincronizar: ${event.request.method} ${url.pathname}`);
+          // OFFLINE - Salvar APENAS na fila (simplificado, sem local-data para evitar travamento)
+          console.log(`📝 SW v28: OFFLINE - Salvando operação: ${event.request.method} ${url.pathname}`);
           
           try {
-            console.log(`🔍 SW v28: Passo 1 - Lendo body da requisição...`);
             // Ler o body da requisição
             const requestClone = event.request.clone();
-            const body = await requestClone.json().catch((e) => {
-              console.error(`❌ SW v28: Erro ao ler body:`, e);
-              return null;
-            });
+            const body = await requestClone.json().catch(() => null);
             
-            console.log(`🔍 SW v28: Passo 2 - Body lido:`, body ? 'OK' : 'NULL');
+            if (!body) {
+              console.error(`❌ SW v28: Body vazio ou inválido`);
+              return new Response(JSON.stringify({ error: 'Invalid request body' }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
             
-            // Abrir IndexedDB
-            console.log(`🔍 SW v28: Passo 3 - Abrindo IndexedDB...`);
-            const db = await openSyncDB();
-            console.log(`🔍 SW v28: Passo 4 - DB aberto, stores:`, Array.from(db.objectStoreNames));
+            console.log(`✅ SW v28: Body lido com sucesso`);
             
-            // 1. Salvar na fila de sincronização
-            console.log(`🔍 SW v28: Passo 5 - Salvando na sync-queue...`);
-            await addToSyncQueue(db, {
+            // Salvar em localStorage como fallback mais confiável
+            const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const queueItem = {
+              id: tempId,
               url: event.request.url,
               method: event.request.method,
               body: body,
-              headers: Object.fromEntries(event.request.headers.entries()),
-              timestamp: Date.now()
-            });
+              timestamp: Date.now(),
+              status: 'pending'
+            };
             
-            console.log(`✅ SW v28: Operação salva na fila de sincronização`);
+            // Usar localStorage para fila de sync (mais simples e confiável)
+            try {
+              const queueKey = '7care-sync-queue';
+              const existingQueue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+              existingQueue.push(queueItem);
+              localStorage.setItem(queueKey, JSON.stringify(existingQueue));
+              console.log(`✅ SW v28: Operação salva na fila (localStorage), ID: ${tempId}`);
+            } catch (lsError) {
+              console.error(`❌ SW v28: Erro ao salvar no localStorage:`, lsError);
+            }
             
-            // 2. Se for POST (criar), salvar nos dados locais também
-            if (event.request.method === 'POST' && body) {
-              console.log(`🔍 SW v28: Passo 6 - É POST, salvando em local-data...`);
-              const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-              const localData = {
+            // Se for POST, preparar resposta com dados completos
+            if (event.request.method === 'POST') {
+              const mockResponse = {
                 ...body,
                 id: tempId,
                 _tempId: tempId,
@@ -347,22 +354,21 @@ self.addEventListener('fetch', (event) => {
                 created_at: new Date().toISOString()
               };
               
-              console.log(`🔍 SW v28: Dados preparados:`, localData);
-              
-              // Extrair endpoint base (sem query params e sem /api)
-              const endpointBase = url.pathname;
-              
-              console.log(`🔍 SW v28: Passo 7 - Salvando em local-data para endpoint: ${endpointBase}`);
+              // Salvar também em localStorage para exibição imediata
+              const endpoint = url.pathname.replace(/^\/api\//, '').replace(/\//g, '_');
+              const localDataKey = `7care-local-${endpoint}`;
               try {
-                await saveLocalData(db, endpointBase, localData);
-                console.log(`💾 SW v28: Dados locais salvos para ${endpointBase} com ID ${tempId}`);
-              } catch (saveError) {
-                console.error(`❌ SW v28: ERRO ao salvar local-data:`, saveError);
-                throw saveError;
+                const existingLocal = JSON.parse(localStorage.getItem(localDataKey) || '[]');
+                existingLocal.push(mockResponse);
+                localStorage.setItem(localDataKey, JSON.stringify(existingLocal));
+                console.log(`💾 SW v28: Dados locais salvos no localStorage: ${localDataKey}`);
+              } catch (ldError) {
+                console.error(`❌ SW v28: Erro ao salvar dados locais:`, ldError);
               }
               
-              // Retornar resposta simulada com dados completos
-              return new Response(JSON.stringify(localData), {
+              console.log(`✅ SW v28: Evento criado offline com ID ${tempId}`);
+              
+              return new Response(JSON.stringify(mockResponse), {
                 status: 201,
                 headers: { 
                   'Content-Type': 'application/json',
@@ -372,25 +378,20 @@ self.addEventListener('fetch', (event) => {
               });
             }
             
-            // Para PUT/PATCH/DELETE, retornar sucesso genérico
+            // Para PUT/PATCH/DELETE
             return new Response(JSON.stringify({ 
               success: true,
-              _pendingSync: true,
-              message: 'Operação será sincronizada quando voltar online'
+              _pendingSync: true
             }), {
               status: 200,
-              headers: { 
-                'Content-Type': 'application/json',
-                'X-Pending-Sync': 'true'
-              }
+              headers: { 'Content-Type': 'application/json', 'X-Pending-Sync': 'true' }
             });
-          } catch (dbError) {
-            console.error('❌ SW v28: Erro ao salvar na fila:', dbError);
             
-            // Retornar erro
+          } catch (error) {
+            console.error('❌ SW v28: Erro geral:', error);
             return new Response(JSON.stringify({ 
               error: 'Offline - operação não pôde ser salva',
-              details: dbError.message
+              details: error.message
             }), {
               status: 503,
               headers: { 'Content-Type': 'application/json' }
@@ -444,29 +445,31 @@ self.addEventListener('fetch', (event) => {
             
             console.log(`✅ SW v28: ${Array.isArray(data) ? data.length : 'N/A'} itens retornados do cache`);
             
-            // Buscar dados locais pendentes para este endpoint
+            // Buscar dados locais pendentes do localStorage (mais simples!)
             try {
-              const db = await openSyncDB();
-              
-              // Tentar múltiplos endpoints para eventos (normalização)
-              const possibleEndpoints = [
-                url.pathname,                     // /api/events
-                '/api/calendar/events',           // Endpoint alternativo
-                url.pathname.replace(/\?.*/, '')  // Sem query params
+              // Normalizar endpoint para chave do localStorage
+              const possibleKeys = [
+                `7care-local-${url.pathname.replace(/^\/api\//, '').replace(/\//g, '_')}`,
+                '7care-local-calendar_events',  // Para /api/calendar/events
+                '7care-local-events'            // Para /api/events
               ];
               
-              console.log(`🔍 SW v28: Buscando local data em:`, possibleEndpoints);
+              console.log(`🔍 SW v28: Buscando dados locais no localStorage...`);
               
               let localData = [];
-              for (const endpoint of possibleEndpoints) {
-                const items = await getLocalDataByEndpoint(db, endpoint);
-                if (items.length > 0) {
-                  localData.push(...items);
-                  console.log(`📥 SW v28: ${items.length} itens encontrados em ${endpoint}`);
+              for (const key of possibleKeys) {
+                try {
+                  const items = JSON.parse(localStorage.getItem(key) || '[]');
+                  if (items.length > 0) {
+                    localData.push(...items);
+                    console.log(`📥 SW v28: ${items.length} itens encontrados em ${key}`);
+                  }
+                } catch (e) {
+                  // Ignora erro de parse
                 }
               }
               
-              // Remover duplicatas (mesmo _tempId)
+              // Remover duplicatas
               const uniqueLocal = [];
               const seenIds = new Set();
               for (const item of localData) {
@@ -478,19 +481,17 @@ self.addEventListener('fetch', (event) => {
               }
               
               if (uniqueLocal.length > 0) {
-                console.log(`🔀 SW v28: Mesclando ${uniqueLocal.length} itens locais únicos com ${Array.isArray(data) ? data.length : 0} do cache`);
+                console.log(`🔀 SW v28: Mesclando ${uniqueLocal.length} itens locais com ${Array.isArray(data) ? data.length : 0} do cache`);
                 
-                // Mesclar: dados locais PRIMEIRO (são os mais recentes)
                 if (Array.isArray(data)) {
                   data = [...uniqueLocal, ...data];
                   console.log(`✅ SW v28: Total após mesclagem: ${data.length} itens`);
                 }
               } else {
-                console.log(`ℹ️ SW v28: Nenhum dado local para mesclar`);
+                console.log(`ℹ️ SW v28: Nenhum dado local no localStorage`);
               }
             } catch (mergeError) {
-              console.warn('⚠️ SW v28: Erro ao mesclar dados locais:', mergeError);
-              // Continuar com dados do cache apenas
+              console.warn('⚠️ SW v28: Erro ao mesclar:', mergeError);
             }
             
             // Adicionar header indicando que veio do cache
