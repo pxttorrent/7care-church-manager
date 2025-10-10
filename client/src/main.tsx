@@ -97,39 +97,53 @@ if ('serviceWorker' in navigator) {
     // REMOVIDO: Sistema de áudio direto removido - agora usar página /notifications
   });
   
-  // Registrar Service Worker
-  window.addEventListener('load', () => {
-    console.log('🚀 AUTO-UPDATE: Verificando Service Worker...');
+  // Registrar Service Worker COM ATUALIZAÇÃO FORÇADA
+  window.addEventListener('load', async () => {
+    console.log('🚀 Iniciando Service Worker v28...');
     
-    navigator.serviceWorker.getRegistrations().then(function(registrations) {
-      console.log('🔍 AUTO-UPDATE: Encontradas', registrations.length, 'registrations');
+    try {
+      // Registrar ou atualizar Service Worker
+      const registration = await navigator.serviceWorker.register('/sw.js', {
+        scope: '/',
+        updateViaCache: 'none' // Força buscar sw.js do servidor sempre
+      });
       
-      // Verificar se precisa atualizar (sem loop)
-      if (registrations.length > 0) {
-        console.log('✅ SW: Já registrado, verificando atualizações...');
+      console.log('✅ Service Worker registrado!');
+      
+      // Verificar se há atualização esperando
+      if (registration.waiting) {
+        console.log('🔄 Nova versão do SW encontrada, ativando...');
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
         
-        // Verificar se há atualização disponível
-        const registration = registrations[0];
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('🆕 SW: Nova versão disponível');
-                // Não recarregar automaticamente para evitar loop
-              }
-            });
-          }
-        });
-      } else {
-        console.log('🆕 SW: Registrando pela primeira vez...');
-        navigator.serviceWorker.register('/sw.js').then(function(registration) {
-          console.log('✅ SW: Registrado com sucesso!');
-        }).catch(function(error) {
-          console.error('❌ SW: Erro ao registrar:', error);
+        // Recarregar página quando novo SW assumir controle
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          console.log('🔄 Service Worker atualizado, recarregando...');
+          window.location.reload();
         });
       }
-    });
+      
+      // Verificar atualizações automaticamente
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        console.log('🆕 Atualização do Service Worker encontrada...');
+        
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('✅ Nova versão instalada, ativando...');
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        }
+      });
+      
+      // Forçar verificação de atualizações
+      await registration.update();
+      console.log('✅ Verificação de atualizações concluída');
+      
+    } catch (error) {
+      console.error('❌ Erro ao registrar Service Worker:', error);
+    }
   });
 }
 
