@@ -297,13 +297,14 @@ export function useOfflineData<T extends { id: any }>({
       await offlineStorage.save(storeName, itemToSave);
       console.log(`💾 [${storeName}] Item atualizado localmente:`, id);
 
-      // 4. Adicionar à fila
+      // 4. Adicionar à fila (salvando apenas os updates originais)
       await offlineStorage.addToSyncQueue({
         type: 'UPDATE',
         storeName,
         endpoint,
-        data: updated
-      });
+        data: updated,
+        originalUpdates: updates // ← Campos que foram realmente alterados
+      } as any);
 
       // 5. Se online, tentar sincronizar
       if (navigator.onLine) {

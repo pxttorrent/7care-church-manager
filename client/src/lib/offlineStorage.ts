@@ -15,6 +15,7 @@ export interface SyncQueueItem {
   storeName: string;
   endpoint: string;
   data: any;
+  originalUpdates?: any; // ← Apenas campos alterados (para UPDATE)
   timestamp: string;
   attempts: number;
   status: 'pending' | 'syncing' | 'error';
@@ -372,14 +373,18 @@ export class OfflineStorage {
             break;
             
           case 'UPDATE':
+            // Usar apenas os campos alterados (originalUpdates), não o objeto completo
+            const updatePayload = item.originalUpdates || item.data;
+            
             response = await fetch(`${item.endpoint}/${item.data.id}`, {
               method: 'PUT',
               headers: { 
                 'Content-Type': 'application/json',
                 'x-user-id': '1'
               },
-              body: JSON.stringify(item.data)
+              body: JSON.stringify(updatePayload)
             });
+            console.log(`📤 Enviando UPDATE para ${item.endpoint}/${item.data.id}:`, updatePayload);
             break;
             
           case 'DELETE':
