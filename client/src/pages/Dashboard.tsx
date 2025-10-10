@@ -592,7 +592,7 @@ const Dashboard = React.memo(() => {
               <div className="text-xl lg:text-4xl font-bold text-white drop-shadow-lg">
                 {isLoading ? '...' : stats.totalInterested}
               </div>
-              <span className="text-xs lg:text-sm text-white/80">na base</span>
+              <span className="text-xs lg:text-sm text-white/80">Interessados</span>
             </div>
             <div className="flex items-center gap-2 pt-1 border-t border-white/20">
               <div className="text-lg lg:text-2xl font-bold text-white/90 drop-shadow">
