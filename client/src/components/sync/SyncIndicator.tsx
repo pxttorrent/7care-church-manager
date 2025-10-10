@@ -32,7 +32,11 @@ export function SyncIndicator() {
   useEffect(() => {
     if (lastSyncResult && lastSyncResult.success > 0) {
       setShowSuccess(true);
-      const timer = setTimeout(() => setShowSuccess(false), 5000);
+      const timer = setTimeout(() => {
+        setShowSuccess(false);
+        // Recarregar a página para pegar IDs reais do servidor
+        window.location.reload();
+      }, 3000);
       return () => clearTimeout(timer);
     }
   }, [lastSyncResult]);

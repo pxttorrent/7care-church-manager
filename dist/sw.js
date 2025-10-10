@@ -3,18 +3,21 @@ const CACHE_NAME = '7care-v28-precache-total';
 const API_CACHE_NAME = '7care-api-v28';
 const SYNC_DB_NAME = '7care-sync-db';
 const SYNC_STORE_NAME = 'sync-queue';
+const LOCAL_DATA_STORE = 'local-data';
 
 // ========== FUNÇÕES DE SINCRONIZAÇÃO OFFLINE ==========
 
 function openSyncDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(SYNC_DB_NAME, 1);
+    const request = indexedDB.open(SYNC_DB_NAME, 2); // v2 para adicionar local-data store
     
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
     
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
+      
+      // Store de fila de sincronização
       if (!db.objectStoreNames.contains(SYNC_STORE_NAME)) {
         const store = db.createObjectStore(SYNC_STORE_NAME, { 
           keyPath: 'id', 
@@ -22,6 +25,15 @@ function openSyncDB() {
         });
         store.createIndex('status', 'status', { unique: false });
         store.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+      
+      // Store de dados locais (itens criados offline)
+      if (!db.objectStoreNames.contains(LOCAL_DATA_STORE)) {
+        const dataStore = db.createObjectStore(LOCAL_DATA_STORE, { 
+          keyPath: 'id'
+        });
+        dataStore.createIndex('endpoint', 'endpoint', { unique: false });
+        dataStore.createIndex('timestamp', 'timestamp', { unique: false });
       }
     };
   });
@@ -246,7 +258,7 @@ self.addEventListener('fetch', (event) => {
           const networkResponse = await fetch(event.request.clone());
           return networkResponse;
         } catch (error) {
-          // OFFLINE - Salvar na fila de sincronização
+          // OFFLINE - Salvar na fila de sincronização E nos dados locais
           console.log(`📝 SW v28: OFFLINE - Salvando operação para sincronizar: ${event.request.method} ${url.pathname}`);
           
           try {
@@ -254,8 +266,10 @@ self.addEventListener('fetch', (event) => {
             const requestClone = event.request.clone();
             const body = await requestClone.json().catch(() => null);
             
-            // Abrir IndexedDB e salvar na fila
+            // Abrir IndexedDB
             const db = await openSyncDB();
+            
+            // 1. Salvar na fila de sincronização
             await addToSyncQueue(db, {
               url: event.request.url,
               method: event.request.method,
@@ -266,22 +280,45 @@ self.addEventListener('fetch', (event) => {
             
             console.log(`✅ SW v28: Operação salva na fila de sincronização`);
             
-            // Retornar resposta simulada de sucesso
-            // Com um ID temporário para referência
-            const tempId = `temp_${Date.now()}`;
-            const mockResponse = {
-              ...body,
-              id: tempId,
-              _tempId: tempId,
-              _pendingSync: true,
-              _offlineCreated: true
-            };
+            // 2. Se for POST (criar), salvar nos dados locais também
+            if (event.request.method === 'POST' && body) {
+              const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              const localData = {
+                ...body,
+                id: tempId,
+                _tempId: tempId,
+                _pendingSync: true,
+                _offlineCreated: true,
+                createdAt: new Date().toISOString(),
+                created_at: new Date().toISOString()
+              };
+              
+              // Extrair endpoint base (sem query params e sem /api)
+              const endpointBase = url.pathname;
+              
+              await saveLocalData(db, endpointBase, localData);
+              console.log(`💾 SW v28: Dados locais salvos para ${endpointBase} com ID ${tempId}`);
+              
+              // Retornar resposta simulada com dados completos
+              return new Response(JSON.stringify(localData), {
+                status: 201,
+                headers: { 
+                  'Content-Type': 'application/json',
+                  'X-Offline-Created': 'true',
+                  'X-Pending-Sync': 'true'
+                }
+              });
+            }
             
-            return new Response(JSON.stringify(mockResponse), {
-              status: 201,
+            // Para PUT/PATCH/DELETE, retornar sucesso genérico
+            return new Response(JSON.stringify({ 
+              success: true,
+              _pendingSync: true,
+              message: 'Operação será sincronizada quando voltar online'
+            }), {
+              status: 200,
               headers: { 
                 'Content-Type': 'application/json',
-                'X-Offline-Created': 'true',
                 'X-Pending-Sync': 'true'
               }
             });
@@ -339,11 +376,30 @@ self.addEventListener('fetch', (event) => {
           }
           
           if (cachedResponse) {
-            // Retornar dados do cache
+            // Retornar dados do cache MESCLADOS com dados locais
             const clonedResponse = cachedResponse.clone();
-            const data = await clonedResponse.json();
+            let data = await clonedResponse.json();
             
             console.log(`✅ SW v28: ${Array.isArray(data) ? data.length : 'N/A'} itens retornados do cache`);
+            
+            // Buscar dados locais pendentes para este endpoint
+            try {
+              const db = await openSyncDB();
+              const localData = await getLocalDataByEndpoint(db, url.pathname);
+              
+              if (localData.length > 0) {
+                console.log(`🔀 SW v28: Mesclando ${localData.length} itens locais com ${Array.isArray(data) ? data.length : 0} do cache`);
+                
+                // Mesclar: dados locais PRIMEIRO (são os mais recentes)
+                if (Array.isArray(data)) {
+                  data = [...localData, ...data];
+                  console.log(`✅ SW v28: Total após mesclagem: ${data.length} itens`);
+                }
+              }
+            } catch (mergeError) {
+              console.warn('⚠️ SW v28: Erro ao mesclar dados locais:', mergeError);
+              // Continuar com dados do cache apenas
+            }
             
             // Adicionar header indicando que veio do cache
             return new Response(JSON.stringify(data), {
@@ -351,6 +407,7 @@ self.addEventListener('fetch', (event) => {
               headers: { 
                 'Content-Type': 'application/json',
                 'X-Cached': 'true',
+                'X-Has-Local-Data': 'check',
                 'X-Cache-Time': cachedResponse.headers.get('date') || 'unknown'
               }
             });
@@ -702,6 +759,16 @@ async function syncQueueItems() {
     
     console.log(`🎉 SW v28: Sincronização completa! ${success} sucesso, ${failed} falhas`);
     
+    // Limpar dados locais após sincronização bem-sucedida
+    if (success > 0) {
+      try {
+        await clearLocalDataStore(db);
+        console.log('🧹 SW v28: Dados locais sincronizados removidos');
+      } catch (error) {
+        console.error('❌ SW v28: Erro ao limpar dados locais:', error);
+      }
+    }
+    
     // Notificar clients sobre sincronização completa
     const clients = await self.clients.matchAll();
     clients.forEach(client => {
@@ -734,6 +801,50 @@ function removeFromQueue(db, id) {
     const transaction = db.transaction([SYNC_STORE_NAME], 'readwrite');
     const store = transaction.objectStore(SYNC_STORE_NAME);
     const request = store.delete(id);
+    
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function saveLocalData(db, endpoint, data) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([LOCAL_DATA_STORE], 'readwrite');
+    const store = transaction.objectStore(LOCAL_DATA_STORE);
+    
+    const item = {
+      id: data.id || data._tempId,
+      endpoint: endpoint,
+      data: data,
+      timestamp: Date.now()
+    };
+    
+    const request = store.put(item);
+    request.onsuccess = () => resolve(item.id);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function getLocalDataByEndpoint(db, endpoint) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([LOCAL_DATA_STORE], 'readonly');
+    const store = transaction.objectStore(LOCAL_DATA_STORE);
+    const index = store.index('endpoint');
+    const request = index.getAll(endpoint);
+    
+    request.onsuccess = () => {
+      const items = (request.result || []).map(item => item.data);
+      resolve(items);
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function clearLocalDataStore(db) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([LOCAL_DATA_STORE], 'readwrite');
+    const store = transaction.objectStore(LOCAL_DATA_STORE);
+    const request = store.clear();
     
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
