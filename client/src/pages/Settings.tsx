@@ -1466,6 +1466,15 @@ export default function Settings() {
     return 'member';
   };
 
+  const parseNumber = (value: any): number => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const num = parseFloat(value.replace(',', '.'));
+      return isNaN(num) ? 0 : num;
+    }
+    return 0;
+  };
+
   const parseDate = (dateValue: any): Date | null => {
     if (!dateValue) return null;
     
