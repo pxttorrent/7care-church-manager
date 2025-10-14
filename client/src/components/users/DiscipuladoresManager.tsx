@@ -8,12 +8,14 @@ import { useToast } from '@/hooks/use-toast';
 
 interface DiscipuladoresManagerProps {
   interestedId: number;
+  interestedChurch: string;
   currentDiscipuladores: any[];
   onDiscipuladoresChange: (discipuladores: any[]) => void;
 }
 
 export function DiscipuladoresManager({ 
-  interestedId, 
+  interestedId,
+  interestedChurch,
   currentDiscipuladores, 
   onDiscipuladoresChange 
 }: DiscipuladoresManagerProps) {
@@ -39,11 +41,12 @@ export function DiscipuladoresManager({
       
       const users = await response.json();
       
-      // Filtrar apenas membros/missionários que não são discipuladores atuais
+      // Filtrar apenas membros/missionários da MESMA IGREJA que não são discipuladores atuais
       const currentIds = currentDiscipuladores.map(d => d.id);
       const members = users.filter((user: any) => 
         (user.role.includes('member') || user.role.includes('missionary')) && 
-        !currentIds.includes(user.id)
+        !currentIds.includes(user.id) &&
+        user.church === interestedChurch // Apenas membros da mesma igreja
       );
       
       setPotentialMissionaries(members);
@@ -197,7 +200,7 @@ export function DiscipuladoresManager({
             <DialogHeader>
               <DialogTitle>Adicionar Discipulador</DialogTitle>
               <DialogDescription>
-                Selecione um membro para ser o discipulador deste interessado.
+                Selecione um membro da igreja <strong>{interestedChurch}</strong> para ser o discipulador deste interessado.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -235,7 +238,10 @@ export function DiscipuladoresManager({
                           </div>
                           <div className="min-w-0 flex-1 overflow-hidden">
                             <div className="font-medium truncate text-sm">{member.name}</div>
-                            <div className="text-xs text-muted-foreground truncate">{member.email}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {member.email}
+                              {member.church && <span className="ml-2 text-blue-600">• {member.church}</span>}
+                            </div>
                           </div>
                         </div>
                         {isAdding && (

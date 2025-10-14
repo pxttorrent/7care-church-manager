@@ -602,6 +602,7 @@ export function UserCardResponsive({
             <div className="mt-1 flex items-center justify-start">
               <DiscipuladoresManager
                 interestedId={localUser.id}
+                interestedChurch={localUser.church || 'Igreja Principal'}
                 currentDiscipuladores={currentDiscipuladores}
                 onDiscipuladoresChange={handleDiscipuladoresChange}
               />
