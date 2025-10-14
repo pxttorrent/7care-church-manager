@@ -53,26 +53,47 @@ export const MobileBottomNav = () => {
   const handleNavigation = (path: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log('🔄 Navegação para:', path);
-    navigate(path);
+    
+    // Evitar navegação duplicada
+    if (location.pathname === path) {
+      console.log('🔄 Já está na página:', path);
+      return;
+    }
+    
+    console.log('🔄 Navegando para:', path);
+    
+    // Usar setTimeout para garantir que a navegação aconteça após o evento
+    setTimeout(() => {
+      navigate(path);
+    }, 0);
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t shadow-lg z-[9999] pointer-events-auto">
-      <div className="flex justify-around items-center py-2">
+    <nav className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t shadow-lg z-[99999] pointer-events-auto">
+      <div className="flex justify-around items-center py-2 pointer-events-auto">
         {allowedItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
             <button
               key={item.path}
               onClick={(e) => handleNavigation(item.path, e)}
-              className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors ${
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleNavigation(item.path, e as any);
+              }}
+              className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors pointer-events-auto ${
                 isActive ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground'
               }`}
-              style={{ touchAction: 'manipulation' }}
+              style={{ 
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent',
+                userSelect: 'none'
+              }}
+              type="button"
             >
-              <item.icon className="w-5 h-5 mb-1" />
-              <span className="text-xs font-medium">{item.title}</span>
+              <item.icon className="w-5 h-5 mb-1 pointer-events-none" />
+              <span className="text-xs font-medium pointer-events-none">{item.title}</span>
             </button>
           );
         })}
