@@ -57,10 +57,11 @@ export const MobileBottomNav = () => {
       return;
     }
     
-    console.log('🔄 Navegando de', location.pathname, '→', path);
+    console.log('🔄 FORÇANDO navegação de', location.pathname, '→', path);
     
-    // Navegar diretamente - React Router cuida do resto
-    navigate(path);
+    // SOLUÇÃO DEFINITIVA: Usar window.location.href para forçar navegação completa
+    // Isso garante que funciona mesmo se React Router estiver travado
+    window.location.href = path;
   };
 
   return (
