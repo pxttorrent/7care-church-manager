@@ -1187,6 +1187,12 @@ export default function Settings() {
             occupation: row.Ocupação || row.ocupacao || row.profissao || row.occupation,
             education: row['Grau de educação'] || row.educacao || row.education,
             
+            // ===== CAMPOS DE PONTUAÇÃO (COLUNAS DIRETAS DO BANCO) =====
+            
+            // Engajamento e Classificação (COLUNAS DIRETAS)
+            engajamento: row.Engajamento || row.engajamento || null,
+            classificacao: row.Classificação || row.classificacao || null,
+            
             // Dados financeiros
             ...(() => {
               const dizimistaResult = parseDizimistaField(row.Dizimista || row.dizimista);
@@ -1203,6 +1209,20 @@ export default function Settings() {
               };
             })(),
             
+            // Campos de pontuação - Colunas diretas do banco
+            tempoBatismoAnos: parseNumber(row['Tempo de batismo - anos'] || row.tempoBatismoAnos || row['Tempo de batismo']),
+            departamentosCargos: row['Departamentos e cargos'] || row.departamentosCargos || row.departamentos || null,
+            nomeUnidade: row['Nome da unidade'] || row.nomeUnidade || null,
+            temLicao: parseBooleanField(row['Tem lição'] || row.temLicao),
+            totalPresenca: parseNumber(row['Total de presença'] || row.totalPresenca || row.presencaTotal),
+            comunhao: parseNumber(row.Comunhão || row.comunhao),
+            missao: parseNumber(row.Missão || row.missao),
+            estudoBiblico: parseNumber(row['Estudo bíblico'] || row.estudoBiblico),
+            batizouAlguem: parseBooleanField(row['Batizou alguém'] || row.batizouAlguem),
+            discPosBatismal: parseNumber(row['Disc. pós batismal'] || row.discPosBatismal),
+            cpfValido: parseBooleanField(row['CPF válido'] || row.cpfValido),
+            camposVazios: parseBooleanField(row['Campos vazios/inválidos'] || row.camposVazios) === false ? false : true,
+            
             // Escola Sabatina
             isEnrolledES: parseBooleanField(row['Matriculado na ES'] || row.matriculadoES),
             hasLesson: parseBooleanField(row['Tem lição'] || row.temLicao),
@@ -1215,16 +1235,15 @@ export default function Settings() {
             // Departamentos
             departments: row['Departamentos e cargos'] || row.departamentos,
             
-            // Dados extras completos
+            // Dados extras completos (manter para compatibilidade)
             extraData: JSON.stringify({
               // Dados básicos
               sexo: row.Sexo || row.sexo,
               idade: row.Idade || row.idade,
               codigo: row.Código || row.codigo,
               
-              // Engajamento e classificação
-              engajamento: row.Engajamento || row.engajamento,
-              classificacao: row.Classificação || row.classificacao,
+              // REMOVIDO: engajamento e classificacao agora são colunas diretas
+              // REMOVIDO: campos de pontuação agora são colunas diretas
               
               // Telefone
               phoneWarning: phoneWarning,
@@ -1262,7 +1281,7 @@ export default function Settings() {
               localidadeBatismo: row['Localidade do batismo'] || row.localidadeBatismo,
               batizadoPor: row['Batizado por'] || row.batizadoPor,
               idadeBatismo: row['Idade no Batismo'] || row.idadeBatismo,
-              tempoBatismoAnos: row['Tempo de batismo - anos'] || row.tempoBatismoAnos,
+              // REMOVIDO: tempoBatismoAnos (agora é coluna direta)
               
               // Conversão
               comoConheceu: row['Como conheceu a IASD'] || row.comoConheceu,
@@ -1273,7 +1292,7 @@ export default function Settings() {
               // Cargos e departamentos
               temCargo: row['Tem cargo'] || row.temCargo,
               teen: row.Teen || row.teen,
-              departamentosCargos: row['Departamentos e cargos'] || row.departamentosCargos,
+              // REMOVIDO: departamentosCargos (agora é coluna direta)
               
               // Família
               nomeMae: row['Nome da mãe'] || row.nomeMae,
@@ -1286,22 +1305,15 @@ export default function Settings() {
               cidadeNascimento: row['Cidade de nascimento'] || row.cidadeNascimento,
               estadoNascimento: row['Estado de nascimento'] || row.estadoNascimento,
               
-              // Unidade
-              nomeUnidade: row['Nome da unidade'] || row.nomeUnidade,
+              // REMOVIDO: Campos que agora são colunas diretas do banco
+              // nomeUnidade, comunhao, missao, estudoBiblico, batizouAlguem, 
+              // discPosBatismal, totalPresenca, cpfValido, camposVazios, temLicao
               
-              // Atividades espirituais
-              comunhao: row.Comunhão || row.comunhao,
-              missao: row.Missão || row.missao,
-              estudoBiblico: row['Estudo bíblico'] || row.estudoBiblico,
-              batizouAlguem: row['Batizou alguém'] || row.batizouAlguem,
-              discPosBatismal: row['Disc. pós batismal'] || row.discPosBatismal,
-              
-              // Presença
+              // Presença (dados extras, não usados no cálculo)
               presencaTotal: row['Total presença no cartão'] || row.presencaTotal,
               presencaQuizLocal: row['Presença no quiz local'] || row.presencaQuizLocal,
               presencaQuizOutraUnidade: row['Presença no quiz outra unidade'] || row.presencaQuizOutraUnidade,
               presencaQuizOnline: row['Presença no quiz online'] || row.presencaQuizOnline,
-              totalPresenca: row['Total de presença'] || row.totalPresenca,
               teveParticipacao: row['Teve participação'] || row.teveParticipacao,
               
               // Colaboração
@@ -1310,17 +1322,12 @@ export default function Settings() {
               estabelecimentoColaborador: row['Estabelecimento - colaborador'] || row.estabelecimentoColaborador,
               funcaoColaborador: row['Função - colaborador'] || row.funcaoColaborador,
               
-              // Validação
-              camposVazios: row['Campos vazios/inválidos'] || row.camposVazios,
-              cpfValido: row['CPF válido'] || row.cpfValido,
+              // Validação (referência para debug)
               nomeCamposVazios: row['Nome dos campos vazios no ACMS'] || row.nomeCamposVazios,
               
               // Educação
               alunoEducacao: row['Aluno educação Adv.'] || row.alunoEducacao,
-              parentesco: row['Parentesco p/ c/ aluno'] || row.parentesco,
-              
-              // Lição
-              temLicao: parseBooleanField(row['Tem lição'] || row.temLicao)
+              parentesco: row['Parentesco p/ c/ aluno'] || row.parentesco
             }),
             
             // Observações
