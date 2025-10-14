@@ -41,13 +41,23 @@ export function DiscipuladoresManager({
 
   // Filtrar membros disponíveis de forma otimizada (useMemo)
   const potentialMissionaries = useMemo(() => {
+    console.log('🔍 Filtrando discipuladores para igreja:', interestedChurch);
+    console.log('📊 Total de usuários carregados:', allUsers.length);
+    
     const currentIds = currentDiscipuladores.map(d => d.id);
     
-    return allUsers.filter((user: any) => 
-      (user.role === 'member' || user.role === 'missionary') && 
-      !currentIds.includes(user.id) &&
-      user.church === interestedChurch // Apenas membros da mesma igreja
-    );
+    const filtered = allUsers.filter((user: any) => {
+      const isMemberOrMissionary = user.role === 'member' || user.role === 'missionary';
+      const isNotCurrent = !currentIds.includes(user.id);
+      const isSameChurch = user.church === interestedChurch;
+      
+      return isMemberOrMissionary && isNotCurrent && isSameChurch;
+    });
+    
+    console.log('✅ Membros filtrados da mesma igreja:', filtered.length);
+    console.log('📋 Igrejas únicas nos resultados:', [...new Set(filtered.map(u => u.church))]);
+    
+    return filtered;
   }, [allUsers, currentDiscipuladores, interestedChurch]);
 
   const handleAddDiscipulador = useCallback(async (missionaryId: number) => {
