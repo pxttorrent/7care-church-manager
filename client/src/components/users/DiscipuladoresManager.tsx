@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { X, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useQuery } from '@tanstack/react-query';
 
 interface DiscipuladoresManagerProps {
   interestedId: number;
@@ -19,48 +20,35 @@ export function DiscipuladoresManager({
   currentDiscipuladores, 
   onDiscipuladoresChange 
 }: DiscipuladoresManagerProps) {
-  const [potentialMissionaries, setPotentialMissionaries] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [isRemoving, setIsRemoving] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // Carregar membros disponíveis
-  useEffect(() => {
-    loadPotentialMissionaries();
-  }, []);
-
-  const loadPotentialMissionaries = async () => {
-    setLoading(true);
-    try {
+  // Buscar todos os usuários com cache (React Query)
+  const { data: allUsers = [], isLoading: loading } = useQuery({
+    queryKey: ['users'],
+    queryFn: async () => {
       const response = await fetch('/api/users');
       if (!response.ok) {
         throw new Error('Erro ao carregar usuários');
       }
-      
-      const users = await response.json();
-      
-      // Filtrar apenas membros/missionários da MESMA IGREJA que não são discipuladores atuais
-      const currentIds = currentDiscipuladores.map(d => d.id);
-      const members = users.filter((user: any) => 
-        (user.role.includes('member') || user.role.includes('missionary')) && 
-        !currentIds.includes(user.id) &&
-        user.church === interestedChurch // Apenas membros da mesma igreja
-      );
-      
-      setPotentialMissionaries(members);
-    } catch (error) {
-      console.error('Erro ao carregar membros:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar a lista de membros",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000, // Cache por 5 minutos
+    cacheTime: 10 * 60 * 1000, // Manter em cache por 10 minutos
+  });
+
+  // Filtrar membros disponíveis de forma otimizada (useMemo)
+  const potentialMissionaries = useMemo(() => {
+    const currentIds = currentDiscipuladores.map(d => d.id);
+    
+    return allUsers.filter((user: any) => 
+      (user.role === 'member' || user.role === 'missionary') && 
+      !currentIds.includes(user.id) &&
+      user.church === interestedChurch // Apenas membros da mesma igreja
+    );
+  }, [allUsers, currentDiscipuladores, interestedChurch]);
 
   const handleAddDiscipulador = useCallback(async (missionaryId: number) => {
     setIsAdding(true);
@@ -144,8 +132,7 @@ export function DiscipuladoresManager({
         description: "Discipulador removido com sucesso",
       });
 
-      // Recarregar lista de disponíveis
-      loadPotentialMissionaries();
+      // A lista de disponíveis será atualizada automaticamente pelo useMemo
     } catch (error) {
       console.error('Erro ao remover discipulador:', error);
       toast({
@@ -158,40 +145,45 @@ export function DiscipuladoresManager({
     }
   }, [currentDiscipuladores, onDiscipuladoresChange, toast]);
 
-  if (currentDiscipuladores.length === 0) {
-    return (
-      <div className="flex items-center justify-start py-2">
-        <span className="text-sm text-gray-500">Nenhum discipulador atribuído</span>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-1 justify-start">
-        {currentDiscipuladores.map((discipulador) => (
-          <Badge
-            key={discipulador.id}
-            variant="secondary"
-            className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border-blue-200"
-          >
-            {discipulador.name}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-4 w-4 p-0 ml-1 hover:bg-blue-100"
-              onClick={() => handleRemoveDiscipulador(discipulador.relationshipId)}
-              disabled={isRemoving === discipulador.relationshipId}
+      {/* Lista de discipuladores atuais */}
+      {currentDiscipuladores.length > 0 && (
+        <div className="flex flex-wrap gap-1 justify-start">
+          {currentDiscipuladores.map((discipulador) => (
+            <Badge
+              key={discipulador.id}
+              variant="secondary"
+              className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border-blue-200"
             >
-              {isRemoving === discipulador.relationshipId ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <X className="h-3 w-3" />
-              )}
-            </Button>
-          </Badge>
-        ))}
-      </div>
+              {discipulador.name}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-4 w-4 p-0 ml-1 hover:bg-blue-100"
+                onClick={() => handleRemoveDiscipulador(discipulador.relationshipId)}
+                disabled={isRemoving === discipulador.relationshipId}
+              >
+                {isRemoving === discipulador.relationshipId ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <X className="h-3 w-3" />
+                )}
+              </Button>
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      {/* Botão para adicionar discipulador */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setShowAddModal(true)}
+        className="text-xs h-7"
+      >
+        + Adicionar Discipulador
+      </Button>
       
 
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
@@ -201,15 +193,26 @@ export function DiscipuladoresManager({
               <DialogTitle>Adicionar Discipulador</DialogTitle>
               <DialogDescription>
                 Selecione um membro da igreja <strong>{interestedChurch}</strong> para ser o discipulador deste interessado.
+                {!loading && potentialMissionaries.length > 0 && (
+                  <span className="block mt-1 text-blue-600">
+                    {potentialMissionaries.length} {potentialMissionaries.length === 1 ? 'membro disponível' : 'membros disponíveis'}
+                  </span>
+                )}
               </DialogDescription>
             </DialogHeader>
           </div>
           
           <div className="flex-1 min-h-0 px-6 py-4">
             {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
-                <span className="ml-2">Carregando membros...</span>
+              <div className="flex flex-col items-center justify-center py-8 space-y-2">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <span className="text-sm text-gray-600">Carregando membros da {interestedChurch}...</span>
+              </div>
+            ) : potentialMissionaries.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 space-y-2">
+                <div className="text-gray-400 text-4xl">👥</div>
+                <p className="text-sm text-gray-600">Nenhum membro disponível nesta igreja</p>
+                <p className="text-xs text-gray-400">Todos os membros já são discipuladores</p>
               </div>
             ) : (
               <Command className="h-full">
