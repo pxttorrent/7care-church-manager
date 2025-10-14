@@ -29,14 +29,14 @@ export const MobileLayout = ({ children, showBottomNav = true }: MobileLayoutPro
     }
   }, [isAdmin]);
 
-  // Pull to Refresh
+  // Pull to Refresh - DESABILITADO para evitar conflito com navegação
   const { containerRef, pullDistance, isRefreshing, progress } = usePullToRefresh({
     onRefresh: async () => {
       // Recarregar a página atual
       window.location.reload();
     },
     threshold: 80,
-    enabled: true
+    enabled: false // ← DESABILITADO temporariamente
   });
 
   if (isLoading) {
