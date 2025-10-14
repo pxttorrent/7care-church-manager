@@ -5068,6 +5068,56 @@ app.delete("/api/relationships/active/:interestedId", async (req, res) => {
     return 'igreja-local'; // Tipo padrão
   }
 
+  // ========================================
+  // 🔧 PROXY PARA GOOGLE SHEETS (EVITAR CORS)
+  // ========================================
+  
+  app.post('/api/google-sheets/proxy', async (req, res) => {
+    try {
+      const { action, spreadsheetId, sheetName, taskData, taskId, eventData } = req.body;
+      
+      console.log(`📊 Proxy Google Sheets - Ação: ${action}`);
+      
+      const googleScriptUrl = 'https://script.google.com/macros/s/AKfycbz_AIumumkUMdw_yCX-N2aScgn08Yy7_Quma3U6sFZOJ0Mi5snRAcIyJq3QdUVeV3fV/exec';
+      
+      const payload = {
+        action,
+        spreadsheetId,
+        sheetName,
+        taskData,
+        taskId,
+        eventData
+      };
+      
+      console.log(`📤 Enviando para Google Apps Script:`, action);
+      
+      const response = await fetch(googleScriptUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        redirect: 'follow'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Google Apps Script retornou ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log(`✅ Resposta do Google Apps Script:`, result.success ? 'Sucesso' : 'Falha');
+      
+      res.json(result);
+      
+    } catch (error) {
+      console.error('❌ Erro no proxy Google Sheets:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: (error as Error).message 
+      });
+    }
+  });
+
   // Adicionar rotas de importação
   importRoutes(app);
 

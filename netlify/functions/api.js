@@ -396,6 +396,61 @@ exports.handler = async (event, context) => {
       }
     }
 
+    // 🔧 PROXY PARA GOOGLE SHEETS (EVITAR CORS)
+    if (path === '/api/google-sheets/proxy' && method === 'POST') {
+      try {
+        const { action, spreadsheetId, sheetName, taskData, taskId, eventData } = JSON.parse(body);
+        
+        console.log(`📊 Proxy Google Sheets - Ação: ${action}`);
+        
+        const googleScriptUrl = 'https://script.google.com/macros/s/AKfycbz_AIumumkUMdw_yCX-N2aScgn08Yy7_Quma3U6sFZOJ0Mi5snRAcIyJq3QdUVeV3fV/exec';
+        
+        const payload = {
+          action,
+          spreadsheetId,
+          sheetName,
+          taskData,
+          taskId,
+          eventData
+        };
+        
+        console.log(`📤 Enviando para Google Apps Script:`, action);
+        
+        const response = await fetch(googleScriptUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          redirect: 'follow'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Google Apps Script retornou ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log(`✅ Resposta do Google Apps Script:`, result.success ? 'Sucesso' : 'Falha');
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify(result)
+        };
+        
+      } catch (error) {
+        console.error('❌ Erro no proxy Google Sheets:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            error: error.message
+          })
+        };
+      }
+    }
+
     // Rota para verificar eventos pendentes do Google Drive
     if (path === '/api/google-drive/pending-events' && method === 'GET') {
       try {
@@ -1393,25 +1448,34 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // Rota para criar eventos
+    // Rota para criar eventos (suporta evento único ou array)
     if (path === '/api/calendar/events' && method === 'POST') {
       try {
         const body = JSON.parse(event.body || '{}');
-        const { events: eventsArray } = body;
         
-        if (!eventsArray || !Array.isArray(eventsArray)) {
+        // Detectar se é um único evento ou um array de eventos
+        let eventsArray = [];
+        if (body.events && Array.isArray(body.events)) {
+          // Formato de importação em massa: { events: [...] }
+          eventsArray = body.events;
+        } else if (body.title) {
+          // Formato de evento único: { title, date, ... }
+          eventsArray = [body];
+        } else {
           return {
             statusCode: 400,
             headers,
-            body: JSON.stringify({ error: 'Array de eventos é obrigatório' })
+            body: JSON.stringify({ error: 'Dados de evento(s) inválidos' })
           };
         }
 
         const createdEvents = [];
         
         for (const eventData of eventsArray) {
-          // Validar dados obrigatórios
-          if (!eventData.title || !eventData.startDate) {
+          // Validar dados obrigatórios (aceita date OU startDate)
+          const eventDate = eventData.date || eventData.startDate;
+          if (!eventData.title || !eventDate) {
+            console.log('⚠️ Evento inválido (faltando title ou date):', eventData);
             continue; // Pular eventos inválidos
           }
 
@@ -1480,23 +1544,28 @@ exports.handler = async (event, context) => {
           
           const categoryMapping = mapEventTypeInline(eventData.category || eventData.type || 'igreja-local');
           
+          // Usar date/end_date OU startDate/endDate
+          const eventStartDate = eventData.date || eventData.startDate;
+          const eventEndDate = eventData.end_date || eventData.endDate || eventStartDate;
+          
           // Preparar dados para inserção (apenas colunas que existem na tabela)
           const insertData = {
             title: eventData.title,
             description: eventData.description || '',
-            date: eventData.startDate,
-            end_date: eventData.endDate || eventData.startDate,
+            date: eventStartDate,
+            end_date: eventEndDate,
             type: categoryMapping.type,
             color: categoryMapping.color,
             location: eventData.location || '',
-            capacity: eventData.maxAttendees || 50
+            capacity: eventData.maxAttendees || 50,
+            created_by: eventData.created_by || 1
           };
 
           // Inserir evento no banco
           const result = await sql`
-            INSERT INTO events (title, description, date, end_date, type, color, location, capacity, created_at, updated_at)
-            VALUES (${insertData.title}, ${insertData.description}, ${insertData.date}::date, ${insertData.end_date}::date, ${insertData.type}, ${insertData.color}, ${insertData.location}, ${insertData.capacity}, NOW(), NOW())
-            RETURNING id, title, date, type, color
+            INSERT INTO events (title, description, date, end_date, type, color, location, capacity, created_by, created_at, updated_at)
+            VALUES (${insertData.title}, ${insertData.description}, ${insertData.date}::date, ${insertData.end_date}::date, ${insertData.type}, ${insertData.color}, ${insertData.location}, ${insertData.capacity}, ${insertData.created_by}, NOW(), NOW())
+            RETURNING id, title, date, end_date, type, color, location, description, capacity, created_by
           `;
 
           if (result.length > 0) {
@@ -1505,15 +1574,26 @@ exports.handler = async (event, context) => {
           }
         }
 
-        // Tentar adicionar eventos à planilha do Google Drive se configurada
-        try {
-          console.log('📊 [CREATE-EVENT] Tentando adicionar eventos à planilha do Google Drive...');
-          await addEventsToGoogleDrive(createdEvents);
-          console.log(`✅ [CREATE-EVENT] ${createdEvents.length} eventos processados para a planilha do Google Drive`);
-        } catch (googleError) {
-          console.log('⚠️ [CREATE-EVENT] Não foi possível adicionar à planilha do Google Drive:', googleError.message);
-        }
+        // TEMPORÁRIO: Desabilitado para evitar duplicação até implementar sistema offline correto
+        // A sincronização com Google Sheets deve ser feita manualmente via botão "Sincronizar Google Drive"
+        // try {
+        //   console.log('📊 [CREATE-EVENT] Tentando adicionar eventos à planilha do Google Drive...');
+        //   await addEventsToGoogleDrive(createdEvents);
+        //   console.log(`✅ [CREATE-EVENT] ${createdEvents.length} eventos processados para a planilha do Google Drive`);
+        // } catch (googleError) {
+        //   console.log('⚠️ [CREATE-EVENT] Não foi possível adicionar à planilha do Google Drive:', googleError.message);
+        // }
 
+        // Se foi um único evento, retornar formato simples
+        if (!body.events && body.title && createdEvents.length === 1) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify(createdEvents[0])
+          };
+        }
+        
+        // Se foi importação em massa, retornar formato com array
         return {
           statusCode: 200,
           headers,
@@ -9874,73 +9954,85 @@ exports.handler = async (event, context) => {
     // Rota para limpar tudo
     if (path === '/api/system/clear-all' && method === 'POST') {
       try {
-        console.log('🧹 Iniciando limpeza completa de todos os dados...');
+        console.log('🧹 Iniciando limpeza completa de todos os dados do sistema...');
         
         // Limpar todas as tabelas na ordem correta (respeitando foreign keys)
+        // Tabelas dependentes primeiro, principais depois
         const queries = [
-          // Tabelas dependentes primeiro
-          'DELETE FROM prayer_intercessors',
-          'DELETE FROM prayers',
-          'DELETE FROM video_call_participants',
-          'DELETE FROM video_call_sessions',
-          'DELETE FROM conversation_participants',
-          'DELETE FROM user_achievements',
-          'DELETE FROM user_points_history',
-          'DELETE FROM event_participants',
-          'DELETE FROM event_filter_permissions',
-          'DELETE FROM event_permissions',
-          'DELETE FROM system_settings',
-          'DELETE FROM system_config',
-          'DELETE FROM point_activities',
-          'DELETE FROM achievements',
-          'DELETE FROM point_configs',
-          'DELETE FROM emotional_checkins',
-          'DELETE FROM discipleship_requests',
-          'DELETE FROM relationships',
-          'DELETE FROM missionary_profiles',
-          'DELETE FROM notifications',
-          'DELETE FROM messages',
-          'DELETE FROM conversations',
-          'DELETE FROM meetings',
-          'DELETE FROM meeting_types',
-          'DELETE FROM events',
-          'DELETE FROM churches',
+          // Tabelas dependentes (relacionamentos e vínculos)
+          { query: 'DELETE FROM video_call_participants', description: 'Participantes de vídeo' },
+          { query: 'DELETE FROM conversation_participants', description: 'Participantes de conversas' },
+          { query: 'DELETE FROM event_participants', description: 'Participantes de eventos' },
+          { query: 'DELETE FROM prayer_intercessors', description: 'Intercessores de oração' },
+          { query: 'DELETE FROM user_achievements', description: 'Conquistas de usuários' },
+          { query: 'DELETE FROM user_points_history', description: 'Histórico de pontos' },
+          { query: 'DELETE FROM point_activities', description: 'Atividades de pontos' },
+          { query: 'DELETE FROM messages', description: 'Mensagens' },
+          { query: 'DELETE FROM push_subscriptions', description: 'Subscriptions push' },
+          
+          // Tabelas principais
+          { query: 'DELETE FROM video_call_sessions', description: 'Sessões de vídeo' },
+          { query: 'DELETE FROM conversations', description: 'Conversas' },
+          { query: 'DELETE FROM events', description: 'Eventos' },
+          { query: 'DELETE FROM meetings', description: 'Reuniões' },
+          { query: 'DELETE FROM prayers', description: 'Orações' },
+          { query: 'DELETE FROM notifications', description: 'Notificações' },
+          { query: 'DELETE FROM emotional_checkins', description: 'Check-ins emocionais' },
+          { query: 'DELETE FROM relationships', description: 'Relacionamentos' },
+          { query: 'DELETE FROM discipleship_requests', description: 'Solicitações de discipulado' },
+          { query: 'DELETE FROM missionary_profiles', description: 'Perfis missionários' },
+          { query: 'DELETE FROM meeting_types', description: 'Tipos de reunião' },
+          { query: 'DELETE FROM achievements', description: 'Conquistas' },
+          { query: 'DELETE FROM point_configs', description: 'Configurações de pontos' },
+          { query: 'DELETE FROM churches', description: 'Igrejas' },
+          
           // Usuários por último (exceto admin) - isso já limpa o visitômetro
-          "DELETE FROM users WHERE email != 'admin@7care.com'"
+          { query: "DELETE FROM users WHERE role != 'admin'", description: 'Usuários (mantendo admin)' }
         ];
         
         let successCount = 0;
         let errorCount = 0;
+        const errors = [];
         
-        for (const query of queries) {
+        for (const item of queries) {
           try {
-            await sql`${sql.unsafe(query)}`;
-            console.log(`✅ Executado: ${query}`);
+            console.log(`  🗑️ Limpando ${item.description}...`);
+            await sql`${sql.unsafe(item.query)}`;
+            console.log(`  ✅ ${item.description} limpo`);
             successCount++;
           } catch (error) {
-            console.log(`⚠️ Aviso ao executar ${query}:`, error.message);
+            console.log(`  ⚠️ Aviso ao limpar ${item.description}:`, error.message);
+            errors.push({ table: item.description, error: error.message });
             errorCount++;
             // Continuar mesmo se uma tabela não existir
           }
         }
         
-        console.log(`🎉 Limpeza concluída: ${successCount} tabelas limpas, ${errorCount} avisos`);
+        console.log(`\n✅ Limpeza concluída!`);
+        console.log(`   Operações bem-sucedidas: ${successCount}`);
+        console.log(`   Avisos/Erros: ${errorCount}`);
+        console.log(`ℹ️ Mantidos: usuários admin, system_config, system_settings, event_filter_permissions`);
         
         return {
           statusCode: 200,
           headers,
           body: JSON.stringify({ 
             success: true, 
-            message: `Sistema limpo com sucesso! ${successCount} operações executadas. Todos os dados foram removidos, incluindo o visitômetro.`,
+            message: `Todos os dados foram limpos com sucesso! ${successCount} operações executadas.`,
             details: {
               operationsExecuted: successCount,
               warnings: errorCount,
+              errors: errors.length > 0 ? errors : undefined,
               timestamp: new Date().toISOString(),
-              clearedData: {
-                tables: ['prayers', 'events', 'users', 'meetings', 'churches', 'relationships', 'notifications', 'messages', 'conversations'],
-                visitometer: ['visited', 'visitCount', 'lastVisitDate'],
-                systemData: ['settings', 'configurations', 'permissions', 'achievements', 'points']
-              }
+              maintained: ['usuários admin', 'system_config', 'system_settings', 'event_filter_permissions'],
+              cleared: [
+                'users (exceto admin)', 'events', 'meetings', 'churches', 'relationships', 
+                'prayers', 'notifications', 'messages', 'conversations', 'discipleship_requests',
+                'missionary_profiles', 'emotional_checkins', 'achievements', 'point_configs',
+                'point_activities', 'user_achievements', 'user_points_history', 'meeting_types',
+                'event_participants', 'prayer_intercessors', 'video_call_sessions', 
+                'video_call_participants', 'conversation_participants', 'push_subscriptions'
+              ]
             }
           })
         };
@@ -12203,93 +12295,169 @@ exports.handler = async (event, context) => {
           const values = parseCSVLine(lines[i]);
           console.log(`📝 [SYNC] Line ${i}:`, values);
           
-          // Verificar se a linha tem dados suficientes
-          if (values.length >= 3 && values[0] && values[1] && values[2]) {
+          // FORMATO CORRETO DO GOOGLE SHEETS:
+          // values[0] = ID (pular)
+          // values[1] = Título
+          // values[2] = Data Início
+          // values[3] = Data Fim
+          // values[4] = Categoria
+          // values[5] = Descrição
+          // values[6] = Local (opcional)
+          
+          // Verificar se a linha tem dados suficientes (precisa ter pelo menos ID, título, data início, data fim)
+          if (values.length >= 4 && values[1] && values[2] && values[3]) {
             console.log(`✅ [SYNC] Line ${i} has sufficient data`);
             
-            const categoryData = mapEventType(values[3]);
+            const categoryData = mapEventType(values[4] || '');
             console.log(`🏷️ [SYNC] Line ${i} category mapped:`, categoryData);
             
-            const parsedStartDate = parseBrazilianDate(values[1]);
-            const parsedEndDate = parseBrazilianDate(values[2]);
+            const parsedStartDate = parseBrazilianDate(values[2]);
+            const parsedEndDate = parseBrazilianDate(values[3]);
             console.log(`📅 [SYNC] Line ${i} dates parsed:`, {
-              start: values[1], parsedStart: parsedStartDate,
-              end: values[2], parsedEnd: parsedEndDate
+              start: values[2], parsedStart: parsedStartDate,
+              end: values[3], parsedEnd: parsedEndDate
             });
             
             if (parsedStartDate && parsedEndDate) {
               const event = {
-                title: values[0] || 'Evento',
+                title: values[1] || 'Evento',
                 date: parsedStartDate,
                 end_date: parsedEndDate,
                 type: categoryData.type,
                 color: categoryData.color,
-                description: values[4] || ''
+                description: values[5] || '',
+                location: values[6] || ''
               };
               events.push(event);
               console.log('✅ [SYNC] Event created and added:', event);
             } else {
               console.log('❌ [SYNC] Line skipped (invalid dates):', {
-                start: values[1], parsedStart: parsedStartDate,
-                end: values[2], parsedEnd: parsedEndDate
+                start: values[2], parsedStart: parsedStartDate,
+                end: values[3], parsedEnd: parsedEndDate
               });
             }
           } else {
             console.log('❌ [SYNC] Line skipped (insufficient data):', {
               valuesLength: values.length,
-              title: values[0],
-              startDate: values[1],
-              endDate: values[2]
+              id: values[0],
+              title: values[1],
+              startDate: values[2],
+              endDate: values[3]
             });
           }
         }
         
         if (events.length === 0) {
-          console.log('❌ [SYNC] Nenhum evento válido encontrado');
+          console.log('⚠️ [SYNC] Nenhum evento encontrado no Google Sheets - NÃO vou deletar eventos existentes');
           return {
-            statusCode: 400,
+            statusCode: 200,
             headers,
-            body: JSON.stringify({ error: 'Nenhum evento válido encontrado' })
+            body: JSON.stringify({ 
+              success: true,
+              importedCount: 0,
+              totalEvents: 0,
+              message: 'Planilha vazia - eventos existentes preservados'
+            })
           };
         }
         
-        console.log('🗑️ [SYNC] Limpando eventos existentes...');
-        try {
-          await sql`DELETE FROM events`;
-          console.log('🗑️ [SYNC] Eventos existentes removidos');
-        } catch (dbError) {
-          console.log('⚠️ [SYNC] Erro ao limpar eventos:', dbError.message);
-          // Continuar mesmo com erro de limpeza
+        console.log('🔄 [SYNC] Sincronizando eventos de forma inteligente...');
+        
+        // 1. Buscar eventos existentes no banco
+        const existingEvents = await sql`SELECT id, title, date, end_date, type, description, location FROM events`;
+        console.log(`📊 [SYNC] ${existingEvents.length} eventos no banco, ${events.length} eventos no Sheets`);
+        
+        // 2. Criar mapas para comparação usando apenas título + data (SEM tipo para evitar problemas)
+        const existingEventsMap = new Map();
+        existingEvents.forEach(e => {
+          const dateStr = e.date.toISOString().split('T')[0];
+          const key = `${e.title.toLowerCase().trim()}_${dateStr}`;
+          existingEventsMap.set(key, e);
+        });
+        
+        const sheetsEventsMap = new Map();
+        events.forEach(e => {
+          const key = `${e.title.toLowerCase().trim()}_${e.date}`;
+          sheetsEventsMap.set(key, e);
+        });
+        
+        let importedCount = 0;
+        let updatedCount = 0;
+        let deletedCount = 0;
+        
+        // 3. PROTEÇÃO: NÃO deletar nada se tiver menos de 10 eventos no Sheets
+        // (possível erro de leitura)
+        const shouldDelete = events.length >= 10;
+        
+        if (!shouldDelete) {
+          console.log('⚠️ [SYNC] PROTEÇÃO ATIVADA: Poucos eventos no Sheets, não vou deletar nada do banco');
         }
         
-        // Inserir novos eventos
-        let importedCount = 0;
-        for (const eventData of events) {
-          try {
-            console.log(`🔄 [SYNC] Inserindo evento no banco:`, {
-              title: eventData.title,
-              date: eventData.date,
-              end_date: eventData.end_date,
-              type: eventData.type,
-              color: eventData.color,
-              description: eventData.description
-            });
-            
-            const result = await sql`
-              INSERT INTO events (title, date, end_date, type, color, description, created_at, updated_at)
-              VALUES (${eventData.title}, ${eventData.date}::date, ${eventData.end_date}::date, ${eventData.type}, ${eventData.color}, ${eventData.description}, NOW(), NOW())
-              RETURNING id
-            `;
-            
-            importedCount++;
-            console.log(`✅ [SYNC] Evento ${importedCount} inserido com sucesso:`, eventData.title, `(ID: ${result[0]?.id}, categoria: ${eventData.type}, cor: ${eventData.color})`);
-          } catch (error) {
-            console.error('❌ [SYNC] Erro ao inserir evento:', error.message);
-            console.error('❌ [SYNC] Detalhes completos do erro:', error);
+        // 4. Deletar eventos que não estão mais no Sheets (COM PROTEÇÃO)
+        if (shouldDelete) {
+          for (const existingEvent of existingEvents) {
+            const dateStr = existingEvent.date.toISOString().split('T')[0];
+            const key = `${existingEvent.title.toLowerCase().trim()}_${dateStr}`;
+            if (!sheetsEventsMap.has(key)) {
+              console.log(`🗑️ [SYNC] Deletando evento ausente no Sheets: ${existingEvent.title}`);
+              try {
+                await sql`DELETE FROM events WHERE id = ${existingEvent.id}`;
+                deletedCount++;
+              } catch (error) {
+                console.error(`❌ [SYNC] Erro ao deletar evento ${existingEvent.id}:`, error.message);
+              }
+            }
           }
         }
         
-        console.log(`✅ [SYNC] Sincronização concluída: ${importedCount} eventos importados de ${events.length} eventos processados`);
+        // 5. Inserir ou atualizar eventos do Sheets
+        for (const eventData of events) {
+          const key = `${eventData.title.toLowerCase().trim()}_${eventData.date}`;
+          const existingEvent = existingEventsMap.get(key);
+          
+          try {
+            if (!existingEvent) {
+              // Evento novo - inserir
+              console.log(`➕ [SYNC] Inserindo novo evento:`, eventData.title);
+              
+              await sql`
+                INSERT INTO events (title, date, end_date, type, color, description, location, created_at, updated_at)
+                VALUES (${eventData.title}, ${eventData.date}::date, ${eventData.end_date}::date, ${eventData.type}, ${eventData.color}, ${eventData.description}, ${eventData.location || ''}, NOW(), NOW())
+                ON CONFLICT DO NOTHING
+              `;
+              importedCount++;
+            } else {
+              // Evento existe - verificar se precisa atualizar
+              const needsUpdate = 
+                existingEvent.end_date?.toISOString().split('T')[0] !== eventData.end_date ||
+                existingEvent.description !== eventData.description ||
+                existingEvent.location !== (eventData.location || '');
+              
+              if (needsUpdate) {
+                console.log(`📝 [SYNC] Atualizando evento:`, eventData.title);
+                await sql`
+                  UPDATE events 
+                  SET 
+                    date = ${eventData.date}::date,
+                    end_date = ${eventData.end_date}::date,
+                    description = ${eventData.description},
+                    location = ${eventData.location || ''},
+                    updated_at = NOW()
+                  WHERE id = ${existingEvent.id}
+                `;
+                updatedCount++;
+              }
+            }
+          } catch (error) {
+            console.error('❌ [SYNC] Erro ao processar evento:', error.message);
+          }
+        }
+        
+        console.log(`✅ [SYNC] Sincronização concluída:`);
+        console.log(`   - Novos: ${importedCount}`);
+        console.log(`   - Atualizados: ${updatedCount}`);
+        console.log(`   - Deletados: ${deletedCount}`);
+        console.log(`   - Total no Sheets: ${events.length}`);
         
         return {
           statusCode: 200,
@@ -12301,8 +12469,10 @@ exports.handler = async (event, context) => {
           },
           body: JSON.stringify({
             success: true,
-            message: `Sincronização concluída: ${importedCount} eventos importados`,
+            message: `Sincronizado: ${importedCount} novos, ${updatedCount} atualizados, ${deletedCount} removidos`,
             importedCount,
+            updatedCount,
+            deletedCount,
             totalEvents: events.length
           })
         };
@@ -12964,12 +13134,17 @@ exports.handler = async (event, context) => {
         
         console.log('📋 [TASKS] Update data:', updateData);
         
-        // Usar template literal do Neon
+        // 🆕 UPDATE COMPLETO com todos os campos
         const result = await sql`
           UPDATE tasks 
           SET 
-            status = ${updateData.status || 'pending'},
-            completed_at = ${updateData.completed_at || null},
+            title = COALESCE(${updateData.title}, title),
+            description = COALESCE(${updateData.description}, description),
+            status = COALESCE(${updateData.status}, status),
+            priority = COALESCE(${updateData.priority}, priority),
+            due_date = COALESCE(${updateData.due_date}, due_date),
+            assigned_to = COALESCE(${updateData.assigned_to}, assigned_to),
+            completed_at = ${updateData.completed_at !== undefined ? updateData.completed_at : sql`completed_at`},
             updated_at = ${updateData.updated_at}
           WHERE id = ${parseInt(taskId)}
           RETURNING *

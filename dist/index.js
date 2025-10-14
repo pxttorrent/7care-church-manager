@@ -339,7 +339,7 @@ var schema = {
 };
 
 // server/neonAdapter.ts
-import { eq, and, desc, asc, or } from "drizzle-orm";
+import { eq, and, desc, asc, ne, or } from "drizzle-orm";
 import * as bcrypt from "bcryptjs";
 var NeonAdapter = class {
   // ========== USUÁRIOS ==========
@@ -1288,14 +1288,59 @@ var NeonAdapter = class {
   }
   async clearAllData() {
     try {
-      await db.delete(schema.events);
-      await db.delete(schema.meetings);
+      console.log("\u{1F9F9} Iniciando limpeza completa de todos os dados do sistema...");
+      console.log("  \u{1F5D1}\uFE0F Limpando participantes de v\xEDdeo...");
+      await db.delete(schema.videoCallParticipants);
+      console.log("  \u{1F5D1}\uFE0F Limpando participantes de conversas...");
+      await db.delete(schema.conversationParticipants);
+      console.log("  \u{1F5D1}\uFE0F Limpando participantes de eventos...");
+      await db.delete(schema.eventParticipants);
+      console.log("  \u{1F5D1}\uFE0F Limpando intercessores de ora\xE7\xE3o...");
+      await db.delete(schema.prayerIntercessors);
+      console.log("  \u{1F5D1}\uFE0F Limpando conquistas de usu\xE1rios...");
+      await db.delete(schema.userAchievements);
+      console.log("  \u{1F5D1}\uFE0F Limpando hist\xF3rico de pontos...");
+      await db.delete(schema.userPointsHistory);
+      console.log("  \u{1F5D1}\uFE0F Limpando atividades de pontos...");
+      await db.delete(schema.pointActivities);
+      console.log("  \u{1F5D1}\uFE0F Limpando mensagens...");
       await db.delete(schema.messages);
-      await db.delete(schema.notifications);
+      console.log("  \u{1F5D1}\uFE0F Limpando sess\xF5es de v\xEDdeo...");
+      await db.delete(schema.videoCallSessions);
+      console.log("  \u{1F5D1}\uFE0F Limpando conversas...");
+      await db.delete(schema.conversations);
+      console.log("  \u{1F5D1}\uFE0F Limpando eventos...");
+      await db.delete(schema.events);
+      console.log("  \u{1F5D1}\uFE0F Limpando reuni\xF5es...");
+      await db.delete(schema.meetings);
+      console.log("  \u{1F5D1}\uFE0F Limpando ora\xE7\xF5es...");
       await db.delete(schema.prayers);
-      console.log("Todos os dados foram limpos");
+      console.log("  \u{1F5D1}\uFE0F Limpando notifica\xE7\xF5es...");
+      await db.delete(schema.notifications);
+      console.log("  \u{1F5D1}\uFE0F Limpando subscriptions push...");
+      await db.delete(schema.pushSubscriptions);
+      console.log("  \u{1F5D1}\uFE0F Limpando check-ins emocionais...");
+      await db.delete(schema.emotionalCheckins);
+      console.log("  \u{1F5D1}\uFE0F Limpando relacionamentos...");
+      await db.delete(schema.relationships);
+      console.log("  \u{1F5D1}\uFE0F Limpando solicita\xE7\xF5es de discipulado...");
+      await db.delete(schema.discipleshipRequests);
+      console.log("  \u{1F5D1}\uFE0F Limpando perfis mission\xE1rios...");
+      await db.delete(schema.missionaryProfiles);
+      console.log("  \u{1F5D1}\uFE0F Limpando tipos de reuni\xE3o...");
+      await db.delete(schema.meetingTypes);
+      console.log("  \u{1F5D1}\uFE0F Limpando conquistas...");
+      await db.delete(schema.achievements);
+      console.log("  \u{1F5D1}\uFE0F Limpando configura\xE7\xF5es de pontos...");
+      await db.delete(schema.pointConfigs);
+      console.log("  \u{1F5D1}\uFE0F Limpando igrejas...");
+      await db.delete(schema.churches);
+      console.log("  \u{1F5D1}\uFE0F Limpando usu\xE1rios (mantendo admin)...");
+      await db.delete(schema.users).where(ne(schema.users.role, "admin"));
+      console.log("\u2705 Todos os dados foram limpos com sucesso!");
+      console.log("\u2139\uFE0F Mantidos: usu\xE1rios admin, configura\xE7\xF5es do sistema e permiss\xF5es");
     } catch (error) {
-      console.error("Erro ao limpar dados:", error);
+      console.error("\u274C Erro ao limpar dados:", error);
       throw error;
     }
   }
@@ -7515,6 +7560,42 @@ async function registerRoutes(app2) {
     if (lowerCategory.includes("prega\xE7\xF5es")) return "pregacoes";
     return "igreja-local";
   }
+  app2.post("/api/google-sheets/proxy", async (req, res) => {
+    try {
+      const { action, spreadsheetId, sheetName, taskData, taskId, eventData } = req.body;
+      console.log(`\u{1F4CA} Proxy Google Sheets - A\xE7\xE3o: ${action}`);
+      const googleScriptUrl = "https://script.google.com/macros/s/AKfycbz_AIumumkUMdw_yCX-N2aScgn08Yy7_Quma3U6sFZOJ0Mi5snRAcIyJq3QdUVeV3fV/exec";
+      const payload = {
+        action,
+        spreadsheetId,
+        sheetName,
+        taskData,
+        taskId,
+        eventData
+      };
+      console.log(`\u{1F4E4} Enviando para Google Apps Script:`, action);
+      const response = await fetch(googleScriptUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload),
+        redirect: "follow"
+      });
+      if (!response.ok) {
+        throw new Error(`Google Apps Script retornou ${response.status}`);
+      }
+      const result = await response.json();
+      console.log(`\u2705 Resposta do Google Apps Script:`, result.success ? "Sucesso" : "Falha");
+      res.json(result);
+    } catch (error) {
+      console.error("\u274C Erro no proxy Google Sheets:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
   importRoutes(app2);
   electionRoutes(app2);
   return createServer(app2);

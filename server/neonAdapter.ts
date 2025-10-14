@@ -1402,16 +1402,89 @@ export class NeonAdapter implements IStorage {
 
   async clearAllData(): Promise<void> {
     try {
-      // Limpar todas as tabelas (exceto usuários admin)
-      await db.delete(schema.events);
-      await db.delete(schema.meetings);
+      console.log('🧹 Iniciando limpeza completa de todos os dados do sistema...');
+      
+      // Deletar dados das tabelas em ordem (respeitando foreign keys)
+      // Tabelas dependentes primeiro
+      console.log('  🗑️ Limpando participantes de vídeo...');
+      await db.delete(schema.videoCallParticipants);
+      
+      console.log('  🗑️ Limpando participantes de conversas...');
+      await db.delete(schema.conversationParticipants);
+      
+      console.log('  🗑️ Limpando participantes de eventos...');
+      await db.delete(schema.eventParticipants);
+      
+      console.log('  🗑️ Limpando intercessores de oração...');
+      await db.delete(schema.prayerIntercessors);
+      
+      console.log('  🗑️ Limpando conquistas de usuários...');
+      await db.delete(schema.userAchievements);
+      
+      console.log('  🗑️ Limpando histórico de pontos...');
+      await db.delete(schema.userPointsHistory);
+      
+      console.log('  🗑️ Limpando atividades de pontos...');
+      await db.delete(schema.pointActivities);
+      
+      console.log('  🗑️ Limpando mensagens...');
       await db.delete(schema.messages);
-      await db.delete(schema.notifications);
+      
+      // Tabelas principais
+      console.log('  🗑️ Limpando sessões de vídeo...');
+      await db.delete(schema.videoCallSessions);
+      
+      console.log('  🗑️ Limpando conversas...');
+      await db.delete(schema.conversations);
+      
+      console.log('  🗑️ Limpando eventos...');
+      await db.delete(schema.events);
+      
+      console.log('  🗑️ Limpando reuniões...');
+      await db.delete(schema.meetings);
+      
+      console.log('  🗑️ Limpando orações...');
       await db.delete(schema.prayers);
-      // Adicione outras tabelas conforme necessário
-      console.log('Todos os dados foram limpos');
+      
+      console.log('  🗑️ Limpando notificações...');
+      await db.delete(schema.notifications);
+      
+      console.log('  🗑️ Limpando subscriptions push...');
+      await db.delete(schema.pushSubscriptions);
+      
+      console.log('  🗑️ Limpando check-ins emocionais...');
+      await db.delete(schema.emotionalCheckins);
+      
+      console.log('  🗑️ Limpando relacionamentos...');
+      await db.delete(schema.relationships);
+      
+      console.log('  🗑️ Limpando solicitações de discipulado...');
+      await db.delete(schema.discipleshipRequests);
+      
+      console.log('  🗑️ Limpando perfis missionários...');
+      await db.delete(schema.missionaryProfiles);
+      
+      console.log('  🗑️ Limpando tipos de reunião...');
+      await db.delete(schema.meetingTypes);
+      
+      console.log('  🗑️ Limpando conquistas...');
+      await db.delete(schema.achievements);
+      
+      console.log('  🗑️ Limpando configurações de pontos...');
+      await db.delete(schema.pointConfigs);
+      
+      console.log('  🗑️ Limpando igrejas...');
+      await db.delete(schema.churches);
+      
+      // Deletar TODOS os usuários EXCETO os admins
+      console.log('  🗑️ Limpando usuários (mantendo admin)...');
+      await db.delete(schema.users)
+        .where(ne(schema.users.role, 'admin'));
+      
+      console.log('✅ Todos os dados foram limpos com sucesso!');
+      console.log('ℹ️ Mantidos: usuários admin, configurações do sistema e permissões');
     } catch (error) {
-      console.error('Erro ao limpar dados:', error);
+      console.error('❌ Erro ao limpar dados:', error);
       throw error;
     }
   }

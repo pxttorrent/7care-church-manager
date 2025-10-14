@@ -745,6 +745,10 @@ export default function Settings() {
     try {
       setIsLoading(true);
       
+      console.log('🧹 Iniciando limpeza completa do sistema...');
+      
+      // 1. Limpar banco de dados no servidor
+      console.log('📡 Limpando banco de dados...');
       const response = await fetch('/api/system/clear-all', {
         method: 'POST',
         headers: {
@@ -754,23 +758,109 @@ export default function Settings() {
 
       const result = await response.json();
 
-      if (response.ok) {
-        toast({
-          title: "Sistema limpo com sucesso",
-          description: result.message || "Todos os dados foram removidos do sistema.",
-        });
-        
-        // Refresh the page to show empty state
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
-        
-      } else {
-        throw new Error(result.error || 'Falha ao limpar dados');
+      if (!response.ok) {
+        throw new Error(result.error || 'Falha ao limpar dados do servidor');
       }
       
+      console.log('✅ Banco de dados limpo');
+      
+      // 2. Limpar React Query Cache
+      console.log('🗑️ Limpando React Query cache...');
+      queryClient.clear();
+      console.log('✅ React Query cache limpo');
+      
+      // 3. Limpar IndexedDB (offline storage)
+      console.log('🗑️ Limpando IndexedDB...');
+      try {
+        const databases = await indexedDB.databases();
+        for (const db of databases) {
+          if (db.name) {
+            console.log(`  Deletando database: ${db.name}`);
+            indexedDB.deleteDatabase(db.name);
+          }
+        }
+        console.log('✅ IndexedDB limpo');
+      } catch (error) {
+        console.warn('⚠️ Erro ao limpar IndexedDB:', error);
+      }
+      
+      // 4. Limpar localStorage (exceto configurações essenciais)
+      console.log('🗑️ Limpando localStorage...');
+      const keysToKeep = ['theme', 'language'];
+      const keysToRemove: string[] = [];
+      
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && !keysToKeep.includes(key)) {
+          keysToRemove.push(key);
+        }
+      }
+      
+      keysToRemove.forEach(key => {
+        console.log(`  Removendo: ${key}`);
+        localStorage.removeItem(key);
+      });
+      console.log('✅ localStorage limpo');
+      
+      // 5. Limpar sessionStorage
+      console.log('🗑️ Limpando sessionStorage...');
+      sessionStorage.clear();
+      console.log('✅ sessionStorage limpo');
+      
+      // 6. Limpar Service Worker Cache
+      console.log('🗑️ Limpando Service Worker cache...');
+      try {
+        const cacheNames = await caches.keys();
+        for (const cacheName of cacheNames) {
+          console.log(`  Deletando cache: ${cacheName}`);
+          await caches.delete(cacheName);
+        }
+        console.log('✅ Service Worker cache limpo');
+      } catch (error) {
+        console.warn('⚠️ Erro ao limpar Service Worker cache:', error);
+      }
+      
+      // 7. Desregistrar Service Worker
+      console.log('🗑️ Desregistrando Service Worker...');
+      try {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          console.log(`  Encontrados ${registrations.length} Service Workers registrados`);
+          
+          for (const registration of registrations) {
+            console.log(`  Desregistrando SW: ${registration.scope}`);
+            await registration.unregister();
+          }
+          
+          console.log('✅ Service Worker desregistrado');
+          
+          // Limpar controller atual
+          if (navigator.serviceWorker.controller) {
+            console.log('  Enviando mensagem de SKIP_WAITING para SW ativo');
+            navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Erro ao desregistrar Service Worker:', error);
+      }
+      
+      console.log('\n🎉 LIMPEZA COMPLETA CONCLUÍDA!');
+      console.log('ℹ️ A página será recarregada em 3 segundos...');
+      
+      toast({
+        title: "Sistema limpo com sucesso",
+        description: "Todos os dados foram removidos: banco de dados, cache, localStorage, IndexedDB e Service Worker.",
+        duration: 5000,
+      });
+      
+      // Recarregar a página para refletir o estado limpo
+      // Aguardar mais tempo para garantir que o SW foi desregistrado
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
+        
     } catch (error) {
-      console.error('Clear data error:', error);
+      console.error('❌ Erro ao limpar dados:', error);
       toast({
         title: "Erro ao limpar dados",
         description: error instanceof Error ? error.message : "Ocorreu um erro inesperado.",
