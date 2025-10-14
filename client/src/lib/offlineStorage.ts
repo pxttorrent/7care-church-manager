@@ -38,7 +38,7 @@ interface StoreConfig {
 // ========================================
 
 const DB_NAME = '7care-offline-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // v2: Adicionada store 'events'
 
 const STORES: StoreConfig[] = [
   {
@@ -47,6 +47,15 @@ const STORES: StoreConfig[] = [
     indexes: [
       { name: 'status', keyPath: 'status' },
       { name: 'priority', keyPath: 'priority' },
+      { name: 'created_by', keyPath: 'created_by' }
+    ]
+  },
+  {
+    name: 'events',
+    keyPath: 'id',
+    indexes: [
+      { name: 'type', keyPath: 'type' },
+      { name: 'date', keyPath: 'date' },
       { name: 'created_by', keyPath: 'created_by' }
     ]
   },
@@ -92,7 +101,7 @@ export class OfflineStorage {
     this.initPromise = new Promise((resolve, reject) => {
       console.log(`📦 Inicializando ${DB_NAME} v${DB_VERSION}...`);
       
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
         console.error('❌ Erro ao abrir IndexedDB:', request.error);
@@ -130,9 +139,9 @@ export class OfflineStorage {
           });
 
           console.log(`✅ Store "${storeConfig.name}" criado`);
-        });
-      };
-    });
+      });
+    };
+  });
 
     return this.initPromise;
   }
@@ -162,7 +171,7 @@ export class OfflineStorage {
     
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(storeName, 'readonly');
-      const store = transaction.objectStore(storeName);
+  const store = transaction.objectStore(storeName);
       const request = store.getAll();
 
       request.onsuccess = () => {
@@ -208,8 +217,8 @@ export class OfflineStorage {
     
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(storeName, 'readwrite');
-      const store = transaction.objectStore(storeName);
-      
+  const store = transaction.objectStore(storeName);
+
       // Adicionar metadados de modificação local
       const dataWithMeta = {
         ...data,
@@ -228,10 +237,10 @@ export class OfflineStorage {
         console.error(`❌ Erro ao salvar ${storeName}#${data.id}:`, request.error);
         reject(request.error);
       };
-    });
-  }
+  });
+}
 
-  /**
+/**
    * Deletar um item
    */
   async delete(storeName: string, id: any): Promise<void> {
@@ -302,6 +311,35 @@ export class OfflineStorage {
    */
   async getSyncQueue(): Promise<SyncQueueItem[]> {
     return this.getAll<SyncQueueItem>('sync_queue');
+  }
+
+  /**
+   * Salvar fila de sincronização completa (substituir tudo)
+   */
+  async saveSyncQueue(queue: SyncQueueItem[]): Promise<void> {
+    const db = await this.ensureDB();
+    
+    // Limpar fila atual
+    await this.clear('sync_queue');
+    
+    // Salvar nova fila
+    const transaction = db.transaction('sync_queue', 'readwrite');
+    const store = transaction.objectStore('sync_queue');
+    
+    for (const item of queue) {
+      store.put(item);
+    }
+    
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => {
+        console.log(`💾 Fila de sincronização atualizada: ${queue.length} itens`);
+        resolve();
+      };
+      transaction.onerror = () => {
+        console.error('❌ Erro ao salvar fila');
+        reject(transaction.error);
+      };
+    });
   }
 
   /**
@@ -406,11 +444,31 @@ export class OfflineStorage {
               const actualData = serverData.task || serverData; // Lidar com { task: {...} }
               
               if (actualData && actualData.id) {
+                // Se o ID mudou (era temporário), deletar o item antigo primeiro
+                if (item.data.id !== actualData.id) {
+                  console.log(`🔄 ID mudou de ${item.data.id} para ${actualData.id}, removendo duplicata`);
+                  try {
+                    await this.delete(item.storeName, item.data.id);
+                  } catch (e) {
+                    console.warn('⚠️ Não foi possível deletar item antigo:', e);
+                  }
+                }
+                
+                // Salvar/atualizar com dados do servidor
                 await this.save(item.storeName, {
                   ...actualData,
                   _synced: true
                 });
                 console.log(`✅ ${item.type} sincronizado e atualizado: ${item.storeName}#${actualData.id}`);
+                
+                // Verificar se ainda existe o item temporário e removê-lo
+                if (item.data.id && String(item.data.id).startsWith('temp_')) {
+                  const tempStillExists = await this.getById(item.storeName, item.data.id);
+                  if (tempStillExists) {
+                    console.log(`🧹 [CLEANUP] Removendo temp órfão: ${item.data.id}`);
+                    await this.delete(item.storeName, item.data.id);
+                  }
+                }
               }
             } catch (e) {
               console.warn('⚠️ Não foi possível parsear resposta do servidor:', e);
@@ -473,14 +531,14 @@ export class OfflineStorage {
     const pendingCount = queue.filter(item => item.status === 'pending').length;
     const errorCount = queue.filter(item => item.status === 'error').length;
 
-    return {
+  return {
       lastSync: lastSyncMeta?.value || null,
       pendingCount,
       errorCount
-    };
-  }
+  };
+}
 
-  /**
+/**
    * Limpar toda a fila de sincronização (usar com cuidado!)
    */
   async clearSyncQueue(): Promise<void> {

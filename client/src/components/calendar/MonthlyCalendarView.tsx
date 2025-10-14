@@ -257,12 +257,14 @@ interface MonthlyCalendarViewProps {
   activeFilters?: string[];
   eventTypes?: EventType[];
   showBirthdays?: boolean;
+  events?: CalendarEvent[]; // Eventos vindos do sistema offline
 }
 
 export function MonthlyCalendarView({ 
   onEventClick, 
   onNewEvent, 
-  onDateClick, 
+  onDateClick,
+  events: propsEvents, 
   activeFilters = [],
   eventTypes = [],
   showBirthdays = false
@@ -298,6 +300,7 @@ export function MonthlyCalendarView({
     currentMonthName: monthNames[currentDate.getMonth()]
   });
 
+  // SEMPRE buscar da API - sistema offline será implementado de forma diferente
   const { data: allEvents, isLoading, error } = useQuery<CalendarEvent[]>({
     queryKey: ['events', user?.role],
     queryFn: () => fetchEvents(user?.role),
@@ -305,13 +308,13 @@ export function MonthlyCalendarView({
   });
 
   // Debug log para verificar os eventos carregados
-  console.log('📅 Eventos carregados:', { 
-    allEvents: allEvents?.length || 0,
+  console.log('📅 [MonthlyCalendarView] Eventos:', { 
+    source: propsEvents && propsEvents.length > 0 ? 'props (offline)' : 'api fetch',
+    propsEventsCount: propsEvents?.length || 0,
+    fetchedEventsCount: fetchedEvents?.length || 0,
+    finalEventsCount: allEvents?.length || 0,
     isLoading,
-    error,
-    userRole: user?.role,
-    events: allEvents?.slice(0, 3), // Mostrar apenas os primeiros 3 eventos
-    allEventsData: allEvents // Mostrar todos os eventos para debug
+    error
   });
 
   const filteredEvents = allEvents?.filter(event => {

@@ -1210,7 +1210,21 @@ export default function Settings() {
             })(),
             
             // Campos de pontuação - Colunas diretas do banco
-            tempoBatismoAnos: parseNumber(row['Tempo de batismo - anos'] || row.tempoBatismoAnos || row['Tempo de batismo']),
+            tempoBatismoAnos: (() => {
+              // Tentar ler direto primeiro
+              const direto = parseNumber(row['Tempo de batismo - anos'] || row.tempoBatismoAnos);
+              if (direto > 0) return direto;
+              
+              // Se não tem, calcular a partir da data de batismo
+              const dataBatismo = parseDate(row.Batismo || row.batismo || row.baptismDate);
+              if (dataBatismo) {
+                const hoje = new Date();
+                const batismo = new Date(dataBatismo);
+                const diffAnos = Math.floor((hoje.getTime() - batismo.getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+                return diffAnos > 0 ? diffAnos : 0;
+              }
+              return 0;
+            })(),
             departamentosCargos: row['Departamentos e cargos'] || row.departamentosCargos || row.departamentos || null,
             nomeUnidade: row['Nome da unidade'] || row.nomeUnidade || null,
             temLicao: parseBooleanField(row['Tem lição'] || row.temLicao),
@@ -1218,10 +1232,22 @@ export default function Settings() {
             comunhao: parseNumber(row.Comunhão || row.comunhao),
             missao: parseNumber(row.Missão || row.missao),
             estudoBiblico: parseNumber(row['Estudo bíblico'] || row.estudoBiblico),
-            batizouAlguem: parseBooleanField(row['Batizou alguém'] || row.batizouAlguem),
+            batizouAlguem: (() => {
+              const valor = row['Batizou alguém'] || row.batizouAlguem;
+              // Se é número, converter >0 para true
+              if (typeof valor === 'number') return valor > 0;
+              // Se é string/boolean, usar parseBooleanField
+              return parseBooleanField(valor);
+            })(),
             discPosBatismal: parseNumber(row['Disc. pós batismal'] || row.discPosBatismal),
             cpfValido: parseBooleanField(row['CPF válido'] || row.cpfValido),
-            camposVazios: parseBooleanField(row['Campos vazios/inválidos'] || row.camposVazios) === false ? false : true,
+            camposVazios: (() => {
+              const valor = row['Campos vazios/inválidos'] || row.camposVazios;
+              // Se é número: 0 = false, >0 = true
+              if (typeof valor === 'number') return valor > 0;
+              // Se é boolean, usar direto
+              return parseBooleanField(valor);
+            })(),
             
             // Escola Sabatina
             isEnrolledES: parseBooleanField(row['Matriculado na ES'] || row.matriculadoES),
@@ -1235,11 +1261,11 @@ export default function Settings() {
             // Departamentos
             departments: row['Departamentos e cargos'] || row.departamentos,
             
-            // Dados extras completos (manter para compatibilidade)
+            // Dados extras completos (manter para compatibilidade e campos adicionais)
             extraData: JSON.stringify({
               // Dados básicos
               sexo: row.Sexo || row.sexo,
-              idade: row.Idade || row.idade,
+              idade: parseNumber(row.Idade || row.idade),
               codigo: row.Código || row.codigo,
               
               // REMOVIDO: engajamento e classificacao agora são colunas diretas
@@ -1248,6 +1274,18 @@ export default function Settings() {
               // Telefone
               phoneWarning: phoneWarning,
               originalPhone: phoneWarning ? originalPhone : null,
+              
+              // Endereço completo
+              bairro: row.Bairro || row.bairro,
+              cidadeEstado: row['Cidade e Estado'] || row.cidadeEstado,
+              cidadeNascimento: row['Cidade de nascimento'] || row.cidadeNascimento,
+              estadoNascimento: row['Estado de nascimento'] || row.estadoNascimento,
+              cpf: row.CPF || row.cpf,
+              
+              // Quantidade real de "Batizou alguém" (se for número)
+              quantidadeBatizados: typeof (row['Batizou alguém'] || row.batizouAlguem) === 'number' 
+                ? parseNumber(row['Batizou alguém'] || row.batizouAlguem) 
+                : 0,
               
               // Dízimos
               dizimos12m: row['Dízimos - 12m'] || row.dizimos12m,
@@ -1297,24 +1335,21 @@ export default function Settings() {
               // Família
               nomeMae: row['Nome da mãe'] || row.nomeMae,
               nomePai: row['Nome do pai'] || row.nomePai,
-              dataCasamento: row['Data de casamento'] || row.dataCasamento,
+              dataCasamento: parseDate(row['Data de casamento'] || row.dataCasamento),
               
-              // Localização
-              bairro: row.Bairro || row.bairro,
-              cidadeEstado: row['Cidade e Estado'] || row.cidadeEstado,
-              cidadeNascimento: row['Cidade de nascimento'] || row.cidadeNascimento,
-              estadoNascimento: row['Estado de nascimento'] || row.estadoNascimento,
+              // REMOVIDO: Campos de endereço já adicionados acima (linha 1278-1283)
               
               // REMOVIDO: Campos que agora são colunas diretas do banco
               // nomeUnidade, comunhao, missao, estudoBiblico, batizouAlguem, 
               // discPosBatismal, totalPresenca, cpfValido, camposVazios, temLicao
               
               // Presença (dados extras, não usados no cálculo)
-              presencaTotal: row['Total presença no cartão'] || row.presencaTotal,
-              presencaQuizLocal: row['Presença no quiz local'] || row.presencaQuizLocal,
-              presencaQuizOutraUnidade: row['Presença no quiz outra unidade'] || row.presencaQuizOutraUnidade,
-              presencaQuizOnline: row['Presença no quiz online'] || row.presencaQuizOnline,
+              presencaCartao: parseNumber(row['Total presença no cartão'] || row.presencaCartao),
+              presencaQuizLocal: parseNumber(row['Presença no quiz local'] || row.presencaQuizLocal),
+              presencaQuizOutra: parseNumber(row['Presença no quiz outra unidade'] || row.presencaQuizOutraUnidade),
+              presencaQuizOnline: parseNumber(row['Presença no quiz online'] || row.presencaQuizOnline),
               teveParticipacao: row['Teve participação'] || row.teveParticipacao,
+              matriculadoES: parseBooleanField(row['Matriculado na ES'] || row.matriculadoES),
               
               // Colaboração
               campoColaborador: row['Campo - colaborador'] || row.campoColaborador,

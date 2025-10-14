@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar as CalendarIcon, Filter, Cake, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,10 +13,18 @@ import { EventModal } from '@/components/calendar/EventModal';
 import { useEventFilterPermissions } from '@/hooks/useEventFilterPermissions';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { CalendarEvent, EVENT_TYPES, EventType } from '@/types/calendar';
 import { notificationService } from '@/lib/notificationService';
+import { toast as sonnerToast } from 'sonner';
+
+// 🎯 CONFIGURAÇÃO DO GOOGLE SHEETS PARA EVENTOS
+const GOOGLE_SHEETS_CONFIG = {
+  proxyUrl: '/api/google-sheets/proxy',
+  spreadsheetId: '1i-x-0KiciwACRztoKX-YHlXT4FsrAzaKwuH-hHkD8go',
+  sheetName: 'Agenda' // Nome da aba para eventos
+};
 
 export default function Calendar() {
   const { toast } = useToast();
@@ -31,22 +39,145 @@ export default function Calendar() {
 
   const isAdmin = user?.role === 'admin';
   const { getAvailableEventTypes, canFilterEventType, permissions, isLoading: permissionsLoading } = useEventFilterPermissions();
+  
+  // ========================================
+  // BUSCAR EVENTOS DIRETO DA API (SEM CACHE - SEMPRE FRESH)
+  // ========================================
+  const { data: rawEvents, isLoading: eventsLoading, refetch } = useQuery<any[]>({
+    queryKey: ['events'],
+    queryFn: async () => {
+      console.log('📡 [API] Buscando eventos do servidor...');
+      const response = await fetch('/api/calendar/events', {
+        headers: { 
+          'x-user-id': '1',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      if (!response.ok) throw new Error('Erro ao buscar eventos');
+      const events = await response.json();
+      console.log(`✅ [API] ${events.length} eventos carregados da API`);
+      
+      // Remover duplicatas no frontend (proteção extra)
+      const uniqueEvents = Array.from(
+        new Map(events.map((e: any) => [
+          `${e.title}_${e.date}_${e.type}`, 
+          e
+        ])).values()
+      );
+      
+      if (uniqueEvents.length < events.length) {
+        console.log(`⚠️ [API] Removidas ${events.length - uniqueEvents.length} duplicatas do frontend`);
+      }
+      
+      return uniqueEvents;
+    },
+    refetchInterval: false,
+    staleTime: 0, // Nunca usar cache antigo
+    cacheTime: 0, // Não manter em cache
+    refetchOnMount: true,
+    refetchOnWindowFocus: false
+  });
 
-  // Inicializar filtros baseados nas permissões do usuário
+  // Normalizar eventos (converter date/end_date para startDate/endDate)
+  const allEvents = rawEvents?.map((event: any) => ({
+    ...event,
+    startDate: event.date || event.startDate,
+    endDate: event.end_date || event.endDate || event.date
+  })) || [];
+
+  // Extrair tipos de eventos dinâmicos dos eventos reais (incluindo novos do Google Sheets)
+  const dynamicEventTypes = React.useMemo(() => {
+    const uniqueTypes = new Map();
+    
+    // Primeiro adicionar os tipos predefinidos
+    EVENT_TYPES.forEach(type => {
+      uniqueTypes.set(type.id, type);
+    });
+    
+    // Depois adicionar novos tipos dos eventos (sobrescrever se necessário)
+    allEvents.forEach((event: any) => {
+      if (event.type && !uniqueTypes.has(event.type)) {
+        // Criar tipo dinâmico para novas categorias
+        const hexColor = event.color || '#64748b'; // Usar cor do evento ou padrão
+        uniqueTypes.set(event.type, {
+          id: event.type,
+          label: event.type.split('-').map((word: string) => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' '),
+          hexColor: hexColor,
+          color: 'dynamic', // Flag para saber que é cor dinâmica
+          isDynamic: true
+        });
+      }
+    });
+    
+    return Array.from(uniqueTypes.values());
+  }, [allEvents]);
+
+  // ========================================
+  // FUNÇÃO DE SINCRONIZAÇÃO DO GOOGLE SHEETS
+  // ========================================
+  
+  /**
+   * Sincronizar DO Google Sheets para o banco de dados (SIMPLIFICADO)
+   */
+  const syncFromGoogleSheets = async (showToast = false) => {
+    try {
+      console.log('⬅️ [SYNC] Sincronizando do Google Sheets...');
+      if (showToast) sonnerToast.info('Sincronizando...');
+      
+      // Buscar config
+      const configResponse = await fetch('/api/calendar/google-drive-config');
+      const config = await configResponse.json();
+      
+      if (!config.spreadsheetUrl) {
+        console.log('⚠️ Nenhuma planilha configurada');
+        return;
+      }
+      
+      // Sincronizar
+      const syncResponse = await fetch('/api/calendar/sync-google-drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spreadsheetUrl: config.spreadsheetUrl })
+      });
+      
+      if (syncResponse.ok) {
+        const result = await syncResponse.json();
+        const hasChanges = (result.importedCount > 0) || (result.updatedCount > 0) || (result.deletedCount > 0);
+        
+        console.log(`✅ [SYNC] ${result.importedCount || 0} novos, ${result.updatedCount || 0} atualizados, ${result.deletedCount || 0} removidos`);
+        
+        // Atualizar APENAS se houver mudanças
+        if (hasChanges) {
+          await refetch();
+          if (showToast) sonnerToast.success('Sincronizado!');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro:', error);
+      if (showToast) sonnerToast.error('Erro ao sincronizar');
+    }
+  };
+
+  // Inicializar filtros com TODAS as categorias (incluindo dinâmicas)
   useEffect(() => {
     console.log('🔄 useEffect triggered:', { 
       userRole: user?.role, 
       permissions: !!permissions, 
       permissionsLoading,
-      permissionsData: permissions 
+      permissionsData: permissions,
+      totalEventTypes: dynamicEventTypes.length
     });
     
-    if (user?.role && permissions && !permissionsLoading) {
-      const availableTypes = getAvailableEventTypes(user.role);
-      setActiveFilters(availableTypes);
-      console.log('🎯 Initializing filters for role:', user.role, 'available types:', availableTypes);
+    if (user?.role && permissions && !permissionsLoading && dynamicEventTypes.length > 0) {
+      // Incluir TODAS as categorias (dinâmicas + padrão)
+      const allTypes = dynamicEventTypes.map(t => t.id);
+      setActiveFilters(allTypes);
+      console.log('🎯 Filtros inicializados com TODAS as categorias:', allTypes);
     }
-  }, [user?.role, permissions, permissionsLoading, getAvailableEventTypes]);
+  }, [user?.role, permissions, permissionsLoading, dynamicEventTypes]);
 
   // Effect para escutar eventos de importação bem-sucedida
   useEffect(() => {
@@ -75,6 +206,19 @@ export default function Calendar() {
     };
   }, []);
 
+  // ========================================
+  // SINCRONIZAÇÃO COM GOOGLE SHEETS - MANUAL POR ENQUANTO
+  // ========================================
+  
+  // DESABILITADO: Sincronização automática (estava causando duplicatas)
+  // useEffect(() => {
+  //   syncFromGoogleSheets(false);
+  //   const autoSyncInterval = setInterval(() => {
+  //     syncFromGoogleSheets(false);
+  //   }, 15000);
+  //   return () => clearInterval(autoSyncInterval);
+  // }, []);
+
   const handleEventClick = (event: CalendarEvent) => {
     setSelectedEvent(event);
     setIsCreatingEvent(false);
@@ -90,150 +234,203 @@ export default function Calendar() {
   const handleSaveEvent = async (eventData: Partial<CalendarEvent>) => {
     try {
       if (isCreatingEvent) {
-        // Criar novo evento
+        // Criar novo evento no banco
         const response = await fetch('/api/calendar/events', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json', 'x-user-id': '1' },
           body: JSON.stringify({
-            events: [{
-              title: eventData.title,
-              description: eventData.description,
-              startDate: eventData.startDate,
-              endDate: eventData.endDate || eventData.startDate,
-              type: eventData.type || 'reunioes',
-              location: eventData.location,
-              time: eventData.time,
-              duration: eventData.duration,
-              organizer: eventData.organizer || 'Sistema'
-            }]
+            title: eventData.title,
+            description: eventData.description || '',
+            date: eventData.startDate,
+            end_date: eventData.endDate || eventData.startDate,
+            type: eventData.type || 'reunioes',
+            location: eventData.location || '',
+            created_by: 1
           })
         });
-
-        if (response.ok) {
-          // Invalidar cache e recarregar eventos
-          queryClient.invalidateQueries({ queryKey: ['events'] });
-          
-          // Enviar notificação push para todos os usuários
+        
+        if (!response.ok) throw new Error('Erro ao criar evento');
+        const result = await response.json();
+        
+        // Adicionar ao Google Sheets
+        await addEventToGoogleSheets(result);
+        
+        sonnerToast.success('Evento criado!');
+        
+        // Notificação
+        if (eventData.title && eventData.startDate) {
           try {
-            await notificationService.notifyEventCreated(
-              eventData.title || 'Novo Evento',
-              eventData.startDate || new Date().toISOString().split('T')[0]
-            );
+            await notificationService.notifyEventCreated(eventData.title, eventData.startDate);
           } catch (error) {
-            console.error('Erro ao enviar notificação de novo evento:', error);
+            console.error('Erro ao enviar notificação:', error);
           }
-          
-          toast({
-            title: "Evento criado",
-            description: "O novo evento foi criado com sucesso.",
-          });
-        } else {
-          throw new Error('Erro ao criar evento');
         }
-      } else {
-        // Atualizar evento existente
-        toast({
-          title: "Evento atualizado",
-          description: "O evento foi atualizado com sucesso.",
+      } else if (selectedEvent) {
+        // Atualizar evento
+        const response = await fetch(`/api/calendar/events/${selectedEvent.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-user-id': '1' },
+          body: JSON.stringify({
+            title: eventData.title,
+            description: eventData.description,
+            date: eventData.startDate,
+            end_date: eventData.endDate,
+            type: eventData.type,
+            location: eventData.location
+          })
         });
+        
+        if (!response.ok) throw new Error('Erro ao atualizar evento');
+        const result = await response.json();
+        
+        // Atualizar no Google Sheets
+        await updateEventInGoogleSheets(result);
+        
+        sonnerToast.success('Evento atualizado!');
       }
       
+      // Atualizar lista
+      await refetch();
+      setShowEventModal(false);
+    } catch (error: any) {
+      console.error('❌ Erro ao salvar evento:', error);
+      sonnerToast.error(`Erro: ${error?.message || 'Erro desconhecido'}`);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: number) => {
+    try {
+      // Deletar do banco
+      const response = await fetch(`/api/calendar/events/${eventId}`, {
+        method: 'DELETE',
+        headers: { 'x-user-id': '1' }
+      });
+      
+      if (!response.ok) throw new Error('Erro ao deletar evento');
+      
+      // Deletar do Google Sheets
+      await deleteEventFromGoogleSheets(eventId);
+      
+      sonnerToast.success('Evento deletado!');
+      
+      // Atualizar lista
+      await refetch();
       setShowEventModal(false);
     } catch (error) {
-      console.error('Erro ao salvar evento:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível salvar o evento. Tente novamente.",
-        variant: "destructive"
-      });
+      console.error('❌ Erro ao deletar:', error);
+      sonnerToast.error('Erro ao deletar evento');
     }
   };
 
-  const handleDeleteEvent = (eventId: number) => {
-    toast({
-      title: "Evento excluído",
-      description: "O evento foi removido do calendário.",
-      variant: "destructive"
-    });
-    setShowEventModal(false);
-    // In a real app, this would delete from the backend
-  };
-
-  // Função para sincronização rápida do Google Drive
-  const handleQuickSync = async () => {
-    setIsSyncing(true);
+  // ========================================
+  // FUNÇÕES DE GOOGLE SHEETS (seguindo padrão de Tasks)
+  // ========================================
+  
+  /**
+   * Adicionar evento ao Google Sheets
+   */
+  const addEventToGoogleSheets = async (event: any) => {
     try {
-      // Primeiro, buscar a configuração salva
-      const configResponse = await fetch('/api/calendar/google-drive-config');
-      const config = await configResponse.json();
+      const eventData = {
+        id: event.id, // IMPORTANTE: incluir ID para poder deletar depois
+        titulo: event.title,
+        data_inicio: event.date || event.startDate,
+        data_fim: event.end_date || event.endDate || event.date || event.startDate,
+        categoria: event.type,
+        descricao: event.description || '',
+        local: event.location || ''
+      };
       
-      if (!config.spreadsheetUrl) {
-        toast({
-          title: "❌ Configuração não encontrada",
-          description: "Configure a planilha do Google Drive em Settings > Calendário",
-          variant: "destructive"
-        });
-        setIsSyncing(false);
-        return;
-      }
-
-      // Passo 1: Processar eventos pendentes para enviar à planilha
-      const sendResponse = await fetch('/api/google-drive/process-pending', {
+      const response = await fetch(GOOGLE_SHEETS_CONFIG.proxyUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        }
-      });
-
-      const sendResult = await sendResponse.json();
-      let sentCount = sendResult.processed || 0;
-      
-      // Passo 2: Importar novos eventos da planilha
-      const importResponse = await fetch('/api/calendar/sync-google-drive', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+          'x-user-id': '1'
         },
         body: JSON.stringify({
-          spreadsheetUrl: config.spreadsheetUrl
+          action: 'addEvent',
+          spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+          sheetName: GOOGLE_SHEETS_CONFIG.sheetName,
+          eventData
         })
       });
-
-      const importResult = await importResponse.json();
-      let importedCount = importResult.importedCount || 0;
       
-      // Recarregar eventos e aniversariantes
-      await queryClient.invalidateQueries({ queryKey: ['events'] });
-      await queryClient.invalidateQueries({ queryKey: ['birthdays'] });
-      
-      // Mostrar resultado da sincronização bidirecional
-      const messages = [];
-      if (sentCount > 0) messages.push(`${sentCount} eventos enviados`);
-      if (importedCount > 0) messages.push(`${importedCount} eventos importados`);
-      
-      if (messages.length > 0) {
-        toast({
-          title: "✅ Sincronização concluída!",
-          description: messages.join(' e ') + ' da/para o Google Drive.',
-        });
-      } else {
-        toast({
-          title: "✅ Sincronização concluída!",
-          description: "Planilha já está sincronizada.",
-        });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          console.log(`✅ [ADD] Evento ${event.id} adicionado ao Google Sheets!`);
+        }
       }
     } catch (error) {
-      console.error('Erro na sincronização:', error);
-      toast({
-        title: "❌ Erro na sincronização",
-        description: "Erro ao conectar com o servidor",
-        variant: "destructive"
-      });
-    } finally {
-      setIsSyncing(false);
+      console.error(`❌ [ADD] Erro ao adicionar evento ao Google Sheets:`, error);
     }
+  };
+
+  /**
+   * Atualizar evento no Google Sheets (deleta e adiciona novamente)
+   */
+  const updateEventInGoogleSheets = async (event: any) => {
+    try {
+      // Deletar linha antiga
+      await fetch(GOOGLE_SHEETS_CONFIG.proxyUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-user-id': '1'
+        },
+        body: JSON.stringify({
+          action: 'deleteEvent',
+          spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+          sheetName: GOOGLE_SHEETS_CONFIG.sheetName,
+          eventId: event.id
+        })
+      });
+      
+      // Adicionar com dados atualizados
+      await addEventToGoogleSheets(event);
+      console.log(`✅ [UPDATE] Evento ${event.id} atualizado no Google Sheets!`);
+    } catch (error) {
+      console.error(`❌ [UPDATE] Erro ao atualizar evento no Google Sheets:`, error);
+    }
+  };
+
+  /**
+   * Deletar evento do Google Sheets
+   */
+  const deleteEventFromGoogleSheets = async (eventId: number) => {
+    try {
+      console.log(`🗑️ [DELETE] Deletando evento ${eventId} do Google Sheets...`);
+      
+      const response = await fetch(GOOGLE_SHEETS_CONFIG.proxyUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-user-id': '1'
+        },
+        body: JSON.stringify({
+          action: 'deleteEvent',
+          spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+          sheetName: GOOGLE_SHEETS_CONFIG.sheetName,
+          eventId: eventId
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          console.log(`✅ [DELETE] Evento ${eventId} deletado do Google Sheets`);
+        }
+      }
+    } catch (error) {
+      console.error(`❌ [DELETE] Erro ao deletar evento do Google Sheets:`, error);
+    }
+  };
+
+  // Sincronização manual (botão)
+  const handleSync = async () => {
+    setIsSyncing(true);
+    await syncFromGoogleSheets(true);
+    setIsSyncing(false);
   };
 
   const handleFilterChange = (filterId: string, checked: boolean) => {
@@ -263,7 +460,8 @@ export default function Calendar() {
       const availableTypes = getAvailableEventTypes(user.role);
       setActiveFilters(availableTypes);
     } else {
-      setActiveFilters(EVENT_TYPES.map(type => type.id));
+      // Incluir todos os tipos, incluindo os dinâmicos
+      setActiveFilters(dynamicEventTypes.map(type => type.id));
     }
   };
 
@@ -275,9 +473,8 @@ export default function Calendar() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold">Agenda</h1>
-            <p className="text-muted-foreground">Gerencie eventos e atividades</p>
+            <p className="text-muted-foreground">Sincronizada automaticamente com Google Sheets</p>
           </div>
-                      {/* Botão de Novo Evento removido - movido para o componente do calendário */}
         </div>
 
         {/* Filters and Actions */}
@@ -303,7 +500,7 @@ export default function Calendar() {
                     Limpar
                   </Button>
                 </div>
-                {EVENT_TYPES
+                {dynamicEventTypes
                   .filter(type => !user?.role || canFilterEventType(user.role, type.id))
                   .map((type) => (
                     <DropdownMenuCheckboxItem
@@ -313,8 +510,14 @@ export default function Calendar() {
                       className="cursor-pointer"
                     >
                       <div className="flex items-center space-x-2">
-                        <div className={`w-4 h-4 rounded-full ${type.color} shadow-sm`} />
+                        <div 
+                          className={`w-4 h-4 rounded-full shadow-sm ${!type.isDynamic ? type.color : ''}`}
+                          style={type.isDynamic ? { 
+                            backgroundColor: type.hexColor || '#64748b' 
+                          } : {}}
+                        />
                         <span>{type.label}</span>
+                        {type.isDynamic && <span className="text-xs text-emerald-600 ml-1">✨</span>}
                       </div>
                     </DropdownMenuCheckboxItem>
                   ))}
@@ -332,16 +535,16 @@ export default function Calendar() {
               {showBirthdays ? "Ocultar Aniversariantes" : "Mostrar Aniversariantes"}
             </Button>
 
-            {/* Botão de Sincronização Google Drive */}
+            {/* Botão de Sincronização com Google Sheets */}
             <Button
               variant="outline"
               size="sm"
-              onClick={handleQuickSync}
+              onClick={handleSync}
               disabled={isSyncing}
-              className="h-8 flex items-center gap-2"
+              className="h-8 flex items-center gap-2 bg-blue-50 border-blue-200 hover:bg-blue-100"
             >
               <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? "Sincronizando..." : "Sincronizar Google Drive"}
+              {isSyncing ? "Sincronizando..." : "Sincronizar"}
             </Button>
           </div>
 

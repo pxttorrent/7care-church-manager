@@ -141,7 +141,8 @@ export function useOfflineData<T extends { id: any }>({
   const { data: queryData, isLoading } = useQuery({
     queryKey,
     queryFn: async () => {
-      console.log(`📖 [${storeName}] Carregando dados...`);
+      const queryId = Math.random().toString(36).substr(2, 5);
+      console.log(`📖 [${storeName}] [${queryId}] INÍCIO QUERY - Carregando dados...`);
       
       // 1. SEMPRE carregar do cache local primeiro (rápido)
       let localData = await offlineStorage.getAll<T>(storeName);
@@ -151,7 +152,7 @@ export function useOfflineData<T extends { id: any }>({
         localData = localData.map(transformAfterLoad);
       }
       
-      console.log(`💾 [${storeName}] ${localData.length} itens do cache local`);
+      console.log(`💾 [${storeName}] [${queryId}] ${localData.length} itens do cache local`, localData.map((item: any) => `${item.id}:${item.title}`));
 
       // 2. Se online, buscar do servidor em background
       if (navigator.onLine && autoFetch) {
@@ -171,10 +172,13 @@ export function useOfflineData<T extends { id: any }>({
               ? serverData 
               : (serverData[storeName] || serverData.data || []);
 
-            console.log(`🌐 [${storeName}] ${actualData.length} itens do servidor`);
+            console.log(`🌐 [${storeName}] [${queryId}] ${actualData.length} itens do servidor`, actualData.map((item: any) => `${item.id}:${item.title}`));
 
             // Atualizar cache local com dados do servidor
+            console.log(`🧹 [${storeName}] [${queryId}] Limpando cache local antes de salvar do servidor...`);
             await offlineStorage.clear(storeName);
+            
+            console.log(`💾 [${storeName}] [${queryId}] Salvando ${actualData.length} itens do servidor no cache...`);
             for (const item of actualData) {
               const itemToSave = transformBeforeSave ? transformBeforeSave(item) : item;
               await offlineStorage.save(storeName, { 
@@ -182,11 +186,15 @@ export function useOfflineData<T extends { id: any }>({
                 _synced: true 
               });
             }
+            console.log(`✅ [${storeName}] [${queryId}] Cache local atualizado com dados do servidor`);
 
             // Retornar dados do servidor (mais atualizados)
-            return transformAfterLoad 
+            const finalData = transformAfterLoad 
               ? actualData.map(transformAfterLoad)
               : actualData;
+            
+            console.log(`📤 [${storeName}] [${queryId}] Retornando ${finalData.length} itens para React Query`, finalData.map((item: any) => `${item.id}:${item.title}`));
+            return finalData;
           } else {
             console.warn(`⚠️ [${storeName}] Servidor retornou ${response.status}, usando cache local`);
           }
@@ -196,11 +204,58 @@ export function useOfflineData<T extends { id: any }>({
       }
 
       // Retornar dados locais (se offline ou erro no servidor)
+      console.log(`📤 [${storeName}] [${queryId}] Retornando ${localData.length} itens do cache local`, localData.map((item: any) => `${item.id}:${item.title}`));
       return localData;
     },
     staleTime: 5000, // Considera dados válidos por 5 segundos
     gcTime: 1000 * 60 * 60, // Mantém no cache por 1 hora (antes era cacheTime)
   });
+
+  // Remover duplicatas (garantir que cada ID aparece só uma vez)
+  // Priorizar IDs reais sobre IDs temporários
+  const data = queryData ? Array.from(
+    queryData.reduce((map: Map<string, T>, item: T) => {
+      const id = String(item.id);
+      const isTemp = id.startsWith('temp_');
+      
+      // Se já tem um item com esse título
+      const existingEntry = Array.from(map.values()).find((existing: T) => 
+        String(existing.title).toLowerCase().trim() === String(item.title).toLowerCase().trim()
+      );
+      
+      if (existingEntry) {
+        const existingId = String(existingEntry.id);
+        const existingIsTemp = existingId.startsWith('temp_');
+        
+        // Se o item atual é real e o existente é temp, substituir
+        if (!isTemp && existingIsTemp) {
+          console.log(`🔄 [${storeName}] Substituindo temp ${existingId} por real ${id}`);
+          // Remover o temp
+          map.delete(existingId);
+          // Adicionar o real
+          map.set(id, item);
+        } else if (isTemp && !existingIsTemp) {
+          // Se o item atual é temp e o existente é real, ignorar o temp
+          console.log(`⏭️  [${storeName}] Ignorando temp ${id}, já existe real ${existingId}`);
+        } else {
+          // Ambos temp ou ambos reais, manter o com menor ID
+          if (parseInt(id) < parseInt(existingId)) {
+            map.delete(existingId);
+            map.set(id, item);
+          }
+        }
+      } else {
+        // Não tem duplicata, adicionar normalmente
+        map.set(id, item);
+      }
+      
+      return map;
+    }, new Map<string, T>())
+  ).map(([_, item]) => item) : [];
+  
+  if (queryData && data.length !== queryData.length) {
+    console.warn(`⚠️ [${storeName}] Duplicatas removidas: ${queryData.length} -> ${data.length}`);
+  }
 
   // ========================================
   // CRIAR ITEM
@@ -208,32 +263,14 @@ export function useOfflineData<T extends { id: any }>({
 
   const createMutation = useMutation({
     mutationFn: async (newItem: Omit<T, 'id'>) => {
-      // Gerar ID temporário
-      const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log(`🆕 [${storeName}] INÍCIO CREATE MUTATION:`, newItem);
+      console.log(`🌐 [${storeName}] Status online:`, navigator.onLine);
       
-      const itemWithId = {
-        ...newItem,
-        id: tempId,
-        created_at: new Date().toISOString(),
-        _localCreated: true,
-        _synced: false
-      } as T;
-
-      // 1. Salvar localmente IMEDIATAMENTE
-      const itemToSave = transformBeforeSave ? transformBeforeSave(itemWithId) : itemWithId;
-      await offlineStorage.save(storeName, itemToSave);
-      console.log(`💾 [${storeName}] Item criado localmente:`, tempId);
-
-      // 2. Adicionar à fila de sincronização
-      await offlineStorage.addToSyncQueue({
-        type: 'CREATE',
-        storeName,
-        endpoint,
-        data: itemWithId
-      });
-
-      // 3. Se online, tentar sincronizar imediatamente
+      // ============================================
+      // CENÁRIO 1: ONLINE - criar direto no servidor
+      // ============================================
       if (navigator.onLine) {
+        console.log(`✨ [${storeName}] ONLINE - criando direto no servidor (sem ID temp)...`);
         try {
           const response = await fetch(endpoint, {
             method: 'POST',
@@ -247,26 +284,63 @@ export function useOfflineData<T extends { id: any }>({
 
           if (response.ok) {
             const serverData = await response.json();
-            const actualData = serverData[storeName.slice(0, -1)] || serverData; // tasks -> task
+            const actualData = serverData[storeName.slice(0, -1)] || serverData;
+            console.log(`📥 [${storeName}] Item criado no servidor:`, actualData);
             
-            // Atualizar com dados do servidor (ID real)
             if (actualData && actualData.id) {
+              // Salvar direto com ID real do servidor
               await offlineStorage.save(storeName, {
                 ...actualData,
                 _synced: true
               });
-              console.log(`✅ [${storeName}] Item sincronizado:`, actualData.id);
+              console.log(`✅ [${storeName}] Item salvo no cache com ID real:`, actualData.id);
               return actualData;
             }
+          } else {
+            console.error(`❌ [${storeName}] Servidor retornou ${response.status}, mudando para modo offline`);
+            // Se servidor falhou, tratar como offline
           }
         } catch (error) {
-          console.warn(`⚠️ [${storeName}] Erro ao sincronizar criação:`, error);
+          console.error(`❌ [${storeName}] Erro ao criar no servidor, mudando para modo offline:`, error);
+          // Se falhou, tratar como offline
         }
       }
+      
+      // ============================================
+      // CENÁRIO 2: OFFLINE - usar ID temporário
+      // ============================================
+      console.log(`📴 [${storeName}] OFFLINE - criando com ID temporário...`);
+      
+      const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log(`🔢 [${storeName}] ID temporário gerado:`, tempId);
+      
+      const itemWithId = {
+        ...newItem,
+        id: tempId,
+        created_at: new Date().toISOString(),
+        _localCreated: true,
+        _synced: false
+      } as T;
 
+      // Salvar localmente com ID temporário
+      const itemToSave = transformBeforeSave ? transformBeforeSave(itemWithId) : itemWithId;
+      await offlineStorage.save(storeName, itemToSave);
+      console.log(`💾 [${storeName}] Item salvo localmente com ID temp:`, tempId);
+
+      // Adicionar à fila de sincronização para quando voltar online
+      await offlineStorage.addToSyncQueue({
+        type: 'CREATE',
+        storeName,
+        endpoint,
+        data: itemWithId
+      });
+      console.log(`📋 [${storeName}] Adicionado à fila de sync para sincronizar depois`);
+
+      console.log(`🔙 [${storeName}] Retornando item offline:`, itemWithId.id);
       return itemWithId;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log(`🎉 [${storeName}] CREATE onSuccess - item criado:`, data?.id);
       queryClient.invalidateQueries({ queryKey });
       updateSyncInfo();
     }
@@ -324,11 +398,21 @@ export function useOfflineData<T extends { id: any }>({
             const actualData = serverData[storeName.slice(0, -1)] || serverData;
             
             if (actualData) {
+              // Se o ID retornado for diferente, deletar o antigo (caso raro mas possível)
+              if (actualData.id && actualData.id !== id) {
+                console.log(`🔄 [${storeName}] ID mudou de ${id} para ${actualData.id} após UPDATE, removendo duplicata`);
+                try {
+                  await offlineStorage.delete(storeName, id);
+                } catch (e) {
+                  console.warn('⚠️ Não foi possível deletar item antigo:', e);
+                }
+              }
+              
               await offlineStorage.save(storeName, {
                 ...actualData,
                 _synced: true
               });
-              console.log(`✅ [${storeName}] Item sincronizado:`, id);
+              console.log(`✅ [${storeName}] Item sincronizado:`, actualData.id || id);
               return actualData;
             }
           }
@@ -351,19 +435,27 @@ export function useOfflineData<T extends { id: any }>({
 
   const removeMutation = useMutation({
     mutationFn: async (id: any) => {
-      // 1. Deletar localmente
-      await offlineStorage.delete(storeName, id);
-      console.log(`🗑️ [${storeName}] Item removido localmente:`, id);
-
-      // 2. Adicionar à fila
-      await offlineStorage.addToSyncQueue({
-        type: 'DELETE',
-        storeName,
-        endpoint,
-        data: { id }
+      console.log(`🗑️ [${storeName}] INICIANDO DELEÇÃO - ID:`, id);
+      
+      // 1. LIMPAR TODAS AS OPERAÇÕES PENDENTES DESTE ITEM DA FILA
+      console.log(`🧹 [${storeName}] Limpando TODAS as operações pendentes do item ${id}...`);
+      const queue = await offlineStorage.getSyncQueue();
+      const filteredQueue = queue.filter(item => {
+        // Remover CREATE, UPDATE e DELETE desta tarefa
+        const isSameItem = String(item.data?.id) === String(id);
+        if (isSameItem) {
+          console.log(`   🗑️ Removendo operação ${item.type} do item ${id} da fila`);
+        }
+        return !isSameItem;
       });
+      await offlineStorage.saveSyncQueue(filteredQueue);
+      console.log(`✅ [${storeName}] Fila limpa - ${queue.length - filteredQueue.length} operações removidas`);
+      
+      // 2. Deletar localmente do IndexedDB
+      await offlineStorage.delete(storeName, id);
+      console.log(`💾 [${storeName}] Item removido do IndexedDB:`, id);
 
-      // 3. Se online, tentar sincronizar
+      // 3. Se online, deletar do servidor IMEDIATAMENTE
       if (navigator.onLine) {
         try {
           const response = await fetch(`${endpoint}/${id}`, {
@@ -376,14 +468,35 @@ export function useOfflineData<T extends { id: any }>({
 
           if (response.ok) {
             console.log(`✅ [${storeName}] Item deletado no servidor:`, id);
+          } else {
+            console.error(`❌ [${storeName}] Servidor retornou ${response.status}`);
           }
         } catch (error) {
           console.warn(`⚠️ [${storeName}] Erro ao sincronizar remoção:`, error);
         }
+      } else {
+        // Se offline, adicionar DELETE à fila
+        await offlineStorage.addToSyncQueue({
+          type: 'DELETE',
+          storeName,
+          endpoint,
+          data: { id }
+        });
+        console.log(`📋 [${storeName}] DELETE adicionado à fila (offline)`);
       }
+      
+      console.log(`✅ [${storeName}] DELEÇÃO CONCLUÍDA - ID:`, id);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey });
+    onSuccess: async (_, id) => {
+      console.log(`🔄 [${storeName}] Invalidando e recarregando cache...`);
+      
+      // Invalidar cache
+      await queryClient.invalidateQueries({ queryKey });
+      
+      // Forçar refetch imediato
+      await queryClient.refetchQueries({ queryKey, type: 'active' });
+      
+      console.log(`✅ [${storeName}] Cache atualizado após deleção`);
       updateSyncInfo();
     }
   });
@@ -451,7 +564,7 @@ export function useOfflineData<T extends { id: any }>({
   // ========================================
 
   return {
-    data: queryData || [],
+    data: data || [], // Usa dados sem duplicatas
     loading: isLoading,
     syncing,
     isOnline,
