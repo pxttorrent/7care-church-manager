@@ -59,8 +59,25 @@ export const MobileBottomNav = () => {
     
     console.log('🔄 Navegando para:', path, 'de:', location.pathname);
     
-    // Navegar imediatamente
-    navigate(path);
+    // Fechar qualquer modal/dialog aberto antes de navegar
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    const overlays = document.querySelectorAll('[data-state="open"]');
+    
+    if (dialogs.length > 0 || overlays.length > 0) {
+      console.log('⚠️ Fechando modais/overlays antes de navegar');
+      dialogs.forEach(d => (d as HTMLElement).remove());
+      overlays.forEach(o => (o as HTMLElement).remove());
+    }
+    
+    // Forçar navegação com replace se necessário
+    try {
+      navigate(path, { replace: false });
+      console.log('✅ Navegação executada para:', path);
+    } catch (error) {
+      console.error('❌ Erro ao navegar:', error);
+      // Fallback: usar window.location
+      window.location.href = path;
+    }
   };
 
   return (
