@@ -21,6 +21,12 @@ export const usePullToRefresh = ({
   const handleTouchStart = useCallback((e: TouchEvent) => {
     if (!enabled || isRefreshing) return;
     
+    // Verificar se o toque foi no menu inferior (não interferir)
+    const target = e.target as HTMLElement;
+    if (target.closest('nav') || target.closest('[role="navigation"]')) {
+      return; // Ignorar toques no menu
+    }
+    
     // Só ativar se estiver no topo da página
     const scrollTop = window.scrollY || document.documentElement.scrollTop;
     if (scrollTop === 0) {
@@ -31,6 +37,14 @@ export const usePullToRefresh = ({
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     if (!isPulling || !enabled || isRefreshing) return;
+    
+    // Verificar se o toque foi no menu inferior (não interferir)
+    const target = e.target as HTMLElement;
+    if (target.closest('nav') || target.closest('[role="navigation"]')) {
+      setIsPulling(false);
+      setPullDistance(0);
+      return; // Ignorar toques no menu
+    }
     
     const currentY = e.touches[0].clientY;
     const distance = currentY - startY.current;
