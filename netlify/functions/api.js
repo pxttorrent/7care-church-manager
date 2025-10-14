@@ -7790,12 +7790,11 @@ exports.handler = async (event, context) => {
                   }
                 }
                 
-                // Extrair campos para colunas diretas do extraData
-                const extraData = userData.extraData || {};
-                const temLicao = extraData.temLicao === true || extraData.temLicao === 'Sim';
-                const batizouAlguem = extraData.batizouAlguem === 'Sim' || extraData.batizouAlguem === true;
-                const cpfValido = extraData.cpfValido === 'Sim' || extraData.cpfValido === true;
-                const camposVazios = !(extraData.camposVazios === 0 || extraData.camposVazios === false || extraData.camposVazios === '0');
+                // Campos vêm diretamente de userData (não de extraData)
+                const temLicao = userData.temLicao === true || userData.temLicao === 'Sim';
+                const batizouAlguem = userData.batizouAlguem === 'Sim' || userData.batizouAlguem === true;
+                const cpfValido = userData.cpfValido === 'Sim' || userData.cpfValido === true;
+                const camposVazios = userData.camposVazios === true || !(userData.cpfValido === true);
                 
                 // Atualizar usuário existente (incluindo novas colunas)
                 await sql`
@@ -7814,20 +7813,20 @@ exports.handler = async (event, context) => {
                     is_tither = ${userData.isTither || false},
                     extra_data = ${userData.extraData ? JSON.stringify(userData.extraData) : null},
                     observations = ${userData.observations || null},
-                    engajamento = ${extraData.engajamento || null},
-                    classificacao = ${extraData.classificacao || null},
-                    dizimista_type = ${extraData.dizimistaType || null},
-                    ofertante_type = ${extraData.ofertanteType || null},
-                    tempo_batismo_anos = ${extraData.tempoBatismoAnos || null},
-                    departamentos_cargos = ${extraData.departamentosCargos || null},
-                    nome_unidade = ${extraData.nomeUnidade || null},
+                    engajamento = ${userData.engajamento || null},
+                    classificacao = ${userData.classificacao || null},
+                    dizimista_type = ${userData.dizimistaType || null},
+                    ofertante_type = ${userData.ofertanteType || null},
+                    tempo_batismo_anos = ${userData.tempoBatismoAnos || null},
+                    departamentos_cargos = ${userData.departamentosCargos || null},
+                    nome_unidade = ${userData.nomeUnidade || null},
                     tem_licao = ${temLicao},
-                    total_presenca = ${extraData.totalPresenca || 0},
-                    comunhao = ${extraData.comunhao || 0},
-                    missao = ${extraData.missao || 0},
-                    estudo_biblico = ${extraData.estudoBiblico || 0},
+                    total_presenca = ${userData.totalPresenca || 0},
+                    comunhao = ${userData.comunhao || 0},
+                    missao = ${userData.missao || 0},
+                    estudo_biblico = ${userData.estudoBiblico || 0},
                     batizou_alguem = ${batizouAlguem},
-                    disc_pos_batismal = ${extraData.discPosBatismal || 0},
+                    disc_pos_batismal = ${userData.discPosBatismal || 0},
                     cpf_valido = ${cpfValido},
                     campos_vazios = ${camposVazios},
                     updated_at = NOW()
@@ -7893,12 +7892,11 @@ exports.handler = async (event, context) => {
               const passwordTime = Date.now() - passwordStartTime;
               console.log(`⏱️ Hash da senha para ${userData.email}: ${passwordTime}ms`);
               
-              // Extrair campos para colunas diretas do extraData
-              const extraData = userData.extraData || {};
-              const temLicao = extraData.temLicao === true || extraData.temLicao === 'Sim';
-              const batizouAlguem = extraData.batizouAlguem === 'Sim' || extraData.batizouAlguem === true;
-              const cpfValido = extraData.cpfValido === 'Sim' || extraData.cpfValido === true;
-              const camposVazios = !(extraData.camposVazios === 0 || extraData.camposVazios === false || extraData.camposVazios === '0');
+              // Campos vêm diretamente de userData (não de extraData)
+              const temLicao = userData.temLicao === true || userData.temLicao === 'Sim';
+              const batizouAlguem = userData.batizouAlguem === 'Sim' || userData.batizouAlguem === true;
+              const cpfValido = userData.cpfValido === 'Sim' || userData.cpfValido === true;
+              const camposVazios = userData.camposVazios === true || !(userData.cpfValido === true);
               
               const insertStartTime = Date.now();
               await sql`
@@ -7931,20 +7929,20 @@ exports.handler = async (event, context) => {
                   ${userData.observations || null},
                   ${userData.isApproved || false},
                   ${userData.status || 'pending'},
-                  ${extraData.engajamento || null},
-                  ${extraData.classificacao || null},
-                  ${extraData.dizimistaType || null},
-                  ${extraData.ofertanteType || null},
-                  ${extraData.tempoBatismoAnos || null},
-                  ${extraData.departamentosCargos || null},
-                  ${extraData.nomeUnidade || null},
+                  ${userData.engajamento || null},
+                  ${userData.classificacao || null},
+                  ${userData.dizimistaType || null},
+                  ${userData.ofertanteType || null},
+                  ${userData.tempoBatismoAnos || null},
+                  ${userData.departamentosCargos || null},
+                  ${userData.nomeUnidade || null},
                   ${temLicao},
-                  ${extraData.totalPresenca || 0},
-                  ${extraData.comunhao || 0},
-                  ${extraData.missao || 0},
-                  ${extraData.estudoBiblico || 0},
+                  ${userData.totalPresenca || 0},
+                  ${userData.comunhao || 0},
+                  ${userData.missao || 0},
+                  ${userData.estudoBiblico || 0},
                   ${batizouAlguem},
-                  ${extraData.discPosBatismal || 0},
+                  ${userData.discPosBatismal || 0},
                   ${cpfValido},
                   ${camposVazios},
                   NOW(),
