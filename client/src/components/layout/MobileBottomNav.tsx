@@ -50,22 +50,17 @@ export const MobileBottomNav = () => {
     user && item.roles.includes(user.role)
   );
 
-  const handleNavigation = (path: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
+  const handleNavigation = (path: string) => {
     // Evitar navegação duplicada
     if (location.pathname === path) {
       console.log('🔄 Já está na página:', path);
       return;
     }
     
-    console.log('🔄 Navegando para:', path);
+    console.log('🔄 Navegando para:', path, 'de:', location.pathname);
     
-    // Usar setTimeout para garantir que a navegação aconteça após o evento
-    setTimeout(() => {
-      navigate(path);
-    }, 0);
+    // Navegar imediatamente
+    navigate(path);
   };
 
   return (
@@ -76,24 +71,18 @@ export const MobileBottomNav = () => {
           return (
             <button
               key={item.path}
-              onClick={(e) => handleNavigation(item.path, e)}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleNavigation(item.path, e as any);
-              }}
-              className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors pointer-events-auto ${
+              onClick={() => handleNavigation(item.path)}
+              className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors ${
                 isActive ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground'
               }`}
               style={{ 
                 touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent',
-                userSelect: 'none'
+                WebkitTapHighlightColor: 'transparent'
               }}
               type="button"
             >
-              <item.icon className="w-5 h-5 mb-1 pointer-events-none" />
-              <span className="text-xs font-medium pointer-events-none">{item.title}</span>
+              <item.icon className="w-5 h-5 mb-1" />
+              <span className="text-xs font-medium">{item.title}</span>
             </button>
           );
         })}
