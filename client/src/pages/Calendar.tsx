@@ -40,6 +40,16 @@ export default function Calendar() {
   const isAdmin = user?.role === 'admin';
   const { getAvailableEventTypes, canFilterEventType, permissions, isLoading: permissionsLoading } = useEventFilterPermissions();
   
+  // Garantir que não há nada bloqueando a navegação
+  useEffect(() => {
+    // Cleanup ao desmontar o componente
+    return () => {
+      // Fechar qualquer modal/dropdown que possa estar aberto
+      setShowEventModal(false);
+      console.log('🧹 Calendar desmontado - limpeza completa');
+    };
+  }, []);
+  
   // ========================================
   // BUSCAR EVENTOS DIRETO DA API (SEM CACHE - SEMPRE FRESH)
   // ========================================
