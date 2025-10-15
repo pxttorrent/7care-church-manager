@@ -51,8 +51,8 @@ const Dashboard = React.memo(() => {
   });
 
   // Fetch real dashboard statistics from API with optimized caching
-  const { data: dashboardStats, isLoading } = useQuery({
-    queryKey: ['/api/dashboard/stats', user?.id, tasksFromSheets?.length],
+  const { data: dashboardStatsRaw, isLoading } = useQuery({
+    queryKey: ['/api/dashboard/stats', user?.id],
     queryFn: async () => {
       const response = await fetch('/api/dashboard/stats', {
         headers: {
@@ -60,22 +60,7 @@ const Dashboard = React.memo(() => {
         }
       });
       if (!response.ok) throw new Error('Failed to fetch dashboard stats');
-      const data = await response.json();
-      
-      // Substituir contagem de tarefas com dados do Google Sheets (fonte da verdade)
-      if (tasksFromSheets && Array.isArray(tasksFromSheets)) {
-        const pending = tasksFromSheets.filter((t: any) => t.status !== 'Concluída').length;
-        const completed = tasksFromSheets.filter((t: any) => t.status === 'Concluída').length;
-        
-        return {
-          ...data,
-          totalTasks: tasksFromSheets.length,
-          pendingTasks: pending,
-          completedTasks: completed
-        };
-      }
-      
-      return data;
+      return response.json();
     },
     // Configurações para atualização em tempo real
     staleTime: 0, // Sempre considerado desatualizado
@@ -85,6 +70,27 @@ const Dashboard = React.memo(() => {
     refetchOnReconnect: true, // Atualizar quando reconecta
     enabled: !!user?.id, // Só executar se tiver usuário
   });
+
+  // SEMPRE substituir contagem de tarefas com dados do Google Sheets (fonte da verdade)
+  const dashboardStats = useMemo(() => {
+    if (!dashboardStatsRaw) return dashboardStatsRaw;
+    
+    if (tasksFromSheets && Array.isArray(tasksFromSheets)) {
+      const pending = tasksFromSheets.filter((t: any) => t.status !== 'Concluída').length;
+      const completed = tasksFromSheets.filter((t: any) => t.status === 'Concluída').length;
+      
+      console.log(`📊 Dashboard: Sobrescrevendo stats com Google Sheets - ${tasksFromSheets.length} tarefas (${pending} pendentes, ${completed} concluídas)`);
+      
+      return {
+        ...dashboardStatsRaw,
+        totalTasks: tasksFromSheets.length,
+        pendingTasks: pending,
+        completedTasks: completed
+      };
+    }
+    
+    return dashboardStatsRaw;
+  }, [dashboardStatsRaw, tasksFromSheets]);
 
   // Fetch birthday data with shorter cache for real-time updates
   const { data: birthdayData, isLoading: birthdayLoading } = useQuery({
