@@ -111,26 +111,52 @@ export default function Tasks() {
   // Estado de conexão
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Hook SIMPLIFICADO - buscar tarefas direto do servidor/sheets
+  // Hook SIMPLIFICADO - buscar tarefas DIRETO DO GOOGLE SHEETS (fonte da verdade)
   const { data: tasksData, isLoading: tasksLoading, refetch } = useQuery({
     queryKey: ['tasks'],
     queryFn: async () => {
-      console.log('📖 [TASKS] Buscando tarefas...');
+      console.log('📖 [TASKS] Buscando tarefas DO GOOGLE SHEETS (fonte da verdade)...');
       
-      // Buscar do servidor (que será sincronizado com Sheets)
-      const response = await fetch('/api/tasks', {
+      // Buscar DIRETO do Google Sheets
+      const response = await fetch(GOOGLE_SHEETS_CONFIG.proxyUrl, {
+        method: 'POST',
         headers: {
-          'x-user-id': '1',
-          'Cache-Control': 'no-cache'
-        }
+          'Content-Type': 'application/json',
+          'x-user-id': '1'
+        },
+        body: JSON.stringify({
+          action: 'getTasks',
+          spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+          sheetName: GOOGLE_SHEETS_CONFIG.sheetName
+        })
       });
       
-      if (!response.ok) throw new Error('Erro ao buscar tarefas');
+      if (!response.ok) throw new Error('Erro ao buscar tarefas do Google Sheets');
       
       const data = await response.json();
       const tasks = data.tasks || [];
-      console.log(`✅ [TASKS] ${tasks.length} tarefas carregadas`);
-      return tasks;
+      
+      // Converter formato do Sheets para formato do app
+      const convertedTasks = tasks.map((sheetTask: any) => ({
+        id: sheetTask.id,
+        title: sheetTask.titulo || '',
+        description: sheetTask.descricao || '',
+        status: sheetTask.status === 'Concluída' ? 'completed' : 
+                sheetTask.status === 'Em Progresso' ? 'in_progress' : 'pending',
+        priority: sheetTask.prioridade === 'Alta' ? 'high' :
+                  sheetTask.prioridade === 'Baixa' ? 'low' : 'medium',
+        assigned_to_name: sheetTask.responsavel || '',
+        created_by_name: sheetTask.criador || '',
+        church: sheetTask.igreja || '',
+        created_at: sheetTask.data_criacao ? new Date(sheetTask.data_criacao.split('/').reverse().join('-')).toISOString() : new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        due_date: sheetTask.data_vencimento || '',
+        completed_at: sheetTask.data_conclusao || '',
+        tags: sheetTask.tags ? sheetTask.tags.split(',').filter(Boolean) : []
+      }));
+      
+      console.log(`✅ [TASKS] ${convertedTasks.length} tarefas carregadas DO GOOGLE SHEETS`);
+      return convertedTasks;
     },
     staleTime: 0, // Sempre revalidar
     refetchInterval: 30000 // Buscar a cada 30s
@@ -157,29 +183,7 @@ export default function Tasks() {
     setSelectedTasks([]);
   }, [searchTerm, selectedPriority, selectedStatus]);
 
-  // Sincronização automática SIMPLIFICADA - Google Sheets é a fonte da verdade
-  useEffect(() => {
-    if (!isOnline) return;
-    
-    console.log('🔄 [AUTO] Iniciando sincronização com Google Sheets (fonte da verdade)...');
-    
-    // Sincronizar a cada 30 segundos (menos agressivo)
-    const syncInterval = setInterval(async () => {
-      if (!isOnline) return;
-      
-      try {
-        console.log(`⬅️ [AUTO] Sincronizando do Google Sheets (30s)...`);
-        await syncFromGoogleSheets(false); // false = sem toast
-      } catch (error) {
-        console.error('❌ [AUTO] Erro na sincronização:', error);
-      }
-    }, 30000); // A cada 30 segundos
-    
-    return () => {
-      console.log('🛑 [AUTO] Parando sincronização automática');
-      clearInterval(syncInterval);
-    };
-  }, [isOnline]);
+  // Sincronização automática é feita pelo refetchInterval do React Query (30s)
 
   // ========================================
   // 🎯 SINCRONIZAÇÃO COM GOOGLE SHEETS
@@ -337,53 +341,24 @@ export default function Tasks() {
   };
 
   /**
-   * Sincroniza DO Google Sheets (FONTE DA VERDADE) PARA o app
-   * SIMPLIFICADO: Sheets é a fonte única da verdade
+   * Sincronização manual - apenas refetch dos dados
    */
   const syncFromGoogleSheets = async (showToast = false) => {
     if (!isOnline) {
-      console.log('📴 Offline - sincronização adiada');
+      console.log('📴 Offline');
       if (showToast) toast.error('Você está offline');
       return;
     }
 
     try {
-      console.log('⬅️ [SHEETS] Buscando tarefas do Google Sheets (fonte da verdade)...');
       if (showToast) toast.info('Sincronizando...');
+      console.log('🔄 [SYNC] Recarregando do Google Sheets...');
       
-      // Buscar tarefas do Google Sheets (FONTE DA VERDADE)
-      const sheetsResponse = await fetch(GOOGLE_SHEETS_CONFIG.proxyUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '1'
-        },
-        body: JSON.stringify({
-          action: 'getTasks',
-          spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-          sheetName: GOOGLE_SHEETS_CONFIG.sheetName
-        })
-      });
+      await refetch();
       
-      if (!sheetsResponse.ok) {
-        throw new Error('Erro ao buscar do Google Sheets');
-      }
-      
-      const sheetsData = await sheetsResponse.json();
-      const sheetsTasks = sheetsData.tasks || [];
-      console.log(`📊 [SHEETS] ${sheetsTasks.length} tarefas no Google Sheets (fonte da verdade)`);
-      
-      // Atualizar React Query com dados do Sheets
-      queryClient.setQueryData(['tasks'], sheetsTasks);
-      
-      console.log(`✅ [SHEETS] Sincronização concluída: ${sheetsTasks.length} tarefas`);
-      
-      if (showToast) {
-        toast.success(`${sheetsTasks.length} tarefas sincronizadas`);
-      }
-      
+      if (showToast) toast.success('Sincronizado!');
     } catch (error) {
-      console.error('❌ [SHEETS] Erro:', error);
+      console.error('❌ [SYNC] Erro:', error);
       if (showToast) toast.error('Erro ao sincronizar');
     }
   };
