@@ -28,6 +28,7 @@ interface Task {
   assigned_to?: number;
   created_by_name?: string;
   assigned_to_name?: string;
+  church?: string;
   created_at: string;
   updated_at: string;
   completed_at?: string;
@@ -92,6 +93,7 @@ export default function Tasks() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPriority, setSelectedPriority] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('date'); // 'date', 'priority'
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -102,6 +104,7 @@ export default function Tasks() {
     priority: 'medium' as const,
     due_date: '',
     assigned_to: 'none',
+    church: '',
     tags: [] as string[]
   });
   
@@ -211,6 +214,7 @@ export default function Tasks() {
                    task.priority === 'low' ? 'Baixa' : 'Média',
         responsavel: task.assigned_to_name || 'Sistema',
         criador: task.created_by_name || 'App',
+        igreja: task.church || '',
         data_criacao: new Date(task.created_at).toLocaleDateString('pt-BR'),
         data_vencimento: task.due_date ? new Date(task.due_date).toLocaleDateString('pt-BR') : '',
         data_conclusao: task.completed_at ? new Date(task.completed_at).toLocaleDateString('pt-BR') : '',
@@ -574,6 +578,7 @@ export default function Tasks() {
                        task.priority === 'low' ? 'Baixa' : 'Média',
             responsavel: task.assigned_to_name || 'Sistema',
             criador: task.created_by_name || 'App',
+            igreja: task.church || '',
             data_criacao: new Date(task.created_at).toLocaleDateString('pt-BR'),
             data_vencimento: task.due_date ? new Date(task.due_date).toLocaleDateString('pt-BR') : '',
             data_conclusao: task.completed_at ? new Date(task.completed_at).toLocaleDateString('pt-BR') : '',
@@ -884,15 +889,30 @@ export default function Tasks() {
   const users = usersData?.users || [];
 
   // Filtrar tarefas
-  const filteredTasks = allTasks.filter((task: Task) => {
+  const filtered = allTasks.filter((task: Task) => {
     const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          task.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         task.assigned_to_name?.toLowerCase().includes(searchTerm.toLowerCase());
+                         task.assigned_to_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         task.church?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = selectedStatus === 'all' || task.status === selectedStatus;
     const matchesPriority = selectedPriority === 'all' || task.priority === selectedPriority;
     
     return matchesSearch && matchesStatus && matchesPriority;
+  });
+
+  // Ordenar tarefas
+  const filteredTasks = [...filtered].sort((a, b) => {
+    if (sortBy === 'priority') {
+      // Alta > Média > Baixa
+      const priorityOrder = { high: 3, medium: 2, low: 1 };
+      return priorityOrder[b.priority] - priorityOrder[a.priority];
+    } else {
+      // Data de criação (mais recente primeiro) - já vem ordenado do hook
+      const dateA = new Date(a.created_at || 0).getTime();
+      const dateB = new Date(b.created_at || 0).getTime();
+      return dateB - dateA;
+    }
   });
 
   const pendingTasks = filteredTasks.filter((task: Task) => task.status === 'pending');
@@ -953,6 +973,12 @@ export default function Tasks() {
                 <Badge className="bg-blue-50 text-blue-700 border-blue-200">
                   <User className="h-3 w-3 mr-1" />
                   {task.assigned_to_name}
+                </Badge>
+              )}
+              
+              {task.church && (
+                <Badge className="bg-purple-50 text-purple-700 border-purple-200">
+                  🏛️ {task.church}
                 </Badge>
               )}
             </div>
@@ -1205,6 +1231,17 @@ export default function Tasks() {
                       </Select>
                     </div>
                     
+                    <div>
+                      <Label htmlFor="church">Igreja</Label>
+                      <Input
+                        id="church"
+                        value={newTask.church}
+                        onChange={(e) => setNewTask({ ...newTask, church: e.target.value })}
+                        placeholder="Digite o nome da igreja"
+                        className="mt-1"
+                      />
+                    </div>
+                    
                     <div className="flex justify-end gap-3 pt-4">
                       <Button
                         variant="outline"
@@ -1242,7 +1279,7 @@ export default function Tasks() {
                   </div>
                 </div>
                 
-                <div className="flex gap-3">
+                <div className="flex gap-3 flex-wrap">
                   <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                     <SelectTrigger className="w-40">
                       <SelectValue placeholder="Status" />
@@ -1264,6 +1301,16 @@ export default function Tasks() {
                       <SelectItem value="high">Alta</SelectItem>
                       <SelectItem value="medium">Média</SelectItem>
                       <SelectItem value="low">Baixa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Ordenar por" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="date">Data de Lançamento</SelectItem>
+                      <SelectItem value="priority">Prioridade</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1466,6 +1513,17 @@ export default function Tasks() {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="edit-church">Igreja</Label>
+                    <Input
+                      id="edit-church"
+                      value={editingTask.church || ''}
+                      onChange={(e) => setEditingTask({ ...editingTask, church: e.target.value })}
+                      placeholder="Digite o nome da igreja"
+                      className="mt-1"
+                    />
                   </div>
                   
                   <div className="flex justify-end gap-3 pt-4">
