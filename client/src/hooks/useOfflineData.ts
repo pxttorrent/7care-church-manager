@@ -144,22 +144,13 @@ export function useOfflineData<T extends { id: any }>({
       const queryId = Math.random().toString(36).substr(2, 5);
       console.log(`📖 [${storeName}] [${queryId}] INÍCIO QUERY - Carregando dados...`);
       
-      // 1. SEMPRE carregar do cache local primeiro (rápido)
-      let localData = await offlineStorage.getAll<T>(storeName);
-      
-      // Transformar dados se necessário
-      if (transformAfterLoad) {
-        localData = localData.map(transformAfterLoad);
-      }
-      
-      console.log(`💾 [${storeName}] [${queryId}] ${localData.length} itens do cache local`, localData.map((item: any) => `${item.id}:${item.title}`));
-
-      // 2. Se online, buscar do servidor em background
+      // Se online, SEMPRE buscar do servidor primeiro (fonte da verdade)
       if (navigator.onLine && autoFetch) {
         try {
           const response = await fetch(endpoint, {
             headers: {
-              'x-user-id': '1', // TODO: Pegar do contexto de autenticação
+              'x-user-id': '1',
+              'Cache-Control': 'no-cache', // Forçar dados frescos
               ...headers
             }
           });
@@ -172,20 +163,20 @@ export function useOfflineData<T extends { id: any }>({
               ? serverData 
               : (serverData[storeName] || serverData.data || []);
 
-            console.log(`🌐 [${storeName}] [${queryId}] ${actualData.length} itens do servidor`, actualData.map((item: any) => `${item.id}:${item.title}`));
+            console.log(`🌐 [${storeName}] [${queryId}] ${actualData.length} itens do servidor (fonte da verdade)`);
 
-            // LIMPAR cache e recriar com dados do servidor (resolve problemas de tarefas fantasmas)
-            console.log(`🧹 [${storeName}] [${queryId}] Limpando cache completamente...`);
+            // LIMPAR cache completamente e recriar
+            console.log(`🧹 [${storeName}] [${queryId}] Limpando e recriando cache...`);
             
-            // Salvar tarefas com ID temporário (não sincronizadas) antes de limpar
+            // Verificar tarefas temporárias antes de limpar
+            const localData = await offlineStorage.getAll<T>(storeName);
             const tempTasks = localData.filter((item: any) => String(item.id).startsWith('temp_') && !item._synced);
-            console.log(`💾 [${storeName}] Preservando ${tempTasks.length} tarefas temporárias (offline)`);
+            console.log(`💾 [${storeName}] Preservando ${tempTasks.length} tarefas offline`);
             
             // Limpar tudo
             await offlineStorage.clear(storeName);
             
-            // Recriar com dados do servidor
-            console.log(`💾 [${storeName}] [${queryId}] Salvando ${actualData.length} itens do servidor no cache...`);
+            // Recriar com dados do servidor (fonte da verdade)
             for (const item of actualData) {
               const itemToSave = transformBeforeSave ? transformBeforeSave(item) : item;
               await offlineStorage.save(storeName, { 
@@ -194,110 +185,57 @@ export function useOfflineData<T extends { id: any }>({
               });
             }
             
-            // Recolocar tarefas temporárias (offline)
+            // Recolocar tarefas temporárias
             for (const tempTask of tempTasks) {
               await offlineStorage.save(storeName, tempTask);
             }
             
-            console.log(`✅ [${storeName}] [${queryId}] Cache recriado: ${actualData.length} do servidor + ${tempTasks.length} temp`);
+            console.log(`✅ [${storeName}] [${queryId}] Cache atualizado: ${actualData.length} + ${tempTasks.length} temp`);
 
-            // Retornar dados do servidor (mais atualizados)
+            // Retornar dados do servidor + temp (fonte única da verdade)
             const finalData = transformAfterLoad 
-              ? actualData.map(transformAfterLoad)
-              : actualData;
+              ? [...actualData, ...tempTasks].map(transformAfterLoad)
+              : [...actualData, ...tempTasks];
             
-            console.log(`📤 [${storeName}] [${queryId}] Retornando ${finalData.length} itens para React Query`, finalData.map((item: any) => `${item.id}:${item.title}`));
-            return finalData;
+            console.log(`📤 [${storeName}] [${queryId}] Retornando ${finalData.length} itens`);
+            return finalData as T[];
           } else {
-            console.warn(`⚠️ [${storeName}] Servidor retornou ${response.status}, usando cache local`);
+            console.warn(`⚠️ [${storeName}] Servidor retornou ${response.status}, usando cache`);
           }
         } catch (error) {
-          console.warn(`⚠️ [${storeName}] Erro ao buscar do servidor:`, error);
+          console.warn(`⚠️ [${storeName}] Erro ao buscar servidor:`, error);
         }
       }
 
-      // Retornar dados locais (se offline ou erro no servidor)
-      console.log(`📤 [${storeName}] [${queryId}] Retornando ${localData.length} itens do cache local`, localData.map((item: any) => `${item.id}:${item.title}`));
+      // OFFLINE ou falha: usar cache local
+      console.log(`📴 [${storeName}] [${queryId}] OFFLINE - usando cache local`);
+      let localData = await offlineStorage.getAll<T>(storeName);
+      
+      if (transformAfterLoad) {
+        localData = localData.map(transformAfterLoad);
+      }
+      
+      console.log(`📤 [${storeName}] [${queryId}] Retornando ${localData.length} itens do cache`);
       return localData;
     },
-    staleTime: 5000, // Considera dados válidos por 5 segundos
-    gcTime: 1000 * 60 * 60, // Mantém no cache por 1 hora (antes era cacheTime)
+    staleTime: 0, // SEMPRE revalidar (evita cache do React Query)
+    gcTime: 1000 * 60 * 5, // Manter no cache por 5 minutos apenas
   });
 
-  // Remover duplicatas de forma mais robusta
-  // 1. Por ID (priorizar IDs reais sobre temporários)
-  // 2. Por título (mesma tarefa com IDs diferentes)
-  const data = queryData ? Array.from(
-    queryData.reduce((map: Map<string, T>, item: T) => {
-      const id = String(item.id);
-      const isTemp = id.startsWith('temp_');
-      const title = String((item as any).title || '').toLowerCase().trim();
-      
-      // Verificar se já existe um item com o MESMO ID
-      if (map.has(id)) {
-        // Se já existe com o mesmo ID, manter apenas um (o mais recente)
-        const existing = map.get(id)!;
-        const existingDate = new Date((existing as any).updated_at || (existing as any).created_at || 0).getTime();
-        const itemDate = new Date((item as any).updated_at || (item as any).created_at || 0).getTime();
-        
-        if (itemDate > existingDate) {
-          map.set(id, item);
-        }
-        return map;
-      }
-      
-      // Verificar se já existe um item com o MESMO TÍTULO
-      let duplicateByTitle = false;
-      for (const [existingId, existing] of map.entries()) {
-        const existingTitle = String((existing as any).title || '').toLowerCase().trim();
-        const existingIsTemp = existingId.startsWith('temp_');
-        
-        if (existingTitle === title && title !== '') {
-          duplicateByTitle = true;
-          
-          // Se o item atual é real e o existente é temp, substituir
-          if (!isTemp && existingIsTemp) {
-            console.log(`🔄 [${storeName}] Substituindo temp ${existingId} por real ${id} (${title})`);
-            map.delete(existingId);
-            map.set(id, item);
-          } else if (isTemp && !existingIsTemp) {
-            // Se o item atual é temp e o existente é real, ignorar o temp
-            console.log(`⏭️  [${storeName}] Ignorando temp ${id}, já existe real ${existingId} (${title})`);
-          } else {
-            // Ambos temp ou ambos reais, manter o mais recente
-            const existingDate = new Date((existing as any).updated_at || (existing as any).created_at || 0).getTime();
-            const itemDate = new Date((item as any).updated_at || (item as any).created_at || 0).getTime();
-            
-            if (itemDate > existingDate) {
-              console.log(`🔄 [${storeName}] Substituindo ${existingId} por ${id} (mais recente)`);
-              map.delete(existingId);
-              map.set(id, item);
-            }
-          }
-          break;
-        }
-      }
-      
-      // Se não é duplicata, adicionar normalmente
-      if (!duplicateByTitle) {
-        map.set(id, item);
-      }
-      
-      return map;
-    }, new Map<string, T>())
-  ).map(([_, item]) => item) : [];
+  // Remover duplicatas SIMPLES - apenas por ID único
+  const uniqueData = queryData ? Array.from(
+    new Map(queryData.map((item: T) => [String(item.id), item])).values()
+  ) : [];
   
-  if (queryData && data.length !== queryData.length) {
-    console.warn(`⚠️ [${storeName}] Duplicatas removidas: ${queryData.length} -> ${data.length}`);
-    console.log(`   IDs originais:`, queryData.map((item: any) => item.id));
-    console.log(`   IDs finais:`, data.map((item: any) => item.id));
+  if (queryData && uniqueData.length !== queryData.length) {
+    console.warn(`⚠️ [${storeName}] Duplicatas removidas: ${queryData.length} -> ${uniqueData.length}`);
   }
   
-  // Ordenar por data de criação (mais recentes primeiro quando offline, ou ordem do servidor quando online)
-  const sortedData = data.sort((a: any, b: any) => {
+  // Ordenar por data de criação (mais recentes primeiro)
+  const sortedData = uniqueData.sort((a: any, b: any) => {
     const dateA = new Date(a.created_at || 0).getTime();
     const dateB = new Date(b.created_at || 0).getTime();
-    return dateB - dateA; // Mais recente primeiro
+    return dateB - dateA;
   });
 
   // ========================================
@@ -622,4 +560,5 @@ export function useOfflineData<T extends { id: any }>({
     syncInfo
   };
 }
+
 
