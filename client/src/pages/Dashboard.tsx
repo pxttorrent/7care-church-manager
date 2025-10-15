@@ -34,7 +34,26 @@ const Dashboard = React.memo(() => {
     queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] }); // Força refresh da API dashboard
   }, [queryClient]);
 
-  // COMPARTILHAR dados de tarefas com a página Tasks (mesma query)
+  // BUSCAR dados de usuários da mesma query da página Users
+  const { data: usersData } = useQuery({
+    queryKey: ['/api/users'],
+    queryFn: async () => {
+      console.log('🔄 Dashboard: Buscando usuários da API...');
+      const response = await fetch('/api/users');
+      if (!response.ok) {
+        console.error('❌ Dashboard: Erro ao buscar usuários:', response.status);
+        return [];
+      }
+      const data = await response.json();
+      console.log(`✅ Dashboard: ${data.length} usuários carregados`);
+      return data;
+    },
+    staleTime: 2 * 60 * 1000, // 2 minutos
+    refetchInterval: 5 * 60 * 1000, // 5 minutos
+    refetchOnWindowFocus: false
+  });
+
+  // BUSCAR dados de tarefas da mesma query da página Tasks
   const { data: tasksFromSheets } = useQuery({
     queryKey: ['tasks'],
     queryFn: async () => {
@@ -108,49 +127,49 @@ const Dashboard = React.memo(() => {
     enabled: !!user?.id, // Só executar se tiver usuário
   });
 
-  // FORÇAR uso APENAS dos dados do Google Sheets (ignorar API dashboard)
+  // USAR dados reais das páginas correspondentes
   const dashboardStats = useMemo(() => {
     console.log('🔍 Dashboard: Calculando stats...');
+    console.log('🔍 usersData:', usersData?.length || 0);
     console.log('🔍 tasksFromSheets:', tasksFromSheets?.length || 0);
-    console.log('🔍 dashboardStatsRaw:', dashboardStatsRaw);
+    
+    // Calcular stats de usuários da página Users
+    const totalUsers = usersData?.length || 0;
+    const totalMembers = usersData?.filter((u: any) => u.role === 'member' || u.role === 'admin').length || 0;
+    const totalMissionaries = usersData?.filter((u: any) => u.role?.includes('missionary')).length || 0;
+    const totalInterested = usersData?.filter((u: any) => u.role === 'interested').length || 0;
+    const approvedUsers = usersData?.filter((u: any) => u.status === 'approved').length || 0;
+    
+    // Calcular stats de tarefas da página Tasks
+    let totalTasks = 0;
+    let pendingTasks = 0;
+    let completedTasks = 0;
     
     if (tasksFromSheets && Array.isArray(tasksFromSheets)) {
-      // tasksFromSheets já vem convertido da página Tasks (formato inglês)
-      const pending = tasksFromSheets.filter((t: any) => t.status === 'pending' || t.status === 'in_progress').length;
-      const completed = tasksFromSheets.filter((t: any) => t.status === 'completed').length;
-      
-      console.log(`📊 Dashboard: USANDO APENAS Google Sheets - ${tasksFromSheets.length} tarefas (${pending} pendentes, ${completed} concluídas)`);
-      
-      // IGNORAR dashboardStatsRaw completamente, usar apenas dados do Google Sheets
-      return {
-        totalTasks: tasksFromSheets.length,
-        pendingTasks: pending,
-        completedTasks: completed,
-        // Manter outros stats da API se existirem
-        totalUsers: dashboardStatsRaw?.totalUsers || 0,
-        totalInterested: dashboardStatsRaw?.totalInterested || 0,
-        totalPrayers: dashboardStatsRaw?.totalPrayers || 0,
-        totalVisits: dashboardStatsRaw?.totalVisits || 0,
-        totalActivities: dashboardStatsRaw?.totalActivities || 0,
-        totalPoints: dashboardStatsRaw?.totalPoints || 0
-      };
+      totalTasks = tasksFromSheets.length;
+      pendingTasks = tasksFromSheets.filter((t: any) => t.status === 'pending' || t.status === 'in_progress').length;
+      completedTasks = tasksFromSheets.filter((t: any) => t.status === 'completed').length;
     }
     
-    // Se não tem dados do Google Sheets, usar dados da API como fallback
-    console.log('⚠️ Dashboard: Usando dados da API como fallback');
-    console.log('⚠️ dashboardStatsRaw:', dashboardStatsRaw);
-    return dashboardStatsRaw || {
-      totalUsers: 0,
-      totalInterested: 0,
-      totalTasks: 0,
-      pendingTasks: 0,
-      completedTasks: 0,
-      totalPrayers: 0,
-      totalVisits: 0,
-      totalActivities: 0,
-      totalPoints: 0
+    const stats = {
+      totalUsers,
+      totalMembers,
+      totalMissionaries,
+      totalInterested,
+      approvedUsers,
+      totalTasks,
+      pendingTasks,
+      completedTasks,
+      // Manter outros stats da API se existirem
+      totalPrayers: dashboardStatsRaw?.totalPrayers || 0,
+      totalVisits: dashboardStatsRaw?.totalVisits || 0,
+      totalActivities: dashboardStatsRaw?.totalActivities || 0,
+      totalPoints: dashboardStatsRaw?.totalPoints || 0
     };
-  }, [dashboardStatsRaw, tasksFromSheets]);
+    
+    console.log('📊 Dashboard: Stats calculados:', stats);
+    return stats;
+  }, [dashboardStatsRaw, tasksFromSheets, usersData]);
 
   // Fetch birthday data with shorter cache for real-time updates
   const { data: birthdayData, isLoading: birthdayLoading } = useQuery({
@@ -455,34 +474,36 @@ const Dashboard = React.memo(() => {
   });
 
 
-  // Use real data when available, fallback to default values
+  // Usar dados reais das páginas correspondentes
   const stats = useMemo(() => {
-    console.log('📊 Dashboard: Calculando stats...');
+    console.log('📊 Dashboard: Calculando stats finais...');
     console.log('📊 dashboardStats:', dashboardStats);
-    console.log('📊 dashboardStatsRaw:', dashboardStatsRaw);
-    
-    // Usar dashboardStats se existir, senão usar dashboardStatsRaw, senão usar valores padrão
-    const sourceData = dashboardStats || dashboardStatsRaw;
-    console.log('📊 sourceData:', sourceData);
     
     const calculatedStats = {
-      totalUsers: sourceData?.totalUsers || 0,
-      totalInterested: sourceData?.totalInterested || 0,
-      interestedBeingDiscipled: sourceData?.interestedBeingDiscipled || 0,
-      totalChurches: sourceData?.totalChurches || 0,
-      pendingApprovals: sourceData?.pendingApprovals || 0,
-      completedTasks: sourceData?.completedTasks || 0,
-      totalTasks: sourceData?.totalTasks || 0,
-      pendingTasks: sourceData?.pendingTasks || 0,
-      thisWeekEvents: sourceData?.thisWeekEvents || 0,
-      totalEvents: sourceData?.totalEvents || 0,
-      approvedUsers: sourceData?.approvedUsers || 0,
-      totalMembers: sourceData?.totalMembers || 0,
-      totalMissionaries: sourceData?.totalMissionaries || 0
+      // Usar dados calculados do dashboardStats (que vem das páginas)
+      totalUsers: dashboardStats?.totalUsers || 0,
+      totalInterested: dashboardStats?.totalInterested || 0,
+      totalMembers: dashboardStats?.totalMembers || 0,
+      totalMissionaries: dashboardStats?.totalMissionaries || 0,
+      approvedUsers: dashboardStats?.approvedUsers || 0,
+      totalTasks: dashboardStats?.totalTasks || 0,
+      pendingTasks: dashboardStats?.pendingTasks || 0,
+      completedTasks: dashboardStats?.completedTasks || 0,
+      
+      // Manter outros campos da API original se existirem
+      interestedBeingDiscipled: dashboardStatsRaw?.interestedBeingDiscipled || 0,
+      totalChurches: dashboardStatsRaw?.totalChurches || 0,
+      pendingApprovals: dashboardStatsRaw?.pendingApprovals || 0,
+      thisWeekEvents: dashboardStatsRaw?.thisWeekEvents || 0,
+      totalEvents: dashboardStatsRaw?.totalEvents || 0,
+      totalPrayers: dashboardStats?.totalPrayers || 0,
+      totalVisits: dashboardStats?.totalVisits || 0,
+      totalActivities: dashboardStats?.totalActivities || 0,
+      totalPoints: dashboardStats?.totalPoints || 0
     };
     
-    // Debug: log das estatísticas
-    console.log('📊 Dashboard: Stats calculated:', calculatedStats);
+    // Debug: log das estatísticas finais
+    console.log('📊 Dashboard: Stats finais calculados:', calculatedStats);
     
     return calculatedStats;
   }, [dashboardStats, dashboardStatsRaw]);
