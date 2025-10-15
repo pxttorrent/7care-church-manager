@@ -26,10 +26,18 @@ const Dashboard = React.memo(() => {
   const { toast } = useToast();
   const [showCheckIn, setShowCheckIn] = useState(false);
 
-  // Fetch tarefas DIRETO do Google Sheets (fonte da verdade)
+  // Limpar cache antigo de tarefas ao carregar o Dashboard
+  useEffect(() => {
+    console.log('🧹 Dashboard: Limpando cache antigo de tarefas...');
+    queryClient.removeQueries({ queryKey: ['tasks-from-sheets'] }); // Remove cache antigo
+    queryClient.invalidateQueries({ queryKey: ['tasks'] }); // Força refresh da query atual
+  }, [queryClient]);
+
+  // COMPARTILHAR dados de tarefas com a página Tasks (mesma query)
   const { data: tasksFromSheets } = useQuery({
     queryKey: ['tasks'],
     queryFn: async () => {
+      console.log('🔄 Dashboard: Buscando tarefas do Google Sheets...');
       const response = await fetch('/api/google-sheets/proxy', {
         method: 'POST',
         headers: {
@@ -42,9 +50,36 @@ const Dashboard = React.memo(() => {
           sheetName: 'tarefas'
         })
       });
-      if (!response.ok) return [];
+      
+      if (!response.ok) {
+        console.error('❌ Dashboard: Erro ao buscar tarefas:', response.status);
+        return [];
+      }
+      
       const data = await response.json();
-      return data.tasks || [];
+      const tasksFromSheets = data.tasks || [];
+      
+      // Converter formato do Sheets para formato do app (igual à página Tasks)
+      const convertedTasks = tasksFromSheets.map((sheetTask: any) => ({
+        id: sheetTask.id,
+        title: sheetTask.titulo || '',
+        description: sheetTask.descricao || '',
+        status: sheetTask.status === 'Concluída' ? 'completed' : 
+                sheetTask.status === 'Em Progresso' ? 'in_progress' : 'pending',
+        priority: sheetTask.prioridade === 'Alta' ? 'high' :
+                  sheetTask.prioridade === 'Baixa' ? 'low' : 'medium',
+        assigned_to_name: sheetTask.responsavel || '',
+        created_by_name: sheetTask.criador || '',
+        church: sheetTask.igreja || '',
+        created_at: sheetTask.data_criacao ? new Date(sheetTask.data_criacao.split('/').reverse().join('-')).toISOString() : new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        due_date: sheetTask.data_vencimento || '',
+        completed_at: sheetTask.data_conclusao || '',
+        tags: sheetTask.tags ? sheetTask.tags.split(',').filter(Boolean) : []
+      }));
+      
+      console.log(`✅ Dashboard: ${convertedTasks.length} tarefas carregadas do Google Sheets`);
+      return convertedTasks;
     },
     staleTime: 2 * 60 * 1000, // 2 minutos - dados não mudam tão frequentemente
     refetchInterval: 5 * 60 * 1000, // 5 minutos - menos frequente
