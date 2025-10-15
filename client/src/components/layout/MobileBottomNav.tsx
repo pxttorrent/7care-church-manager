@@ -139,8 +139,7 @@ export const MobileBottomNav = () => {
             className="absolute top-2 bottom-2 bg-primary/20 rounded-2xl transition-all duration-300 ease-out shadow-sm"
             style={{
               width: `calc(${100 / allowedItems.length}% - 8px)`,
-              left: `calc(${(100 / allowedItems.length) * activeIndex}% + 4px)`,
-              transform: `translateX(${(100 / allowedItems.length) * activeIndex}%)`
+              left: `calc(${(100 / allowedItems.length) * activeIndex}% + 4px)`
             }}
           />
           
