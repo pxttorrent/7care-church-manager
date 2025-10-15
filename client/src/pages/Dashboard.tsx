@@ -53,12 +53,21 @@ const Dashboard = React.memo(() => {
     refetchOnWindowFocus: false
   });
 
-  // BUSCAR dados de tarefas da mesma query da página Tasks
-  const { data: tasksFromSheets } = useQuery({
+  // CONFIGURAÇÃO EXATA DA PÁGINA TASKS
+  const GOOGLE_SHEETS_CONFIG = {
+    proxyUrl: '/api/google-sheets/proxy',
+    spreadsheetId: '1i-x-0KiciwACRztoKX-YHlXT4FsrAzaKwuH-hHkD8go',
+    sheetName: 'tarefas'
+  };
+
+  // USAR EXATAMENTE A MESMA QUERY DA PÁGINA TASKS
+  const { data: tasksData, isLoading: tasksLoading } = useQuery({
     queryKey: ['tasks'],
     queryFn: async () => {
-      console.log('🔄 Dashboard: Buscando tarefas do Google Sheets...');
-      const response = await fetch('/api/google-sheets/proxy', {
+      console.log('📖 [DASHBOARD] Buscando tarefas DO GOOGLE SHEETS (fonte da verdade)...');
+      
+      // Buscar DIRETO do Google Sheets (IGUAL à página Tasks)
+      const response = await fetch(GOOGLE_SHEETS_CONFIG.proxyUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -66,24 +75,18 @@ const Dashboard = React.memo(() => {
         },
         body: JSON.stringify({
           action: 'getTasks',
-          spreadsheetId: '1i-x-0KiciwACRztoKX-YHlXT4FsrAzaKwuH-hHkD8go',
-          sheetName: 'tarefas'
+          spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+          sheetName: GOOGLE_SHEETS_CONFIG.sheetName
         })
       });
       
-      if (!response.ok) {
-        console.error('❌ Dashboard: Erro ao buscar tarefas:', response.status);
-        return [];
-      }
+      if (!response.ok) throw new Error('Erro ao buscar tarefas do Google Sheets');
       
       const data = await response.json();
-      const tasksFromSheets = data.tasks || [];
+      const tasks = data.tasks || [];
       
-      console.log('🔍 Dashboard: Dados brutos do Google Sheets:', data);
-      console.log('🔍 Dashboard: Array de tarefas:', tasksFromSheets);
-      
-      // Converter formato do Sheets para formato do app (igual à página Tasks)
-      const convertedTasks = tasksFromSheets.map((sheetTask: any) => ({
+      // Converter formato do Sheets para formato do app (IGUAL à página Tasks)
+      const convertedTasks = tasks.map((sheetTask: any) => ({
         id: sheetTask.id,
         title: sheetTask.titulo || '',
         description: sheetTask.descricao || '',
@@ -101,13 +104,7 @@ const Dashboard = React.memo(() => {
         tags: sheetTask.tags ? sheetTask.tags.split(',').filter(Boolean) : []
       }));
       
-      console.log(`✅ Dashboard: ${convertedTasks.length} tarefas carregadas do Google Sheets`);
-      console.log('🔍 Dashboard: Detalhes das tarefas:', convertedTasks.map(t => ({
-        id: t.id,
-        title: t.title,
-        status: t.status,
-        responsavel: t.assigned_to_name
-      })));
+      console.log(`✅ [DASHBOARD] ${convertedTasks.length} tarefas carregadas DO GOOGLE SHEETS`);
       return convertedTasks;
     },
     staleTime: 2 * 60 * 1000, // 2 minutos - dados não mudam tão frequentemente
@@ -140,7 +137,7 @@ const Dashboard = React.memo(() => {
   const dashboardStats = useMemo(() => {
     console.log('🔍 Dashboard: Calculando stats...');
     console.log('🔍 usersData:', usersData?.length || 0);
-    console.log('🔍 tasksFromSheets:', tasksFromSheets?.length || 0);
+    console.log('🔍 tasksData:', tasksData?.length || 0);
     
     // Calcular stats de usuários da página Users
     const totalUsers = usersData?.length || 0;
@@ -149,20 +146,20 @@ const Dashboard = React.memo(() => {
     const totalInterested = usersData?.filter((u: any) => u.role === 'interested').length || 0;
     const approvedUsers = usersData?.filter((u: any) => u.status === 'approved').length || 0;
     
-    // Calcular stats de tarefas da página Tasks
+    // Calcular stats de tarefas EXATAMENTE como a página Tasks
     let totalTasks = 0;
     let pendingTasks = 0;
     let completedTasks = 0;
     
-    if (tasksFromSheets && Array.isArray(tasksFromSheets)) {
-      totalTasks = tasksFromSheets.length;
+    if (tasksData && Array.isArray(tasksData)) {
+      totalTasks = tasksData.length;
       
       // Log detalhado para debug
-      console.log('🔍 Dashboard: Analisando tarefas...');
+      console.log('🔍 Dashboard: Analisando tarefas (IGUAL à página Tasks)...');
       console.log('🔍 Total de tarefas:', totalTasks);
       
-      const pendingList = tasksFromSheets.filter((t: any) => t.status === 'pending' || t.status === 'in_progress');
-      const completedList = tasksFromSheets.filter((t: any) => t.status === 'completed');
+      const pendingList = tasksData.filter((t: any) => t.status === 'pending' || t.status === 'in_progress');
+      const completedList = tasksData.filter((t: any) => t.status === 'completed');
       
       console.log('🔍 Tarefas pendentes:', pendingList.length, pendingList.map(t => ({ id: t.id, title: t.title, status: t.status })));
       console.log('🔍 Tarefas concluídas:', completedList.length, completedList.map(t => ({ id: t.id, title: t.title, status: t.status })));
@@ -189,7 +186,7 @@ const Dashboard = React.memo(() => {
     
     console.log('📊 Dashboard: Stats calculados:', stats);
     return stats;
-  }, [dashboardStatsRaw, tasksFromSheets, usersData]);
+  }, [dashboardStatsRaw, tasksData, usersData]);
 
   // Fetch birthday data with shorter cache for real-time updates
   const { data: birthdayData, isLoading: birthdayLoading } = useQuery({
