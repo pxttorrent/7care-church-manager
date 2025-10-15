@@ -50,7 +50,7 @@ import { useToast } from '@/hooks/use-toast';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { MountainProgress } from '@/components/dashboard/MountainProgress';
 import { PointsConfiguration } from '@/components/settings/PointsConfiguration';
-import { OfflineModeSettings } from '@/components/settings/OfflineModeSettings';
+// OfflineModeSettings removido - sistema offline desativado
 import { useLastImportDate } from '@/hooks/useLastImportDate';
 import { useSystemLogo } from '@/hooks/useSystemLogo';
 import { ImportExcelModal } from '@/components/calendar/ImportExcelModal';
@@ -1861,9 +1861,6 @@ export default function Settings() {
             {user?.role === 'admin' && (
               <TabsTrigger value="data-management" className="text-xs">Gestão de Dados</TabsTrigger>
             )}
-            {user?.role === 'admin' && (
-              <TabsTrigger value="offline-mode" className="text-xs">Modo Offline</TabsTrigger>
-            )}
           </TabsList>
 
           {/* Mobile Tabs - Scrollable */}
@@ -1890,9 +1887,6 @@ export default function Settings() {
             )}
             {user?.role === 'admin' && (
               <TabsTrigger value="data-management" className="text-xs flex-shrink-0 px-2">Gestão de Dados</TabsTrigger>
-            )}
-            {user?.role === 'admin' && (
-              <TabsTrigger value="offline-mode" className="text-xs flex-shrink-0 px-2">Modo Offline</TabsTrigger>
             )}
           </TabsList>
 
@@ -2796,12 +2790,7 @@ export default function Settings() {
             </TabsContent>
           )}
 
-          {/* Offline Mode Settings */}
-          {user?.role === 'admin' && (
-            <TabsContent value="offline-mode" className="space-y-4">
-              <OfflineModeSettings />
-            </TabsContent>
-          )}
+          {/* Offline Mode Settings - REMOVIDO */}
 
         </Tabs>
 
