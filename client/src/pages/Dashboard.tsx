@@ -28,7 +28,7 @@ const Dashboard = React.memo(() => {
 
   // Fetch tarefas DIRETO do Google Sheets (fonte da verdade)
   const { data: tasksFromSheets } = useQuery({
-    queryKey: ['tasks-from-sheets'],
+    queryKey: ['tasks'],
     queryFn: async () => {
       const response = await fetch('/api/google-sheets/proxy', {
         method: 'POST',
@@ -77,15 +77,9 @@ const Dashboard = React.memo(() => {
     if (!dashboardStatsRaw) return dashboardStatsRaw;
     
     if (tasksFromSheets && Array.isArray(tasksFromSheets)) {
-      // Converter status do Google Sheets para formato consistente
-      const convertedTasks = tasksFromSheets.map((t: any) => ({
-        ...t,
-        status: t.status === 'Concluída' ? 'completed' : 
-                t.status === 'Em Progresso' ? 'in_progress' : 'pending'
-      }));
-      
-      const pending = convertedTasks.filter((t: any) => t.status === 'pending' || t.status === 'in_progress').length;
-      const completed = convertedTasks.filter((t: any) => t.status === 'completed').length;
+      // tasksFromSheets já vem convertido da página Tasks (formato inglês)
+      const pending = tasksFromSheets.filter((t: any) => t.status === 'pending' || t.status === 'in_progress').length;
+      const completed = tasksFromSheets.filter((t: any) => t.status === 'completed').length;
       
       console.log(`📊 Dashboard: Sobrescrevendo stats com Google Sheets - ${tasksFromSheets.length} tarefas (${pending} pendentes, ${completed} concluídas)`);
       
