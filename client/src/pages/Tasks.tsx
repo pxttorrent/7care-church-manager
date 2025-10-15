@@ -673,12 +673,14 @@ export default function Tasks() {
 
   const users = usersData?.users || [];
 
-  // Filtrar tarefas
+  // Filtrar tarefas com verificações de segurança
   const filtered = allTasks.filter((task: Task) => {
-    const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         task.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         task.assigned_to_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         task.church?.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!task || !task.id) return false; // Ignorar tarefas inválidas
+    
+    const matchesSearch = (task.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (task.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (task.assigned_to_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (task.church || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = selectedStatus === 'all' || task.status === selectedStatus;
     const matchesPriority = selectedPriority === 'all' || task.priority === selectedPriority;
