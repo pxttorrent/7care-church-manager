@@ -31,6 +31,7 @@ const Dashboard = React.memo(() => {
     console.log('🧹 Dashboard: Limpando cache antigo de tarefas...');
     queryClient.removeQueries({ queryKey: ['tasks-from-sheets'] }); // Remove cache antigo
     queryClient.invalidateQueries({ queryKey: ['tasks'] }); // Força refresh da query atual
+    queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] }); // Força refresh da API dashboard
   }, [queryClient]);
 
   // COMPARTILHAR dados de tarefas com a página Tasks (mesma query)
@@ -107,25 +108,36 @@ const Dashboard = React.memo(() => {
     enabled: !!user?.id, // Só executar se tiver usuário
   });
 
-  // SEMPRE substituir contagem de tarefas com dados do Google Sheets (fonte da verdade)
+  // FORÇAR uso APENAS dos dados do Google Sheets (ignorar API dashboard)
   const dashboardStats = useMemo(() => {
-    if (!dashboardStatsRaw) return dashboardStatsRaw;
+    console.log('🔍 Dashboard: Calculando stats...');
+    console.log('🔍 tasksFromSheets:', tasksFromSheets?.length || 0);
+    console.log('🔍 dashboardStatsRaw:', dashboardStatsRaw);
     
     if (tasksFromSheets && Array.isArray(tasksFromSheets)) {
       // tasksFromSheets já vem convertido da página Tasks (formato inglês)
       const pending = tasksFromSheets.filter((t: any) => t.status === 'pending' || t.status === 'in_progress').length;
       const completed = tasksFromSheets.filter((t: any) => t.status === 'completed').length;
       
-      console.log(`📊 Dashboard: Sobrescrevendo stats com Google Sheets - ${tasksFromSheets.length} tarefas (${pending} pendentes, ${completed} concluídas)`);
+      console.log(`📊 Dashboard: USANDO APENAS Google Sheets - ${tasksFromSheets.length} tarefas (${pending} pendentes, ${completed} concluídas)`);
       
+      // IGNORAR dashboardStatsRaw completamente, usar apenas dados do Google Sheets
       return {
-        ...dashboardStatsRaw,
         totalTasks: tasksFromSheets.length,
         pendingTasks: pending,
-        completedTasks: completed
+        completedTasks: completed,
+        // Manter outros stats da API se existirem
+        totalUsers: dashboardStatsRaw?.totalUsers || 0,
+        totalInterested: dashboardStatsRaw?.totalInterested || 0,
+        totalPrayers: dashboardStatsRaw?.totalPrayers || 0,
+        totalVisits: dashboardStatsRaw?.totalVisits || 0,
+        totalActivities: dashboardStatsRaw?.totalActivities || 0,
+        totalPoints: dashboardStatsRaw?.totalPoints || 0
       };
     }
     
+    // Se não tem dados do Google Sheets, usar dados da API como fallback
+    console.log('⚠️ Dashboard: Usando dados da API como fallback');
     return dashboardStatsRaw;
   }, [dashboardStatsRaw, tasksFromSheets]);
 
