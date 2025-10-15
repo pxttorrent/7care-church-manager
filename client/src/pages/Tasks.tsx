@@ -136,116 +136,52 @@ export default function Tasks() {
     setSelectedTasks([]);
   }, [searchTerm, selectedPriority, selectedStatus]);
 
-  // Sincronização automática a cada 2 segundos (SERVIDOR + SHEETS)
+  // Sincronização automática otimizada (apenas Google Sheets, servidor já sincroniza via hook)
   useEffect(() => {
     if (!isOnline) return;
     
-    console.log('🔄 [AUTO] Iniciando sincronização automática a cada 2 segundos...');
-    let syncCount = 0;
+    console.log('🔄 [AUTO] Iniciando sincronização otimizada com Google Sheets...');
     
+    // Sincronizar apenas a cada 30 segundos (não a cada 2s)
     const syncInterval = setInterval(async () => {
-      if (!isOnline) {
-        return;
-      }
-      
-      syncCount++;
+      if (!isOnline) return;
       
       try {
-        // A cada ciclo, alternar entre sincronizações para não sobrecarregar
-        
-        // 1. Sincronizar pendências com servidor (se houver)
-        if (syncInfo.pendingCount > 0) {
-          console.log(`📤 [AUTO-${syncCount}] ${syncInfo.pendingCount} itens pendentes - sincronizando com servidor...`);
-          await syncOfflineData();
-        }
-        
-        // 2. Sincronizar DO Google Sheets PARA o app (a cada 2 ciclos = 4 segundos)
-        // Isso reduz a carga, já que buscar do Sheets é mais pesado
-        if (syncCount % 2 === 0) {
-          console.log(`⬅️ [AUTO-${syncCount}] Sincronizando do Google Sheets...`);
-          await syncFromGoogleSheets(false); // false = sem toast
-        }
-        
+        // Sincronizar DO Google Sheets PARA o app
+        // O hook useOfflineData já cuida da sincronização com servidor
+        console.log(`⬅️ [AUTO] Sincronizando do Google Sheets (30s)...`);
+        await syncFromGoogleSheets(false); // false = sem toast
       } catch (error) {
-        console.error('❌ [AUTO] Erro no ciclo de sincronização:', error);
+        console.error('❌ [AUTO] Erro na sincronização:', error);
       }
-    }, 2000); // A cada 2 segundos
+    }, 30000); // A cada 30 segundos (não mais a cada 2s)
     
     return () => {
       console.log('🛑 [AUTO] Parando sincronização automática');
       clearInterval(syncInterval);
     };
-  }, [isOnline, syncInfo.pendingCount]);
+  }, [isOnline]);
 
-  // Sincronização inicial quando volta online
+  // Sincronização inicial simplificada quando volta online
   useEffect(() => {
     if (!isOnline) return;
     
-    console.log(`🌐 [AUTO] Online detectado - executando sincronização inicial...`);
+    console.log(`🌐 [AUTO] Online detectado - sincronizando em 2 segundos...`);
     
     const syncTimer = setTimeout(async () => {
       try {
-        // 1. Verificar se há tarefas com ID temporário no cache
-        const cachedTasks = await offlineStorage.getAll('tasks');
-        const tempTasks = cachedTasks.filter((task: any) => String(task.id).startsWith('temp_'));
-        
-        if (tempTasks.length > 0) {
-          console.log(`📤 [AUTO] ${tempTasks.length} tarefas offline para sincronizar`);
-          
-          // 2. Sincronizar com servidor (envia tarefas temp)
-          const result = await syncOfflineData();
-          console.log('✅ [AUTO] Servidor sincronizado:', result);
-          
-          // 3. Buscar tarefas atualizadas do servidor
-          console.log('🔄 [AUTO] Buscando tarefas atualizadas do servidor...');
-          await queryClient.invalidateQueries({ queryKey: ['tasks'] });
-          await queryClient.refetchQueries({ queryKey: ['tasks'], type: 'active' });
-          
-          // 4. Aguardar cache atualizar
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          // 5. Buscar as tarefas que foram criadas (agora com ID real)
-          const response = await fetch('/api/tasks', {
-            headers: { 
-              'x-user-id': '1',
-              'Cache-Control': 'no-cache'
-            }
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            const allTasks = data.tasks || [];
-            
-            // 6. Adicionar cada tarefa nova individualmente ao Google Sheets
-            console.log(`📊 [AUTO] Adicionando ${tempTasks.length} tarefas ao Google Sheets (incremental)...`);
-            
-            for (const tempTask of tempTasks) {
-              // Encontrar a tarefa com o mesmo título (que era temp e agora tem ID real)
-              const realTask = allTasks.find((t: Task) => 
-                t.title === tempTask.title && 
-                !String(t.id).startsWith('temp_')
-              );
-              
-              if (realTask) {
-                console.log(`📤 Adicionando tarefa ${realTask.id} ao Google Sheets...`);
-                await addTaskToGoogleSheets(realTask);
-                await new Promise(resolve => setTimeout(resolve, 300)); // Delay entre requests
-              }
-            }
-            
-            console.log('✅ [AUTO] Sincronização incremental concluída!');
-          }
-        } else {
-          console.log('✅ [AUTO] Nenhuma tarefa offline para sincronizar');
-        }
-        
+        // O hook useOfflineData já cuida da sincronização com servidor
+        // Aqui apenas sincronizamos com Google Sheets
+        console.log('⬅️ [AUTO] Sincronizando do Google Sheets após voltar online...');
+        await syncFromGoogleSheets(false);
+        console.log('✅ [AUTO] Sincronização inicial concluída!');
       } catch (error) {
-        console.error('❌ [AUTO] Erro na sincronização:', error);
+        console.error('❌ [AUTO] Erro na sincronização inicial:', error);
       }
-    }, 1500); // 1.5 segundos após ficar online
+    }, 2000); // 2 segundos após ficar online
     
     return () => clearTimeout(syncTimer);
-  }, [isOnline]); // Dispara sempre que o status online muda
+  }, [isOnline]); // Dispara quando o status online muda
 
   // ========================================
   // 🎯 SINCRONIZAÇÃO COM GOOGLE SHEETS

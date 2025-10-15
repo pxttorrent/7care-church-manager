@@ -35,7 +35,7 @@ export interface UseOfflineDataOptions<T> {
   /** Buscar dados do servidor ao montar (padrão: true) */
   autoFetch?: boolean;
   
-  /** Intervalo de sincronização automática em ms (padrão: 30000 = 30s) */
+  /** Intervalo de sincronização automática em ms (padrão: 60000 = 60s) */
   syncInterval?: number;
   
   /** Headers customizados para requisições */
@@ -174,11 +174,29 @@ export function useOfflineData<T extends { id: any }>({
 
             console.log(`🌐 [${storeName}] [${queryId}] ${actualData.length} itens do servidor`, actualData.map((item: any) => `${item.id}:${item.title}`));
 
-            // Atualizar cache local com dados do servidor
-            console.log(`🧹 [${storeName}] [${queryId}] Limpando cache local antes de salvar do servidor...`);
-            await offlineStorage.clear(storeName);
+            // Atualizar cache local de forma inteligente (sem limpar tudo)
+            console.log(`🔄 [${storeName}] [${queryId}] Atualizando cache de forma inteligente...`);
             
-            console.log(`💾 [${storeName}] [${queryId}] Salvando ${actualData.length} itens do servidor no cache...`);
+            // Criar um mapa dos IDs do servidor para comparação rápida
+            const serverIds = new Set(actualData.map((item: any) => String(item.id)));
+            
+            // Remover itens que não existem mais no servidor (apenas os com _synced = true)
+            for (const localItem of localData) {
+              const localId = String(localItem.id);
+              const isTemp = localId.startsWith('temp_');
+              
+              // Só remover se:
+              // 1. Não é temp (itens temp serão sincronizados depois)
+              // 2. Está marcado como sincronizado
+              // 3. Não existe mais no servidor
+              if (!isTemp && (localItem as any)._synced && !serverIds.has(localId)) {
+                console.log(`🗑️ [${storeName}] Removendo ${localId} (não existe mais no servidor)`);
+                await offlineStorage.delete(storeName, localItem.id);
+              }
+            }
+            
+            // Adicionar/atualizar itens do servidor
+            console.log(`💾 [${storeName}] [${queryId}] Atualizando ${actualData.length} itens do servidor...`);
             for (const item of actualData) {
               const itemToSave = transformBeforeSave ? transformBeforeSave(item) : item;
               await offlineStorage.save(storeName, { 
@@ -186,7 +204,7 @@ export function useOfflineData<T extends { id: any }>({
                 _synced: true 
               });
             }
-            console.log(`✅ [${storeName}] [${queryId}] Cache local atualizado com dados do servidor`);
+            console.log(`✅ [${storeName}] [${queryId}] Cache local atualizado de forma inteligente`);
 
             // Retornar dados do servidor (mais atualizados)
             const finalData = transformAfterLoad 

@@ -170,8 +170,9 @@ if (typeof window !== 'undefined') {
       console.log('🧹 Limpando dados locais sincronizados...');
       await dataMerger.clearSyncedData();
       
-      // Recarregar dados para pegar IDs reais do servidor
-      window.location.reload();
+      // NÃO recarregar - deixar React Query atualizar automaticamente
+      // O hook useOfflineData já invalida as queries após sync
+      console.log('✅ Dados sincronizados - React Query atualizará automaticamente');
     }
   });
 }
