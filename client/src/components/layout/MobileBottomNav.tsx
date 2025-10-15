@@ -1,14 +1,11 @@
 import { LayoutDashboard, Calendar, MessageCircle, Users, Settings, Trophy, Heart } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { useEffect, useRef, useState } from 'react';
 
 export const MobileBottomNav = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const navRef = useRef<HTMLDivElement>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
   
   const navItems = [
     {
@@ -53,15 +50,7 @@ export const MobileBottomNav = () => {
     user && item.roles.includes(user.role)
   );
 
-  // Atualizar índice ativo baseado na rota atual
-  useEffect(() => {
-    const currentIndex = allowedItems.findIndex(item => location.pathname === item.path);
-    if (currentIndex !== -1) {
-      setActiveIndex(currentIndex);
-    }
-  }, [location.pathname, allowedItems]);
-
-  const handleNavigation = (path: string, index: number) => {
+  const handleNavigation = (path: string) => {
     // Evitar navegação duplicada
     if (location.pathname === path) {
       console.log('🔄 Já está na página:', path);
@@ -70,41 +59,28 @@ export const MobileBottomNav = () => {
     
     console.log('🔄 FORÇANDO navegação de', location.pathname, '→', path);
     
-    // Atualizar índice ativo imediatamente para animação suave
-    setActiveIndex(index);
-    
-    // Navegar usando window.location.href para forçar navegação completa
+    // SOLUÇÃO DEFINITIVA: Usar window.location.href para forçar navegação completa
+    // Isso garante que funciona mesmo se React Router estiver travado
     window.location.href = path;
   };
 
   return (
     <nav 
-      ref={navRef}
-      className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm shadow-2xl"
+      className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t shadow-lg pointer-events-auto" 
       style={{ zIndex: 999999 }}
     >
-      <div className="relative flex justify-around items-center py-3 px-4">
-        {/* Fundo deslizante */}
-        <div 
-          className="absolute top-2 bottom-2 bg-blue-500 rounded-full transition-all duration-300 ease-out shadow-lg"
-          style={{
-            width: `calc(${100 / allowedItems.length}% - 8px)`,
-            left: `calc(${(100 / allowedItems.length) * activeIndex}% + 4px)`,
-            transform: `translateX(${(100 / allowedItems.length) * activeIndex}%)`
-          }}
-        />
-        
-        {allowedItems.map((item, index) => {
-          const isActive = index === activeIndex;
+      <div className="flex justify-around items-center py-2 pointer-events-auto">
+        {allowedItems.map((item) => {
+          const isActive = location.pathname === item.path;
           return (
             <button
               key={item.path}
               onClick={(e) => {
                 e.stopPropagation();
-                handleNavigation(item.path, index);
+                handleNavigation(item.path);
               }}
-              className={`relative flex flex-col items-center justify-center w-full h-16 transition-all duration-300 ease-out ${
-                isActive ? 'text-white' : 'text-white/70 hover:text-white'
+              className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors pointer-events-auto ${
+                isActive ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground'
               }`}
               style={{ 
                 touchAction: 'manipulation',
@@ -113,14 +89,8 @@ export const MobileBottomNav = () => {
               }}
               type="button"
             >
-              <item.icon className={`w-6 h-6 mb-1 transition-all duration-300 ${
-                isActive ? 'scale-110' : 'scale-100'
-              }`} />
-              <span className={`text-xs font-medium transition-all duration-300 ${
-                isActive ? 'opacity-100 font-semibold' : 'opacity-80'
-              }`}>
-                {item.title}
-              </span>
+              <item.icon className="w-5 h-5 mb-1" />
+              <span className="text-xs font-medium">{item.title}</span>
             </button>
           );
         })}
