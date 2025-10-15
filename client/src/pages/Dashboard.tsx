@@ -138,7 +138,18 @@ const Dashboard = React.memo(() => {
     
     // Se não tem dados do Google Sheets, usar dados da API como fallback
     console.log('⚠️ Dashboard: Usando dados da API como fallback');
-    return dashboardStatsRaw;
+    console.log('⚠️ dashboardStatsRaw:', dashboardStatsRaw);
+    return dashboardStatsRaw || {
+      totalUsers: 0,
+      totalInterested: 0,
+      totalTasks: 0,
+      pendingTasks: 0,
+      completedTasks: 0,
+      totalPrayers: 0,
+      totalVisits: 0,
+      totalActivities: 0,
+      totalPoints: 0
+    };
   }, [dashboardStatsRaw, tasksFromSheets]);
 
   // Fetch birthday data with shorter cache for real-time updates
@@ -446,26 +457,35 @@ const Dashboard = React.memo(() => {
 
   // Use real data when available, fallback to default values
   const stats = useMemo(() => {
-    const calculatedStats = (dashboardStats as any) || {
-      totalUsers: 0,
-      totalInterested: 0,
-      interestedBeingDiscipled: 0,
-      totalChurches: 0,
-      pendingApprovals: 0,
-      completedTasks: 0,
-      thisWeekEvents: 0,
-      totalEvents: 0,
-      approvedUsers: 0,
-      totalMembers: 0,
-      totalMissionaries: 0
+    console.log('📊 Dashboard: Calculando stats...');
+    console.log('📊 dashboardStats:', dashboardStats);
+    console.log('📊 dashboardStatsRaw:', dashboardStatsRaw);
+    
+    // Usar dashboardStats se existir, senão usar dashboardStatsRaw, senão usar valores padrão
+    const sourceData = dashboardStats || dashboardStatsRaw;
+    console.log('📊 sourceData:', sourceData);
+    
+    const calculatedStats = {
+      totalUsers: sourceData?.totalUsers || 0,
+      totalInterested: sourceData?.totalInterested || 0,
+      interestedBeingDiscipled: sourceData?.interestedBeingDiscipled || 0,
+      totalChurches: sourceData?.totalChurches || 0,
+      pendingApprovals: sourceData?.pendingApprovals || 0,
+      completedTasks: sourceData?.completedTasks || 0,
+      totalTasks: sourceData?.totalTasks || 0,
+      pendingTasks: sourceData?.pendingTasks || 0,
+      thisWeekEvents: sourceData?.thisWeekEvents || 0,
+      totalEvents: sourceData?.totalEvents || 0,
+      approvedUsers: sourceData?.approvedUsers || 0,
+      totalMembers: sourceData?.totalMembers || 0,
+      totalMissionaries: sourceData?.totalMissionaries || 0
     };
     
     // Debug: log das estatísticas
     console.log('📊 Dashboard: Stats calculated:', calculatedStats);
-    console.log('📊 Dashboard: Raw dashboardStats:', dashboardStats);
     
     return calculatedStats;
-  }, [dashboardStats]);
+  }, [dashboardStats, dashboardStatsRaw]);
 
 
 
