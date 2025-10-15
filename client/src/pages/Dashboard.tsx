@@ -26,6 +26,9 @@ const Dashboard = React.memo(() => {
   const { toast } = useToast();
   const [showCheckIn, setShowCheckIn] = useState(false);
 
+  // Log simples para verificar se o componente está carregando
+  console.log('🚀 DASHBOARD: Componente carregado!');
+
   // Limpar cache antigo de tarefas ao carregar o Dashboard
   useEffect(() => {
     console.log('🧹 Dashboard: LIMPANDO CACHE COMPLETO...');
@@ -67,6 +70,7 @@ const Dashboard = React.memo(() => {
   const { data: tasksData, isLoading: tasksLoading } = useQuery({
     queryKey: ['tasks'],
     queryFn: async () => {
+      console.log('🚀 INICIANDO BUSCA DE TAREFAS...');
       console.log('📖 [DASHBOARD] Buscando tarefas DO GOOGLE SHEETS (fonte da verdade)...');
       
       // Buscar DIRETO do Google Sheets (IGUAL à página Tasks)
@@ -216,10 +220,10 @@ const Dashboard = React.memo(() => {
     console.log('📊 Dashboard: Stats calculados:', stats);
     
     // Log específico do card de tarefas
-    console.log(`🎯 [CARD TAREFAS] VALOR FINAL EXIBIDO:`);
-    console.log(`🎯 Total de tarefas: ${stats.totalTasks}`);
-    console.log(`🎯 Tarefas pendentes: ${stats.pendingTasks}`);
-    console.log(`🎯 Tarefas concluídas: ${stats.completedTasks}`);
+    console.log('🎯 [CARD TAREFAS] VALOR FINAL EXIBIDO:');
+    console.log('🎯 Total de tarefas:', stats.totalTasks);
+    console.log('🎯 Tarefas pendentes:', stats.pendingTasks);
+    console.log('🎯 Tarefas concluídas:', stats.completedTasks);
     
     return stats;
   }, [dashboardStatsRaw, tasksData, usersData]);
@@ -1326,6 +1330,10 @@ const Dashboard = React.memo(() => {
       </div>
     );
   }
+
+  console.log('🚀 DASHBOARD: Renderizando componente...');
+  console.log('🚀 tasksData:', tasksData?.length || 0);
+  console.log('🚀 stats:', stats);
 
   return (
     <MobileLayout>
