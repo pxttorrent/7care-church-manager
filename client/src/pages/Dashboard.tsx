@@ -105,6 +105,16 @@ const Dashboard = React.memo(() => {
       }));
       
       console.log(`✅ [DASHBOARD] ${convertedTasks.length} tarefas carregadas DO GOOGLE SHEETS`);
+      
+      // Log específico para verificar contagem
+      const pendingCount = convertedTasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
+      const completedCount = convertedTasks.filter(t => t.status === 'completed').length;
+      
+      console.log(`📊 [DASHBOARD] CONTAGEM DAS TAREFAS:`);
+      console.log(`📊 Total: ${convertedTasks.length}`);
+      console.log(`📊 Pendentes: ${pendingCount}`);
+      console.log(`📊 Concluídas: ${completedCount}`);
+      
       return convertedTasks;
     },
     staleTime: 2 * 60 * 1000, // 2 minutos - dados não mudam tão frequentemente
@@ -185,6 +195,13 @@ const Dashboard = React.memo(() => {
     };
     
     console.log('📊 Dashboard: Stats calculados:', stats);
+    
+    // Log específico do card de tarefas
+    console.log(`🎯 [CARD TAREFAS] VALOR FINAL EXIBIDO:`);
+    console.log(`🎯 Total de tarefas: ${stats.totalTasks}`);
+    console.log(`🎯 Tarefas pendentes: ${stats.pendingTasks}`);
+    console.log(`🎯 Tarefas concluídas: ${stats.completedTasks}`);
+    
     return stats;
   }, [dashboardStatsRaw, tasksData, usersData]);
 
