@@ -292,6 +292,13 @@ export function useOfflineData<T extends { id: any }>({
     console.log(`   IDs originais:`, queryData.map((item: any) => item.id));
     console.log(`   IDs finais:`, data.map((item: any) => item.id));
   }
+  
+  // Ordenar por data de criação (mais recentes primeiro quando offline, ou ordem do servidor quando online)
+  const sortedData = data.sort((a: any, b: any) => {
+    const dateA = new Date(a.created_at || 0).getTime();
+    const dateB = new Date(b.created_at || 0).getTime();
+    return dateB - dateA; // Mais recente primeiro
+  });
 
   // ========================================
   // CRIAR ITEM
@@ -603,7 +610,7 @@ export function useOfflineData<T extends { id: any }>({
   // ========================================
 
   return {
-    data: data || [], // Usa dados sem duplicatas
+    data: sortedData || [], // Usa dados sem duplicatas e ordenados por data de criação
     loading: isLoading,
     syncing,
     isOnline,
