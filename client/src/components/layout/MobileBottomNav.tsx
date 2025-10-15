@@ -94,13 +94,14 @@ export const MobileBottomNav = memo(() => {
         ref={navRef}
         className="bg-background/95 backdrop-blur-sm border rounded-3xl shadow-2xl pointer-events-auto"
       >
-        <div className="relative flex justify-around items-center py-3 px-4">
+        <div className="relative flex justify-around items-center py-2 px-3">
           {/* Fundo deslizante centralizado */}
           <div 
-            className="absolute top-2 bottom-2 bg-primary/20 rounded-2xl transition-all duration-300 ease-out shadow-sm"
+            className="absolute top-1 bottom-1 bg-primary/20 rounded-2xl transition-all duration-300 ease-out shadow-sm"
             style={{
-              width: `calc(${100 / allowedItems.length}% - 8px)`,
-              left: `calc(${(100 / allowedItems.length) * activeIndex}% + 4px)`
+              width: `calc(${100 / allowedItems.length}% - 12px)`,
+              left: `calc(${(100 / allowedItems.length) * activeIndex}% + 6px)`,
+              height: 'calc(100% - 8px)'
             }}
           />
           
@@ -113,7 +114,7 @@ export const MobileBottomNav = memo(() => {
                   e.stopPropagation();
                   handleNavigation(item.path, index);
                 }}
-                className={`relative flex flex-col items-center justify-center w-full h-14 transition-all duration-300 ease-out ${
+                className={`relative flex flex-col items-center justify-center w-full h-12 transition-all duration-300 ease-out ${
                   isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
                 }`}
                 style={{ 
