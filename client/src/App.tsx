@@ -67,15 +67,6 @@ const App = () => {
     return () => clearInterval(cleanupInterval);
   }, []);
 
-  // Log do status do cache offline
-  useEffect(() => {
-    if (offlineCache.isCaching) {
-      console.log(`📦 Cacheando para offline: ${offlineCache.progress}%`);
-    } else if (offlineCache.cachedCount > 0) {
-      console.log(`✅ Cache offline completo: ${offlineCache.cachedCount}/${offlineCache.totalCount} páginas`);
-    }
-  }, [offlineCache.isCaching, offlineCache.progress, offlineCache.cachedCount, offlineCache.totalCount]);
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
