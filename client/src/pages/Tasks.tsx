@@ -156,8 +156,9 @@ export default function Tasks() {
       console.log(`✅ [TASKS] ${convertedTasks.length} tarefas carregadas DO GOOGLE SHEETS`);
       return convertedTasks;
     },
-    staleTime: 0, // Sempre revalidar
-    refetchInterval: 30000 // Buscar a cada 30s
+    staleTime: 2 * 60 * 1000, // 2 minutos - dados não mudam tão frequentemente
+    refetchInterval: 5 * 60 * 1000, // 5 minutos - menos frequente
+    refetchOnWindowFocus: false // Não refetch a cada foco
   });
 
   const allTasks = tasksData || [];

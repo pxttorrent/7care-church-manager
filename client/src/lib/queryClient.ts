@@ -162,10 +162,10 @@ export const cleanupOldCache = (queryClient: QueryClient) => {
 
 // Função para configurar listeners de performance
 export const setupPerformanceListeners = (queryClient: QueryClient) => {
-  // Listener para quando o usuário volta à aba
+  // Listener para quando o usuário volta à aba - OTIMIZADO
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      // Invalidar queries que podem estar desatualizadas
+      // Só invalidar queries críticas, não todas
       queryClient.invalidateQueries({ 
         queryKey: ['/api/dashboard/stats'],
         refetchType: 'active'
@@ -173,12 +173,13 @@ export const setupPerformanceListeners = (queryClient: QueryClient) => {
     }
   });
   
-  // Listener para quando o usuário volta online
+  // Listener para quando o usuário volta online - OTIMIZADO
   window.addEventListener('online', () => {
-    // Refazer queries que falharam por falta de conexão
+    // Só refazer queries que falharam, não todas
     queryClient.refetchQueries({ 
       type: 'active',
-      exact: false 
+      exact: false,
+      stale: true // Só queries que estão stale
     });
   });
 };

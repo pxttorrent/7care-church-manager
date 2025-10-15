@@ -11,24 +11,24 @@ export const PERFORMANCE_CONFIG = {
   // Configurações de cache para diferentes tipos de dados
   cacheConfig: {
     dashboard: {
-      staleTime: 0, // Sempre considerado desatualizado para atualização em tempo real
-      gcTime: 2 * 60 * 1000, // 2 minutos
-      refetchInterval: 30000, // 30 segundos para atualização em tempo real
+      staleTime: 2 * 60 * 1000, // 2 minutos - dados não mudam tão frequentemente
+      gcTime: 5 * 60 * 1000, // 5 minutos
+      refetchInterval: 5 * 60 * 1000, // 5 minutos - menos frequente
     },
     calendar: {
-      staleTime: 2 * 60 * 1000, // 2 minutos
-      gcTime: 5 * 60 * 1000, // 5 minutos
-      refetchInterval: 600000, // 10 minutos
+      staleTime: 5 * 60 * 1000, // 5 minutos
+      gcTime: 10 * 60 * 1000, // 10 minutos
+      refetchInterval: 15 * 60 * 1000, // 15 minutos
     },
     users: {
-      staleTime: 0, // Sempre considerado desatualizado para atualização em tempo real
-      gcTime: 2 * 60 * 1000, // 2 minutos
-      refetchInterval: 30000, // 30 segundos para atualização em tempo real
+      staleTime: 3 * 60 * 1000, // 3 minutos - dados de usuários mudam menos
+      gcTime: 5 * 60 * 1000, // 5 minutos
+      refetchInterval: 10 * 60 * 1000, // 10 minutos - menos frequente
     },
     activities: {
       staleTime: 10 * 60 * 1000, // 10 minutos
       gcTime: 30 * 60 * 1000, // 30 minutos
-      refetchInterval: 1800000, // 30 minutos
+      refetchInterval: 30 * 60 * 1000, // 30 minutos
     }
   },
   

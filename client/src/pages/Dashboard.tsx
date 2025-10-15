@@ -46,8 +46,9 @@ const Dashboard = React.memo(() => {
       const data = await response.json();
       return data.tasks || [];
     },
-    staleTime: 0,
-    refetchInterval: 30000
+    staleTime: 2 * 60 * 1000, // 2 minutos - dados não mudam tão frequentemente
+    refetchInterval: 5 * 60 * 1000, // 5 minutos - menos frequente
+    refetchOnWindowFocus: false // Não refetch a cada foco
   });
 
   // Fetch real dashboard statistics from API with optimized caching
@@ -62,10 +63,10 @@ const Dashboard = React.memo(() => {
       if (!response.ok) throw new Error('Failed to fetch dashboard stats');
       return response.json();
     },
-    // Configurações para atualização em tempo real
-    staleTime: 0, // Sempre considerado desatualizado
-    refetchInterval: 30000, // Atualizar a cada 30 segundos
-    refetchOnWindowFocus: true, // Atualizar quando a janela ganha foco
+    // Configurações otimizadas para performance
+    staleTime: 2 * 60 * 1000, // 2 minutos - dados não mudam tão frequentemente
+    refetchInterval: 5 * 60 * 1000, // 5 minutos - menos frequente
+    refetchOnWindowFocus: false, // Não refetch a cada foco
     refetchOnMount: true, // Atualizar quando o componente é montado
     refetchOnReconnect: true, // Atualizar quando reconecta
     enabled: !!user?.id, // Só executar se tiver usuário
