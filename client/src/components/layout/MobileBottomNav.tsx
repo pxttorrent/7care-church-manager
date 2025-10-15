@@ -1,17 +1,18 @@
 import { LayoutDashboard, Calendar, Users, Settings, Trophy } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { memo } from 'react';
 
-export const MobileBottomNav = () => {
+export const MobileBottomNav = memo(() => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const [activeIndex, setActiveIndex] = useState(0);
   const navRef = useRef<HTMLDivElement>(null);
   
-  // Estrutura simplificada do menu
-  const menuStructure = [
+  // Estrutura simplificada do menu - memoizada para evitar recriações
+  const menuStructure = useMemo(() => [
     {
       title: 'Início',
       icon: LayoutDashboard,
@@ -47,11 +48,13 @@ export const MobileBottomNav = () => {
       roles: ['admin', 'missionary', 'member', 'interested'],
       submenu: []
     }
-  ];
+  ], [user?.role]);
 
-  // Filtrar itens baseado no role do usuário
-  const allowedItems = menuStructure.filter(item => 
-    user && item.roles.includes(user.role)
+  // Filtrar itens baseado no role do usuário - memoizado
+  const allowedItems = useMemo(() => 
+    menuStructure.filter(item => 
+      user && item.roles.includes(user.role)
+    ), [menuStructure, user]
   );
 
   // Atualizar índice ativo baseado na rota atual
@@ -72,7 +75,7 @@ export const MobileBottomNav = () => {
     setActiveIndex(newActiveIndex);
   }, [location.pathname, allowedItems]);
 
-  const handleNavigation = (path: string, index: number) => {
+  const handleNavigation = useCallback((path: string, index: number) => {
     if (location.pathname === path) {
       console.log('🔄 Já está na página:', path);
       return;
@@ -82,7 +85,7 @@ export const MobileBottomNav = () => {
     
     setActiveIndex(index);
     window.location.href = path;
-  };
+  }, [location.pathname]);
 
   return (
     <div className="fixed bottom-0 left-0 right-0 p-4 pointer-events-none" style={{ zIndex: 999999 }}>
@@ -134,4 +137,4 @@ export const MobileBottomNav = () => {
       </nav>
     </div>
   );
-};
+});
