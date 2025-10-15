@@ -99,6 +99,12 @@ const Dashboard = React.memo(() => {
       }));
       
       console.log(`✅ Dashboard: ${convertedTasks.length} tarefas carregadas do Google Sheets`);
+      console.log('🔍 Dashboard: Detalhes das tarefas:', convertedTasks.map(t => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        responsavel: t.assigned_to_name
+      })));
       return convertedTasks;
     },
     staleTime: 2 * 60 * 1000, // 2 minutos - dados não mudam tão frequentemente
