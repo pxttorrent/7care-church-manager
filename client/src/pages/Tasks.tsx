@@ -108,30 +108,48 @@ export default function Tasks() {
     tags: [] as string[]
   });
   
-  // Hook de armazenamento offline (App ↔ Servidor)
-  const {
-    data: allTasks,
-    loading: tasksLoading,
-    syncing,
-    isOnline,
-    create: createTask,
-    update: updateTask,
-    remove: deleteTask,
-    sync: syncOfflineData,
-    syncInfo
-  } = useOfflineData<Task>({
-    storeName: 'tasks',
-    endpoint: '/api/tasks',
+  // Estado de conexão
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  // Hook SIMPLIFICADO - buscar tarefas direto do servidor/sheets
+  const { data: tasksData, isLoading: tasksLoading, refetch } = useQuery({
     queryKey: ['tasks'],
-    autoFetch: true,
-    syncInterval: 10000 // 10 segundos (equilibrado)
+    queryFn: async () => {
+      console.log('📖 [TASKS] Buscando tarefas...');
+      
+      // Buscar do servidor (que será sincronizado com Sheets)
+      const response = await fetch('/api/tasks', {
+        headers: {
+          'x-user-id': '1',
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      if (!response.ok) throw new Error('Erro ao buscar tarefas');
+      
+      const data = await response.json();
+      const tasks = data.tasks || [];
+      console.log(`✅ [TASKS] ${tasks.length} tarefas carregadas`);
+      return tasks;
+    },
+    staleTime: 0, // Sempre revalidar
+    refetchInterval: 30000 // Buscar a cada 30s
   });
 
-  // Inicializar storage
+  const allTasks = tasksData || [];
+
+  // Monitorar conexão
   useEffect(() => {
-    offlineStorage.init().then(() => {
-      console.log('✅ Storage inicializado');
-    });
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   // Limpar seleções quando filtros mudarem
@@ -139,54 +157,29 @@ export default function Tasks() {
     setSelectedTasks([]);
   }, [searchTerm, selectedPriority, selectedStatus]);
 
-  // Sincronização automática bidirecional (Google Sheets ↔ App)
+  // Sincronização automática SIMPLIFICADA - Google Sheets é a fonte da verdade
   useEffect(() => {
     if (!isOnline) return;
     
-    console.log('🔄 [AUTO] Iniciando sincronização bidirecional com Google Sheets...');
-    let syncCount = 0;
+    console.log('🔄 [AUTO] Iniciando sincronização com Google Sheets (fonte da verdade)...');
     
-    // Sincronizar a cada 10 segundos (equilibrado entre performance e atualização)
+    // Sincronizar a cada 30 segundos (menos agressivo)
     const syncInterval = setInterval(async () => {
       if (!isOnline) return;
       
-      syncCount++;
-      
       try {
-        // Sincronizar DO Google Sheets PARA o app
-        console.log(`⬅️ [AUTO-${syncCount}] Sincronizando do Google Sheets (10s)...`);
+        console.log(`⬅️ [AUTO] Sincronizando do Google Sheets (30s)...`);
         await syncFromGoogleSheets(false); // false = sem toast
       } catch (error) {
         console.error('❌ [AUTO] Erro na sincronização:', error);
       }
-    }, 10000); // A cada 10 segundos (equilibrado)
+    }, 30000); // A cada 30 segundos
     
     return () => {
       console.log('🛑 [AUTO] Parando sincronização automática');
       clearInterval(syncInterval);
     };
   }, [isOnline]);
-
-  // Sincronização inicial simplificada quando volta online
-  useEffect(() => {
-    if (!isOnline) return;
-    
-    console.log(`🌐 [AUTO] Online detectado - sincronizando em 2 segundos...`);
-    
-    const syncTimer = setTimeout(async () => {
-      try {
-        // O hook useOfflineData já cuida da sincronização com servidor
-        // Aqui apenas sincronizamos com Google Sheets
-        console.log('⬅️ [AUTO] Sincronizando do Google Sheets após voltar online...');
-        await syncFromGoogleSheets(false);
-        console.log('✅ [AUTO] Sincronização inicial concluída!');
-      } catch (error) {
-        console.error('❌ [AUTO] Erro na sincronização inicial:', error);
-      }
-    }, 2000); // 2 segundos após ficar online
-    
-    return () => clearTimeout(syncTimer);
-  }, [isOnline]); // Dispara quando o status online muda
 
   // ========================================
   // 🎯 SINCRONIZAÇÃO COM GOOGLE SHEETS
@@ -344,8 +337,8 @@ export default function Tasks() {
   };
 
   /**
-   * Sincroniza DO Google Sheets PARA o servidor (BIDIRECIONAL)
-   * Busca tarefas do Sheets e atualiza o servidor com as diferenças
+   * Sincroniza DO Google Sheets (FONTE DA VERDADE) PARA o app
+   * SIMPLIFICADO: Sheets é a fonte única da verdade
    */
   const syncFromGoogleSheets = async (showToast = false) => {
     if (!isOnline) {
@@ -355,10 +348,10 @@ export default function Tasks() {
     }
 
     try {
-      console.log('⬅️ [SYNC-FROM-SHEETS] Iniciando sincronização DO Google Sheets...');
-      if (showToast) toast.info('Sincronizando do Google Sheets...');
+      console.log('⬅️ [SHEETS] Buscando tarefas do Google Sheets (fonte da verdade)...');
+      if (showToast) toast.info('Sincronizando...');
       
-      // 1. Buscar tarefas do Google Sheets
+      // Buscar tarefas do Google Sheets (FONTE DA VERDADE)
       const sheetsResponse = await fetch(GOOGLE_SHEETS_CONFIG.proxyUrl, {
         method: 'POST',
         headers: {
@@ -373,260 +366,33 @@ export default function Tasks() {
       });
       
       if (!sheetsResponse.ok) {
-        throw new Error('Erro ao buscar tarefas do Google Sheets');
+        throw new Error('Erro ao buscar do Google Sheets');
       }
       
       const sheetsData = await sheetsResponse.json();
       const sheetsTasks = sheetsData.tasks || [];
-      console.log(`📊 [SYNC-FROM-SHEETS] ${sheetsTasks.length} tarefas no Google Sheets`);
+      console.log(`📊 [SHEETS] ${sheetsTasks.length} tarefas no Google Sheets (fonte da verdade)`);
       
-      // 2. Buscar tarefas do servidor
-      const serverResponse = await fetch('/api/tasks', {
-        headers: { 
-          'x-user-id': '1',
-          'Cache-Control': 'no-cache'
-        }
-      });
+      // Atualizar React Query com dados do Sheets
+      queryClient.setQueryData(['tasks'], sheetsTasks);
       
-      if (!serverResponse.ok) {
-        throw new Error('Erro ao buscar tarefas do servidor');
-      }
+      console.log(`✅ [SHEETS] Sincronização concluída: ${sheetsTasks.length} tarefas`);
       
-      const serverData = await serverResponse.json();
-      const serverTasks = serverData.tasks || [];
-      console.log(`💾 [SYNC-FROM-SHEETS] ${serverTasks.length} tarefas no servidor`);
-      
-      // 3. Comparar e sincronizar
-      const serverTasksMap = new Map(serverTasks.map((t: Task) => [t.id, t]));
-      const sheetsTasksMap = new Map(sheetsTasks.map((t: any) => [t.id, t]));
-      
-      let created = 0;
-      let updated = 0;
-      let deleted = 0;
-      
-      // 3a. Deletar tarefas que existem no servidor mas não no Sheets
-      for (const serverTask of serverTasks) {
-        if (!sheetsTasksMap.has(serverTask.id)) {
-          console.log(`🗑️ [SYNC-FROM-SHEETS] Deletando tarefa ${serverTask.id} (não está no Sheets)`);
-          try {
-            await fetch(`/api/tasks/${serverTask.id}`, {
-              method: 'DELETE',
-              headers: { 'x-user-id': '1' }
-            });
-            deleted++;
-          } catch (error) {
-            console.error(`❌ Erro ao deletar tarefa ${serverTask.id}:`, error);
-          }
-        }
-      }
-      
-      // 3b. Criar/Atualizar tarefas do Sheets no servidor
-      for (const sheetsTask of sheetsTasks) {
-        const serverTask = serverTasksMap.get(sheetsTask.id);
-        
-        if (!serverTask) {
-          // Tarefa não existe no servidor - criar
-          console.log(`➕ [SYNC-FROM-SHEETS] Criando tarefa ${sheetsTask.id} (nova no Sheets)`);
-          try {
-            await fetch('/api/tasks', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-user-id': '1'
-              },
-              body: JSON.stringify({
-                id: sheetsTask.id,
-                title: sheetsTask.titulo,
-                description: sheetsTask.descricao || '',
-                status: sheetsTask.status === 'Concluída' ? 'completed' : 
-                       sheetsTask.status === 'Em Progresso' ? 'in_progress' : 'pending',
-                priority: sheetsTask.prioridade === 'Alta' ? 'high' :
-                         sheetsTask.prioridade === 'Baixa' ? 'low' : 'medium',
-                created_by: 1
-              })
-            });
-            created++;
-          } catch (error) {
-            console.error(`❌ Erro ao criar tarefa ${sheetsTask.id}:`, error);
-          }
-        } else {
-          // Tarefa existe - verificar se precisa atualizar
-          const needsUpdate = 
-            serverTask.title !== sheetsTask.titulo ||
-            serverTask.description !== sheetsTask.descricao;
-          
-          if (needsUpdate) {
-            console.log(`📝 [SYNC-FROM-SHEETS] Atualizando tarefa ${sheetsTask.id}`);
-            try {
-              await fetch(`/api/tasks/${sheetsTask.id}`, {
-                method: 'PUT',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-user-id': '1'
-                },
-                body: JSON.stringify({
-                  title: sheetsTask.titulo,
-                  description: sheetsTask.descricao || '',
-                  status: sheetsTask.status === 'Concluída' ? 'completed' : 
-                         sheetsTask.status === 'Em Progresso' ? 'in_progress' : 'pending',
-                  priority: sheetsTask.prioridade === 'Alta' ? 'high' :
-                           sheetsTask.prioridade === 'Baixa' ? 'low' : 'medium'
-                })
-              });
-              updated++;
-            } catch (error) {
-              console.error(`❌ Erro ao atualizar tarefa ${sheetsTask.id}:`, error);
-            }
-          }
-        }
-      }
-      
-      // 4. Atualizar frontend
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      await queryClient.refetchQueries({ queryKey: ['tasks'], type: 'active' });
-      
-      console.log(`✅ [SYNC-FROM-SHEETS] Sincronização concluída:`);
-      console.log(`   Criadas: ${created}`);
-      console.log(`   Atualizadas: ${updated}`);
-      console.log(`   Deletadas: ${deleted}`);
-      
-      if (showToast && (created > 0 || updated > 0 || deleted > 0)) {
-        toast.success(`Sincronizado do Sheets: ${created} criadas, ${updated} atualizadas, ${deleted} deletadas`);
+      if (showToast) {
+        toast.success(`${sheetsTasks.length} tarefas sincronizadas`);
       }
       
     } catch (error) {
-      console.error('❌ [SYNC-FROM-SHEETS] Erro:', error);
-      if (showToast) toast.error('Erro ao sincronizar do Google Sheets');
+      console.error('❌ [SHEETS] Erro:', error);
+      if (showToast) toast.error('Erro ao sincronizar');
     }
   };
 
   /**
-   * Sincroniza TODAS as tarefas com Google Sheets via proxy do servidor
-   * Evita problema de CORS
+   * REMOVIDA - Google Sheets é a fonte da verdade
+   * Não precisamos mais sincronizar DO app PARA o Sheets automaticamente
+   * As tarefas são adicionadas ao Sheets quando criadas/atualizadas
    */
-  const syncWithGoogleSheets = async () => {
-    if (!isOnline) {
-      console.log('📴 Offline - sincronização adiada');
-      return;
-    }
-
-    try {
-      console.log('🔄 [SYNC] Iniciando sincronização com Google Sheets...');
-      
-      // Buscar TODAS as tarefas DIRETO DO SERVIDOR (não do cache)
-      const tasksResponse = await fetch('/api/tasks', {
-        headers: { 
-          'x-user-id': '1',
-          'Cache-Control': 'no-cache' // Força buscar do servidor
-        }
-      });
-      
-      if (!tasksResponse.ok) {
-        console.error('❌ [SYNC] Erro ao buscar tarefas');
-        return;
-      }
-      
-      const tasksData = await tasksResponse.json();
-      let tasks = tasksData.tasks || [];
-      
-      // GARANTIR que não há duplicatas (remover tarefas com ID temp)
-      tasks = tasks.filter((task: Task) => !String(task.id).startsWith('temp_'));
-      
-      // Remover duplicatas por ID (caso ainda existam)
-      const uniqueTasks = Array.from(new Map(tasks.map((task: Task) => [task.id, task])).values());
-      
-      console.log(`📊 [SYNC] ${uniqueTasks.length} tarefas únicas para sincronizar (filtradas de ${tasks.length})`);
-      
-      // PASSO 1: Limpar Google Sheets via proxy
-      console.log('🗑️ [SYNC] Limpando Google Sheets...');
-      try {
-        const clearResponse = await fetch(GOOGLE_SHEETS_CONFIG.proxyUrl, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-user-id': '1'
-          },
-          body: JSON.stringify({
-            action: 'clearAllTasks',
-            spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-            sheetName: GOOGLE_SHEETS_CONFIG.sheetName
-          })
-        });
-        
-        if (clearResponse.ok) {
-          const clearResult = await clearResponse.json();
-          console.log('✅ [SYNC] Google Sheets limpo:', clearResult);
-        }
-      } catch (error) {
-        console.warn('⚠️ [SYNC] Erro ao limpar (continuar mesmo assim):', error);
-      }
-      
-      // PASSO 2: Adicionar todas as tarefas ÚNICAS via proxy
-      console.log('📤 [SYNC] Adicionando tarefas ao Google Sheets...');
-      let synced = 0;
-      let failed = 0;
-      
-      for (const task of uniqueTasks) {
-        try {
-          const taskData = {
-            id: task.id,
-            titulo: task.title,
-            descricao: task.description || '',
-            status: task.status === 'completed' ? 'Concluída' : 
-                   task.status === 'in_progress' ? 'Em Progresso' : 'Pendente',
-            prioridade: task.priority === 'high' ? 'Alta' : 
-                       task.priority === 'low' ? 'Baixa' : 'Média',
-            responsavel: task.assigned_to_name || 'Sistema',
-            criador: task.created_by_name || 'App',
-            igreja: task.church || '',
-            data_criacao: new Date(task.created_at).toLocaleDateString('pt-BR'),
-            data_vencimento: task.due_date ? new Date(task.due_date).toLocaleDateString('pt-BR') : '',
-            data_conclusao: task.completed_at ? new Date(task.completed_at).toLocaleDateString('pt-BR') : '',
-            tags: task.tags?.join(',') || ''
-          };
-          
-          const response = await fetch(GOOGLE_SHEETS_CONFIG.proxyUrl, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'x-user-id': '1'
-            },
-            body: JSON.stringify({
-              action: 'addTask',
-              spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-              sheetName: GOOGLE_SHEETS_CONFIG.sheetName,
-              taskData
-            })
-          });
-          
-          if (response.ok) {
-            const result = await response.json();
-            if (result.success) {
-              synced++;
-            } else {
-              failed++;
-              console.warn(`⚠️ [SYNC] Falha ao adicionar tarefa ${task.id}:`, result);
-            }
-          } else {
-            failed++;
-            console.error(`❌ [SYNC] Erro HTTP ${response.status} ao adicionar tarefa ${task.id}`);
-          }
-        } catch (error) {
-          failed++;
-          console.error(`⚠️ [SYNC] Erro ao sincronizar tarefa ${task.id}:`, error);
-        }
-      }
-      
-      console.log(`✅ [SYNC] Concluído: ${synced} sucesso, ${failed} falhas (total: ${tasks.length})`);
-      
-      if (synced > 0) {
-        console.log(`📊 [SYNC] Google Sheets atualizado com ${synced} tarefas`);
-      }
-      
-    } catch (error) {
-      console.error('❌ [SYNC] Erro na sincronização:', error);
-    }
-  };
 
   // ========================================
   // SINCRONIZAÇÃO COM GOOGLE SHEETS
@@ -662,7 +428,7 @@ export default function Tasks() {
     }
 
     try {
-      console.log('➕ [CREATE] Iniciando criação de tarefa:', newTask.title);
+      console.log('➕ [CREATE] Criando tarefa:', newTask.title);
       
       const taskData = {
         title: newTask.title,
@@ -670,13 +436,35 @@ export default function Tasks() {
         priority: newTask.priority,
         due_date: newTask.due_date || undefined,
         assigned_to: newTask.assigned_to && newTask.assigned_to !== 'none' ? parseInt(newTask.assigned_to) : undefined,
+        church: newTask.church || undefined,
         status: 'pending' as const,
         created_by: 1,
         tags: newTask.tags
       };
 
-      const createdTask = await createTask(taskData as any);
-      console.log('✅ [CREATE] Tarefa criada:', createdTask);
+      // Criar no servidor
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '1'
+        },
+        body: JSON.stringify(taskData)
+      });
+
+      if (!response.ok) throw new Error('Erro ao criar tarefa');
+
+      const data = await response.json();
+      const createdTask = data.task || data;
+      console.log('✅ [CREATE] Tarefa criada no servidor:', createdTask);
+
+      // Adicionar ao Google Sheets
+      if (createdTask) {
+        await addTaskToGoogleSheets(createdTask);
+      }
+
+      // Recarregar lista
+      await refetch();
 
       setIsCreateDialogOpen(false);
       setNewTask({
@@ -685,26 +473,16 @@ export default function Tasks() {
         priority: 'medium',
         due_date: '',
         assigned_to: 'none',
+        church: '',
         tags: []
       });
 
-      toast.success(isOnline ? 'Tarefa criada!' : 'Tarefa salva offline', {
-        icon: isOnline ? '✅' : '📴'
-      });
-      
-      // Se criou online, adicionar ao Google Sheets imediatamente
-      // Se criou offline, a sincronização automática vai fazer full sync depois
-      if (isOnline && createdTask && !String(createdTask.id).startsWith('temp_')) {
-        addTaskToGoogleSheets(createdTask);
-      }
+      toast.success('Tarefa criada!');
 
-      // Notificar usuário atribuído
-      if (isOnline && newTask.assigned_to && newTask.assigned_to !== 'none') {
+      // Notificar usuário
+      if (newTask.assigned_to && newTask.assigned_to !== 'none') {
         try {
-          await notificationService.notifyTaskCreated(
-            newTask.title,
-            parseInt(newTask.assigned_to)
-          );
+          await notificationService.notifyTaskCreated(newTask.title, parseInt(newTask.assigned_to));
         } catch (error) {
           console.error('Erro ao enviar notificação:', error);
         }
@@ -725,26 +503,40 @@ export default function Tasks() {
     if (!editingTask) return;
 
     try {
-      await updateTask(editingTask.id, {
+      console.log('📝 [UPDATE] Atualizando tarefa:', editingTask.id);
+      
+      const updates = {
         title: editingTask.title,
         description: editingTask.description,
         priority: editingTask.priority,
         due_date: editingTask.due_date,
         assigned_to: editingTask.assigned_to,
+        church: editingTask.church,
         status: editingTask.status
+      };
+
+      // Atualizar no servidor
+      const response = await fetch(`/api/tasks/${editingTask.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '1'
+        },
+        body: JSON.stringify(updates)
       });
+
+      if (!response.ok) throw new Error('Erro ao atualizar tarefa');
+
+      // Atualizar no Google Sheets
+      await updateTaskInGoogleSheets(editingTask);
+
+      // Recarregar lista
+      await refetch();
 
       setIsEditDialogOpen(false);
       setEditingTask(null);
 
-      toast.success(isOnline ? 'Tarefa atualizada!' : 'Atualizada offline', {
-        icon: isOnline ? '✅' : '📴'
-      });
-      
-      // Atualizar no Google Sheets (se online)
-      if (isOnline && editingTask) {
-        updateTaskInGoogleSheets(editingTask);
-      }
+      toast.success('Tarefa atualizada!');
     } catch (error) {
       console.error('Erro ao atualizar tarefa:', error);
       toast.error('Erro ao atualizar tarefa');
@@ -755,34 +547,29 @@ export default function Tasks() {
     if (!confirm('Tem certeza que deseja deletar esta tarefa?')) return;
 
     try {
-      console.log(`🗑️ [HANDLE] Iniciando deleção da tarefa ${taskId}...`);
+      console.log(`🗑️ [DELETE] Deletando tarefa ${taskId}...`);
       
-      await deleteTask(taskId);
-      console.log(`✅ [HANDLE] Tarefa ${taskId} deletada via hook`);
-      
-      // Forçar atualização do cache
-      console.log(`🔄 [HANDLE] Invalidando cache...`);
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      await queryClient.refetchQueries({ queryKey: ['tasks'] });
-      console.log(`✅ [HANDLE] Cache atualizado`);
-      
-      toast.success(isOnline ? 'Tarefa deletada!' : 'Deletada offline', {
-        icon: isOnline ? '✅' : '📴'
+      // Deletar do servidor
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'DELETE',
+        headers: { 'x-user-id': '1' }
       });
-      
-      // Deletar do Google Sheets também (se online)
-      if (isOnline) {
-        console.log(`📤 [HANDLE] Deletando do Google Sheets...`);
-        deleteTaskFromGoogleSheets(taskId);
+
+      if (!response.ok && response.status !== 404) {
+        throw new Error('Erro ao deletar tarefa');
       }
-      
-      console.log(`✅ [HANDLE] Deleção completa da tarefa ${taskId}`);
-    } catch (error) {
-      console.error('❌ [HANDLE] ERRO ao deletar tarefa:', error);
-      console.error('   Tipo:', error.constructor.name);
-      console.error('   Mensagem:', error.message);
-      console.error('   Stack:', error.stack);
-      toast.error(`Erro ao deletar tarefa: ${error.message}`);
+
+      // Deletar do Google Sheets
+      await deleteTaskFromGoogleSheets(taskId);
+
+      // Recarregar lista
+      await refetch();
+
+      toast.success('Tarefa deletada!');
+      console.log(`✅ [DELETE] Tarefa ${taskId} deletada`);
+    } catch (error: any) {
+      console.error('❌ [DELETE] Erro:', error);
+      toast.error(`Erro ao deletar: ${error.message}`);
     }
   };
 
@@ -812,41 +599,28 @@ export default function Tasks() {
     if (!confirm(`Deletar ${count} tarefa${count > 1 ? 's' : ''}?`)) return;
 
     try {
-      console.log(`🗑️ [MULTIPLE] Iniciando deleção de ${count} tarefas...`);
+      console.log(`🗑️ [MULTIPLE] Deletando ${count} tarefas...`);
       
-      // Salvar IDs antes de deletar
-      const tasksToDelete = [...selectedTasks];
-      
-      for (const taskId of tasksToDelete) {
-        console.log(`🗑️ [MULTIPLE] Deletando tarefa ${taskId}...`);
-        await deleteTask(taskId);
+      for (const taskId of selectedTasks) {
+        // Deletar do servidor
+        await fetch(`/api/tasks/${taskId}`, {
+          method: 'DELETE',
+          headers: { 'x-user-id': '1' }
+        });
+        
+        // Deletar do Google Sheets
+        await deleteTaskFromGoogleSheets(taskId);
       }
-      
-      console.log(`✅ [MULTIPLE] Todas as tarefas deletadas do servidor`);
 
-      // Forçar atualização agressiva do cache
-      console.log(`🔄 [MULTIPLE] Atualizando cache...`);
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      await queryClient.refetchQueries({ queryKey: ['tasks'] });
+      // Recarregar lista
+      await refetch();
       
       setSelectedTasks([]);
-
       toast.success(`${count} tarefa${count > 1 ? 's deletadas' : ' deletada'}!`);
-      
-      // Deletar cada tarefa do Google Sheets (se online)
-      if (isOnline) {
-        console.log(`📤 [MULTIPLE] Deletando do Google Sheets...`);
-        for (const taskId of tasksToDelete) {
-          deleteTaskFromGoogleSheets(taskId);
-        }
-      }
-      
-      console.log(`✅ [MULTIPLE] Deleção múltipla completa`);
-    } catch (error) {
-      console.error('❌ [MULTIPLE] ERRO ao deletar tarefas:', error);
-      console.error('   Tipo:', error.constructor.name);
-      console.error('   Mensagem:', error.message);
-      toast.error(`Erro ao deletar tarefas: ${error.message}`);
+      console.log(`✅ [MULTIPLE] ${count} tarefas deletadas`);
+    } catch (error: any) {
+      console.error('❌ [MULTIPLE] Erro:', error);
+      toast.error(`Erro: ${error.message}`);
     }
   };
 
@@ -854,20 +628,31 @@ export default function Tasks() {
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
     
     try {
-      await updateTask(task.id, { 
-        status: newStatus,
-        completed_at: newStatus === 'completed' ? new Date().toISOString() : undefined
-      });
-      
-      // Atualizar no Google Sheets (se online)
-      if (isOnline) {
-        const updatedTask = {
-          ...task,
+      // Atualizar no servidor
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '1'
+        },
+        body: JSON.stringify({ 
           status: newStatus,
           completed_at: newStatus === 'completed' ? new Date().toISOString() : undefined
-        };
-        updateTaskInGoogleSheets(updatedTask);
-      }
+        })
+      });
+
+      if (!response.ok) throw new Error('Erro ao atualizar');
+
+      // Atualizar no Google Sheets
+      const updatedTask = {
+        ...task,
+        status: newStatus,
+        completed_at: newStatus === 'completed' ? new Date().toISOString() : undefined
+      };
+      await updateTaskInGoogleSheets(updatedTask);
+
+      // Recarregar lista
+      await refetch();
     } catch (error) {
       console.error('Erro ao alterar status:', error);
       toast.error('Erro ao alterar status');
@@ -1087,59 +872,20 @@ export default function Tasks() {
               <p className="text-gray-600 text-lg">
                 Organize e acompanhe suas tarefas
               </p>
-              
-              {syncInfo.lastSync && (
-                <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                  <span>
-                    Última sincronização: {new Date(syncInfo.lastSync).toLocaleString('pt-BR')}
-                  </span>
-                </div>
-                )}
-
-                {syncing && (
-                  <Badge className="bg-blue-100 text-blue-700 border-blue-200 flex items-center gap-1 animate-pulse">
-                    <RefreshCw className="h-3 w-3 animate-spin" />
-                    Sincronizando...
-                  </Badge>
-                )}
-
-                {syncInfo.pendingCount > 0 && (
-                  <Badge className="bg-orange-100 text-orange-700 border-orange-200 flex items-center gap-1">
-                    <CloudOff className="h-3 w-3" />
-                    {syncInfo.pendingCount} pendente{syncInfo.pendingCount > 1 ? 's' : ''}
-                  </Badge>
-                )}
             </div>
             
             <div className="flex gap-3 flex-wrap">
-              {/* Botões de sincronização manual - escondidos (automático ativo) */}
-              {isOnline && false && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => syncOfflineData()}
-                  disabled={syncing}
-                  className="flex items-center gap-2"
-                  title="Enviar dados pendentes ao servidor"
-                >
-                  <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                  Servidor
-                </Button>
-              )}
-              
-              {isOnline && false && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => syncFromGoogleSheets(true)}
-                  className="flex items-center gap-2 bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                  title="Sincronizar DO Google Sheets manualmente (automático a cada 2s)"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  ⬅️ Sheets
-                </Button>
-              )}
+              {/* Botão de sincronização manual */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => syncFromGoogleSheets(true)}
+                className="flex items-center gap-2 bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                title="Sincronizar do Google Sheets manualmente"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Sincronizar
+              </Button>
               
               <Button
                 variant="outline"
@@ -1251,7 +997,6 @@ export default function Tasks() {
                       </Button>
                       <Button
                         onClick={handleCreateTask}
-                        disabled={syncing}
                         className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
                       >
                         Criar Tarefa
@@ -1535,7 +1280,6 @@ export default function Tasks() {
                     </Button>
                     <Button
                       onClick={handleUpdateTask}
-                      disabled={syncing}
                       className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
                     >
                       Salvar
