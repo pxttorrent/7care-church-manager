@@ -26,9 +26,33 @@ const Dashboard = React.memo(() => {
   const { toast } = useToast();
   const [showCheckIn, setShowCheckIn] = useState(false);
 
+  // Fetch tarefas DIRETO do Google Sheets (fonte da verdade)
+  const { data: tasksFromSheets } = useQuery({
+    queryKey: ['tasks-from-sheets'],
+    queryFn: async () => {
+      const response = await fetch('/api/google-sheets/proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '1'
+        },
+        body: JSON.stringify({
+          action: 'getTasks',
+          spreadsheetId: '1i-x-0KiciwACRztoKX-YHlXT4FsrAzaKwuH-hHkD8go',
+          sheetName: 'tarefas'
+        })
+      });
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.tasks || [];
+    },
+    staleTime: 0,
+    refetchInterval: 30000
+  });
+
   // Fetch real dashboard statistics from API with optimized caching
   const { data: dashboardStats, isLoading } = useQuery({
-    queryKey: ['/api/dashboard/stats', user?.id],
+    queryKey: ['/api/dashboard/stats', user?.id, tasksFromSheets?.length],
     queryFn: async () => {
       const response = await fetch('/api/dashboard/stats', {
         headers: {
@@ -36,7 +60,22 @@ const Dashboard = React.memo(() => {
         }
       });
       if (!response.ok) throw new Error('Failed to fetch dashboard stats');
-      return response.json();
+      const data = await response.json();
+      
+      // Substituir contagem de tarefas com dados do Google Sheets (fonte da verdade)
+      if (tasksFromSheets && Array.isArray(tasksFromSheets)) {
+        const pending = tasksFromSheets.filter((t: any) => t.status !== 'Concluída').length;
+        const completed = tasksFromSheets.filter((t: any) => t.status === 'Concluída').length;
+        
+        return {
+          ...data,
+          totalTasks: tasksFromSheets.length,
+          pendingTasks: pending,
+          completedTasks: completed
+        };
+      }
+      
+      return data;
     },
     // Configurações para atualização em tempo real
     staleTime: 0, // Sempre considerado desatualizado
