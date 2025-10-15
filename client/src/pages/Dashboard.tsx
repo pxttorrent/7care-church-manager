@@ -79,6 +79,9 @@ const Dashboard = React.memo(() => {
       const data = await response.json();
       const tasksFromSheets = data.tasks || [];
       
+      console.log('🔍 Dashboard: Dados brutos do Google Sheets:', data);
+      console.log('🔍 Dashboard: Array de tarefas:', tasksFromSheets);
+      
       // Converter formato do Sheets para formato do app (igual à página Tasks)
       const convertedTasks = tasksFromSheets.map((sheetTask: any) => ({
         id: sheetTask.id,
@@ -153,8 +156,19 @@ const Dashboard = React.memo(() => {
     
     if (tasksFromSheets && Array.isArray(tasksFromSheets)) {
       totalTasks = tasksFromSheets.length;
-      pendingTasks = tasksFromSheets.filter((t: any) => t.status === 'pending' || t.status === 'in_progress').length;
-      completedTasks = tasksFromSheets.filter((t: any) => t.status === 'completed').length;
+      
+      // Log detalhado para debug
+      console.log('🔍 Dashboard: Analisando tarefas...');
+      console.log('🔍 Total de tarefas:', totalTasks);
+      
+      const pendingList = tasksFromSheets.filter((t: any) => t.status === 'pending' || t.status === 'in_progress');
+      const completedList = tasksFromSheets.filter((t: any) => t.status === 'completed');
+      
+      console.log('🔍 Tarefas pendentes:', pendingList.length, pendingList.map(t => ({ id: t.id, title: t.title, status: t.status })));
+      console.log('🔍 Tarefas concluídas:', completedList.length, completedList.map(t => ({ id: t.id, title: t.title, status: t.status })));
+      
+      pendingTasks = pendingList.length;
+      completedTasks = completedList.length;
     }
     
     const stats = {
