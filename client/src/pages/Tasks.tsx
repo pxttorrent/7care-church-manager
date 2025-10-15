@@ -14,8 +14,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { toast } from 'sonner';
 import { notificationService } from '@/lib/notificationService';
-import { useOfflineData } from '@/hooks/useOfflineData';
-import { offlineStorage } from '@/lib/offlineStorage';
 
 interface Task {
   id: number;

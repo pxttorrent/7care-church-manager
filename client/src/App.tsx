@@ -9,9 +9,7 @@ import { MobileLayout } from "./components/layout/MobileLayout";
 import { FirstAccessWelcome } from "./components/auth/FirstAccessWelcome";
 import { createQueryClient, setupPerformanceListeners, prefetchImportantData } from "./lib/queryClient";
 import { cleanConsoleInProduction } from "./lib/performance";
-import { useOfflineCache } from "./hooks/useOfflineCache";
 import { SyncIndicator } from "./components/sync/SyncIndicator";
-import { offlineStorage } from "./lib/offlineStorage";
 
 // Lazy load all pages for better performance
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -50,20 +48,10 @@ const PageLoader = () => (
 const queryClient = createQueryClient();
 
 const App = () => {
-  // Hook para cache automático offline
-  const offlineCache = useOfflineCache();
-  
   // Setup performance optimizations
   useEffect(() => {
     // Clean console logs in production
     cleanConsoleInProduction();
-    
-    // Inicializar OfflineStorage (sem auto-sync aqui para evitar duplicação)
-    offlineStorage.init().then(() => {
-      console.log('✅ OfflineStorage inicializado globalmente');
-    }).catch(error => {
-      console.error('❌ Erro ao inicializar OfflineStorage:', error);
-    });
     
     // Setup performance listeners
     setupPerformanceListeners(queryClient);

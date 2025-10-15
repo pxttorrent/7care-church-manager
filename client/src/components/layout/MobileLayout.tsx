@@ -4,7 +4,7 @@ import { MobileHeader } from './MobileHeader';
 import { MobileBottomNav } from './MobileBottomNav';
 import { useAuth } from '@/hooks/useAuth';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
-import { enableOfflineInterceptor } from '@/lib/offlineInterceptor';
+// Sistema offline removido
 import { RefreshCw } from 'lucide-react';
 
 interface MobileLayoutProps {
@@ -18,16 +18,6 @@ export const MobileLayout = ({ children, showBottomNav = true }: MobileLayoutPro
   console.log('🔍 MobileLayout - Estado:', { isAuthenticated, isLoading, userRole: user?.role });
 
   const isAdmin = user?.role === 'admin';
-
-  // Ativar interceptor offline se admin tiver instalado o modo offline
-  useEffect(() => {
-    if (!isAdmin) return;
-
-    const offlineInstalled = localStorage.getItem('offline-mode-installed');
-    if (offlineInstalled) {
-      enableOfflineInterceptor(true);
-    }
-  }, [isAdmin]);
 
   // Pull to Refresh - DESABILITADO para evitar conflito com navegação
   const { containerRef, pullDistance, isRefreshing, progress } = usePullToRefresh({
