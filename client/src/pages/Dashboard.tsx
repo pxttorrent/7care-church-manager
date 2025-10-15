@@ -28,10 +28,13 @@ const Dashboard = React.memo(() => {
 
   // Limpar cache antigo de tarefas ao carregar o Dashboard
   useEffect(() => {
-    console.log('🧹 Dashboard: Limpando cache antigo de tarefas...');
+    console.log('🧹 Dashboard: LIMPANDO CACHE COMPLETO...');
     queryClient.removeQueries({ queryKey: ['tasks-from-sheets'] }); // Remove cache antigo
+    queryClient.removeQueries({ queryKey: ['tasks'] }); // Remove cache de tarefas
     queryClient.invalidateQueries({ queryKey: ['tasks'] }); // Força refresh da query atual
     queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] }); // Força refresh da API dashboard
+    
+    console.log('🧹 Dashboard: Cache limpo! Forçando refresh completo...');
   }, [queryClient]);
 
   // BUSCAR dados de usuários da mesma query da página Users
@@ -85,6 +88,11 @@ const Dashboard = React.memo(() => {
       const data = await response.json();
       const tasks = data.tasks || [];
       
+      console.log('🔍 [DASHBOARD] DADOS BRUTOS DO GOOGLE SHEETS:');
+      console.log('🔍 Resposta completa:', data);
+      console.log('🔍 Array de tarefas:', tasks);
+      console.log('🔍 Número de tarefas retornadas:', tasks.length);
+      
       // Converter formato do Sheets para formato do app (IGUAL à página Tasks)
       const convertedTasks = tasks.map((sheetTask: any) => ({
         id: sheetTask.id,
@@ -114,6 +122,17 @@ const Dashboard = React.memo(() => {
       console.log(`📊 Total: ${convertedTasks.length}`);
       console.log(`📊 Pendentes: ${pendingCount}`);
       console.log(`📊 Concluídas: ${completedCount}`);
+      
+      // Log detalhado de cada tarefa
+      console.log('🔍 [DASHBOARD] LISTA DETALHADA DE TAREFAS:');
+      convertedTasks.forEach((task, index) => {
+        console.log(`🔍 Tarefa ${index + 1}:`, {
+          id: task.id,
+          title: task.title,
+          status: task.status,
+          statusOriginal: tasks[index]?.status
+        });
+      });
       
       return convertedTasks;
     },
