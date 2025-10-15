@@ -174,29 +174,18 @@ export function useOfflineData<T extends { id: any }>({
 
             console.log(`🌐 [${storeName}] [${queryId}] ${actualData.length} itens do servidor`, actualData.map((item: any) => `${item.id}:${item.title}`));
 
-            // Atualizar cache local de forma inteligente (sem limpar tudo)
-            console.log(`🔄 [${storeName}] [${queryId}] Atualizando cache de forma inteligente...`);
+            // LIMPAR cache e recriar com dados do servidor (resolve problemas de tarefas fantasmas)
+            console.log(`🧹 [${storeName}] [${queryId}] Limpando cache completamente...`);
             
-            // Criar um mapa dos IDs do servidor para comparação rápida
-            const serverIds = new Set(actualData.map((item: any) => String(item.id)));
+            // Salvar tarefas com ID temporário (não sincronizadas) antes de limpar
+            const tempTasks = localData.filter((item: any) => String(item.id).startsWith('temp_') && !item._synced);
+            console.log(`💾 [${storeName}] Preservando ${tempTasks.length} tarefas temporárias (offline)`);
             
-            // Remover itens que não existem mais no servidor (apenas os com _synced = true)
-            for (const localItem of localData) {
-              const localId = String(localItem.id);
-              const isTemp = localId.startsWith('temp_');
-              
-              // Só remover se:
-              // 1. Não é temp (itens temp serão sincronizados depois)
-              // 2. Está marcado como sincronizado
-              // 3. Não existe mais no servidor
-              if (!isTemp && (localItem as any)._synced && !serverIds.has(localId)) {
-                console.log(`🗑️ [${storeName}] Removendo ${localId} (não existe mais no servidor)`);
-                await offlineStorage.delete(storeName, localItem.id);
-              }
-            }
+            // Limpar tudo
+            await offlineStorage.clear(storeName);
             
-            // Adicionar/atualizar itens do servidor
-            console.log(`💾 [${storeName}] [${queryId}] Atualizando ${actualData.length} itens do servidor...`);
+            // Recriar com dados do servidor
+            console.log(`💾 [${storeName}] [${queryId}] Salvando ${actualData.length} itens do servidor no cache...`);
             for (const item of actualData) {
               const itemToSave = transformBeforeSave ? transformBeforeSave(item) : item;
               await offlineStorage.save(storeName, { 
@@ -204,7 +193,13 @@ export function useOfflineData<T extends { id: any }>({
                 _synced: true 
               });
             }
-            console.log(`✅ [${storeName}] [${queryId}] Cache local atualizado de forma inteligente`);
+            
+            // Recolocar tarefas temporárias (offline)
+            for (const tempTask of tempTasks) {
+              await offlineStorage.save(storeName, tempTask);
+            }
+            
+            console.log(`✅ [${storeName}] [${queryId}] Cache recriado: ${actualData.length} do servidor + ${tempTasks.length} temp`);
 
             // Retornar dados do servidor (mais atualizados)
             const finalData = transformAfterLoad 
@@ -229,41 +224,62 @@ export function useOfflineData<T extends { id: any }>({
     gcTime: 1000 * 60 * 60, // Mantém no cache por 1 hora (antes era cacheTime)
   });
 
-  // Remover duplicatas (garantir que cada ID aparece só uma vez)
-  // Priorizar IDs reais sobre IDs temporários
+  // Remover duplicatas de forma mais robusta
+  // 1. Por ID (priorizar IDs reais sobre temporários)
+  // 2. Por título (mesma tarefa com IDs diferentes)
   const data = queryData ? Array.from(
     queryData.reduce((map: Map<string, T>, item: T) => {
       const id = String(item.id);
       const isTemp = id.startsWith('temp_');
+      const title = String((item as any).title || '').toLowerCase().trim();
       
-      // Se já tem um item com esse título
-      const existingEntry = Array.from(map.values()).find((existing: T) => 
-        String(existing.title).toLowerCase().trim() === String(item.title).toLowerCase().trim()
-      );
+      // Verificar se já existe um item com o MESMO ID
+      if (map.has(id)) {
+        // Se já existe com o mesmo ID, manter apenas um (o mais recente)
+        const existing = map.get(id)!;
+        const existingDate = new Date((existing as any).updated_at || (existing as any).created_at || 0).getTime();
+        const itemDate = new Date((item as any).updated_at || (item as any).created_at || 0).getTime();
+        
+        if (itemDate > existingDate) {
+          map.set(id, item);
+        }
+        return map;
+      }
       
-      if (existingEntry) {
-        const existingId = String(existingEntry.id);
+      // Verificar se já existe um item com o MESMO TÍTULO
+      let duplicateByTitle = false;
+      for (const [existingId, existing] of map.entries()) {
+        const existingTitle = String((existing as any).title || '').toLowerCase().trim();
         const existingIsTemp = existingId.startsWith('temp_');
         
-        // Se o item atual é real e o existente é temp, substituir
-        if (!isTemp && existingIsTemp) {
-          console.log(`🔄 [${storeName}] Substituindo temp ${existingId} por real ${id}`);
-          // Remover o temp
-          map.delete(existingId);
-          // Adicionar o real
-          map.set(id, item);
-        } else if (isTemp && !existingIsTemp) {
-          // Se o item atual é temp e o existente é real, ignorar o temp
-          console.log(`⏭️  [${storeName}] Ignorando temp ${id}, já existe real ${existingId}`);
-        } else {
-          // Ambos temp ou ambos reais, manter o com menor ID
-          if (parseInt(id) < parseInt(existingId)) {
+        if (existingTitle === title && title !== '') {
+          duplicateByTitle = true;
+          
+          // Se o item atual é real e o existente é temp, substituir
+          if (!isTemp && existingIsTemp) {
+            console.log(`🔄 [${storeName}] Substituindo temp ${existingId} por real ${id} (${title})`);
             map.delete(existingId);
             map.set(id, item);
+          } else if (isTemp && !existingIsTemp) {
+            // Se o item atual é temp e o existente é real, ignorar o temp
+            console.log(`⏭️  [${storeName}] Ignorando temp ${id}, já existe real ${existingId} (${title})`);
+          } else {
+            // Ambos temp ou ambos reais, manter o mais recente
+            const existingDate = new Date((existing as any).updated_at || (existing as any).created_at || 0).getTime();
+            const itemDate = new Date((item as any).updated_at || (item as any).created_at || 0).getTime();
+            
+            if (itemDate > existingDate) {
+              console.log(`🔄 [${storeName}] Substituindo ${existingId} por ${id} (mais recente)`);
+              map.delete(existingId);
+              map.set(id, item);
+            }
           }
+          break;
         }
-      } else {
-        // Não tem duplicata, adicionar normalmente
+      }
+      
+      // Se não é duplicata, adicionar normalmente
+      if (!duplicateByTitle) {
         map.set(id, item);
       }
       
@@ -273,6 +289,8 @@ export function useOfflineData<T extends { id: any }>({
   
   if (queryData && data.length !== queryData.length) {
     console.warn(`⚠️ [${storeName}] Duplicatas removidas: ${queryData.length} -> ${data.length}`);
+    console.log(`   IDs originais:`, queryData.map((item: any) => item.id));
+    console.log(`   IDs finais:`, data.map((item: any) => item.id));
   }
 
   // ========================================
@@ -486,6 +504,9 @@ export function useOfflineData<T extends { id: any }>({
 
           if (response.ok) {
             console.log(`✅ [${storeName}] Item deletado no servidor:`, id);
+          } else if (response.status === 404) {
+            // Item já não existe no servidor - OK, apenas remover do cache
+            console.log(`✅ [${storeName}] Item ${id} já estava deletado no servidor (404 - OK)`);
           } else {
             console.error(`❌ [${storeName}] Servidor retornou ${response.status}`);
           }

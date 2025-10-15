@@ -121,7 +121,7 @@ export default function Tasks() {
     endpoint: '/api/tasks',
     queryKey: ['tasks'],
     autoFetch: true,
-    syncInterval: 30000
+    syncInterval: 10000 // 10 segundos (equilibrado)
   });
 
   // Inicializar storage
@@ -136,25 +136,27 @@ export default function Tasks() {
     setSelectedTasks([]);
   }, [searchTerm, selectedPriority, selectedStatus]);
 
-  // Sincronização automática otimizada (apenas Google Sheets, servidor já sincroniza via hook)
+  // Sincronização automática bidirecional (Google Sheets ↔ App)
   useEffect(() => {
     if (!isOnline) return;
     
-    console.log('🔄 [AUTO] Iniciando sincronização otimizada com Google Sheets...');
+    console.log('🔄 [AUTO] Iniciando sincronização bidirecional com Google Sheets...');
+    let syncCount = 0;
     
-    // Sincronizar apenas a cada 30 segundos (não a cada 2s)
+    // Sincronizar a cada 10 segundos (equilibrado entre performance e atualização)
     const syncInterval = setInterval(async () => {
       if (!isOnline) return;
       
+      syncCount++;
+      
       try {
         // Sincronizar DO Google Sheets PARA o app
-        // O hook useOfflineData já cuida da sincronização com servidor
-        console.log(`⬅️ [AUTO] Sincronizando do Google Sheets (30s)...`);
+        console.log(`⬅️ [AUTO-${syncCount}] Sincronizando do Google Sheets (10s)...`);
         await syncFromGoogleSheets(false); // false = sem toast
       } catch (error) {
         console.error('❌ [AUTO] Erro na sincronização:', error);
       }
-    }, 30000); // A cada 30 segundos (não mais a cada 2s)
+    }, 10000); // A cada 10 segundos (equilibrado)
     
     return () => {
       console.log('🛑 [AUTO] Parando sincronização automática');
