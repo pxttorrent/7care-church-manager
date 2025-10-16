@@ -52,13 +52,23 @@ export const MobileBottomNav = memo(() => {
 
   // Filtrar itens baseado no role do usuário - memoizado
   const allowedItems = useMemo(() => {
-    const filtered = menuStructure.filter(item => 
-      user && item.roles.includes(user.role)
-    );
+    const userRole = user?.role;
+    const filtered = menuStructure.filter(item => {
+      // Verificação mais flexível para incluir roles parciais
+      const hasAccess = user && (
+        item.roles.includes(userRole) ||
+        item.roles.some(role => userRole?.includes(role)) ||
+        item.roles.some(role => role.includes(userRole))
+      );
+      return hasAccess;
+    });
+    
     console.log('🔍 MobileBottomNav - Debug:', {
-      userRole: user?.role,
+      userRole: userRole,
+      userRoleType: typeof userRole,
       menuStructure: menuStructure.map(item => ({ title: item.title, roles: item.roles })),
-      filteredItems: filtered.map(item => ({ title: item.title, roles: item.roles }))
+      filteredItems: filtered.map(item => ({ title: item.title, roles: item.roles })),
+      allRoles: ['admin', 'missionary', 'member', 'interested']
     });
     return filtered;
   }, [menuStructure, user]);
@@ -113,10 +123,30 @@ export const MobileBottomNav = memo(() => {
     location: location.pathname
   });
 
-  // Se não há itens permitidos, não renderizar o menu
+  // Se não há itens permitidos, usar itens básicos como fallback
+  const finalItems = allowedItems.length > 0 ? allowedItems : [
+    {
+      title: 'Início',
+      icon: LayoutDashboard,
+      path: '/dashboard',
+      roles: ['admin', 'missionary', 'member', 'interested']
+    },
+    {
+      title: 'Agenda',
+      icon: Calendar,
+      path: '/calendar',
+      roles: ['admin', 'missionary', 'member', 'interested']
+    },
+    {
+      title: 'Menu',
+      icon: Settings,
+      path: '/menu',
+      roles: ['admin', 'missionary', 'member', 'interested']
+    }
+  ];
+
   if (allowedItems.length === 0) {
-    console.warn('⚠️ MobileBottomNav: Nenhum item permitido para o role:', user?.role);
-    return null;
+    console.warn('⚠️ MobileBottomNav: Nenhum item permitido para o role:', user?.role, '- usando fallback');
   }
 
   return (
@@ -131,13 +161,13 @@ export const MobileBottomNav = memo(() => {
           <div 
             className={`absolute top-1.5 bottom-1.5 ${slidingBgClasses}`}
             style={{
-              width: `calc(${100 / allowedItems.length}% - 10px)`,
-              left: `calc(${(100 / allowedItems.length) * activeIndex}% + 5px)`,
+              width: `calc(${100 / finalItems.length}% - 10px)`,
+              left: `calc(${(100 / finalItems.length) * activeIndex}% + 5px)`,
               height: 'calc(100% - 12px)'
             }}
           />
           
-          {allowedItems.map((item, index) => {
+          {finalItems.map((item, index) => {
             const isActive = index === activeIndex;
             return (
               <button
