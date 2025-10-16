@@ -137,7 +137,10 @@ export const EventModal = ({
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent 
         className="w-[90vw] max-w-md p-2 sm:p-2"
-        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        style={{ 
+          maxHeight: 'calc(100vh - 8rem)',
+          transform: 'translate(-50%, -60%)'
+        }}
         aria-describedby="event-modal-description"
       >
         <DialogHeader className="flex flex-row items-center justify-between sticky top-0 bg-background pt-1 pb-1 border-b z-10">
