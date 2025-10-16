@@ -439,7 +439,10 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+      <DialogContent 
+        className="max-w-6xl w-[95vw]"
+        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+      >
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-3">

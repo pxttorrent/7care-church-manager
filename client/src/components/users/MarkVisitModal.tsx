@@ -83,7 +83,8 @@ export const MarkVisitModal = ({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent 
-        className="sm:max-w-md"
+        className="sm:max-w-md w-[90vw]"
+        style={{ maxHeight: 'calc(100vh - 7rem)' }}
         aria-describedby="mark-visit-modal-description"
       >
         <div id="mark-visit-modal-description" className="sr-only">

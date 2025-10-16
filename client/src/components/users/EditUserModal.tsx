@@ -74,7 +74,8 @@ export const EditUserModal = ({ user, isOpen, onClose, onUpdate }: EditUserModal
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent 
-        className="max-w-2xl max-h-[90vh] overflow-y-auto"
+        className="max-w-2xl w-[90vw]"
+        style={{ maxHeight: 'calc(100vh - 7rem)' }}
         aria-describedby="edit-user-modal-description"
       >
         <div id="edit-user-modal-description" className="sr-only">

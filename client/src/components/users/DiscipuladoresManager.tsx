@@ -197,7 +197,10 @@ export function DiscipuladoresManager({
       
 
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-        <DialogContent className="w-[95vw] max-w-[840px] max-h-[85vh] flex flex-col p-0 overflow-hidden">
+        <DialogContent 
+          className="w-[95vw] max-w-[840px] flex flex-col p-0 overflow-hidden"
+          style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        >
           <div className="p-6 pb-0">
             <DialogHeader>
               <DialogTitle>Adicionar Discipulador</DialogTitle>

@@ -176,7 +176,10 @@ export const EventPermissionsModal: React.FC<EventPermissionsModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto -mt-8">
+      <DialogContent 
+        className="max-w-5xl w-[95vw] overflow-y-auto -mt-8"
+        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-blue-600" />

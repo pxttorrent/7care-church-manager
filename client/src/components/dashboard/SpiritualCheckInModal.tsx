@@ -186,7 +186,10 @@ export const SpiritualCheckInModal = ({ isOpen, onClose }: SpiritualCheckInModal
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl mx-auto max-h-[90vh] overflow-y-auto">
+      <DialogContent 
+        className="max-w-3xl mx-auto w-[90vw]"
+        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+      >
         {/* Header */}
         <DialogHeader className="text-center pb-6">
           <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 border border-blue-200">

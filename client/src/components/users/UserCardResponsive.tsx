@@ -818,7 +818,10 @@ export function UserCardResponsive({
 
       {/* Modal para visualizar foto */}
       <Dialog open={showPhotoPreview} onOpenChange={setIsPhotoPreviewOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent 
+          className="max-w-md w-[90vw]"
+          style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        >
           <DialogHeader>
             <DialogTitle>Foto de Perfil</DialogTitle>
             <DialogDescription>
@@ -842,7 +845,10 @@ export function UserCardResponsive({
 
       {/* Modal para histórico de visitas */}
       <Dialog open={showVisitHistory} onOpenChange={setShowVisitHistory}>
-        <DialogContent className="max-w-md">
+        <DialogContent 
+          className="max-w-md w-[90vw]"
+          style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        >
           <DialogHeader>
             <DialogTitle>Histórico de Visitas</DialogTitle>
             <DialogDescription>

@@ -343,7 +343,8 @@ export function ImportExcelModal({ isOpen, onClose, onImportComplete }: ImportEx
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent 
-        className="sm:max-w-md"
+        className="sm:max-w-md w-[90vw]"
+        style={{ maxHeight: 'calc(100vh - 7rem)' }}
         aria-describedby="import-excel-description"
       >
         <DialogHeader>

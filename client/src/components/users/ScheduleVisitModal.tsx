@@ -106,7 +106,8 @@ export const ScheduleVisitModal = ({ user, isOpen, onClose }: ScheduleVisitModal
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent 
-        className="max-w-sm"
+        className="max-w-sm w-[90vw]"
+        style={{ maxHeight: 'calc(100vh - 7rem)' }}
         aria-describedby="schedule-visit-modal-description"
       >
         <div id="schedule-visit-modal-description" className="sr-only">

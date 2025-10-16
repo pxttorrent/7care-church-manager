@@ -362,7 +362,10 @@ export function GoogleDriveImportModal({ isOpen, onClose, onImportComplete }: Go
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent 
+        className="sm:max-w-lg w-[90vw]"
+        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
