@@ -9,7 +9,6 @@ export const MobileBottomNav = memo(() => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [activeIndex, setActiveIndex] = useState(0);
-  const [isDarkBackground, setIsDarkBackground] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
   
   // Estrutura simplificada do menu - memoizada para evitar recriações
@@ -58,38 +57,6 @@ export const MobileBottomNav = memo(() => {
     ), [menuStructure, user]
   );
 
-  // Detectar se o fundo é escuro baseado na rota atual
-  useEffect(() => {
-    const detectDarkBackground = () => {
-      // Páginas com fundo escuro conhecido
-      const darkPages = ['/dashboard'];
-      
-      // Verificar se a página atual tem fundo escuro
-      const hasDarkBackground = darkPages.includes(location.pathname);
-      
-      // Verificar também se há um elemento com fundo escuro na página
-      const bodyElement = document.body;
-      const computedStyle = window.getComputedStyle(bodyElement);
-      const backgroundColor = computedStyle.backgroundColor;
-      
-      // Se a cor de fundo for escura (RGB baixo) ou se for uma página conhecida
-      if (hasDarkBackground || (backgroundColor && backgroundColor !== 'rgba(0, 0, 0, 0)')) {
-        const rgbMatch = backgroundColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        if (rgbMatch) {
-          const [, r, g, b] = rgbMatch.map(Number);
-          const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-          setIsDarkBackground(brightness < 128 || hasDarkBackground);
-        } else {
-          setIsDarkBackground(hasDarkBackground);
-        }
-      } else {
-        setIsDarkBackground(hasDarkBackground);
-      }
-    };
-
-    detectDarkBackground();
-  }, [location.pathname]);
-
   // Atualizar índice ativo baseado na rota atual
   useEffect(() => {
     const findActiveIndex = () => {
@@ -108,46 +75,17 @@ export const MobileBottomNav = memo(() => {
     setActiveIndex(newActiveIndex);
   }, [location.pathname, allowedItems]);
 
-  // Classes dinâmicas baseadas no fundo
-  const navClasses = useMemo(() => {
-    if (isDarkBackground) {
-      // Para fundos escuros: usar cores claras com transparência
-      return "bg-white/30 backdrop-blur-md border border-white/40 rounded-3xl shadow-2xl pointer-events-auto";
-    } else {
-      // Para fundos claros: usar cores da logo
-      return "bg-gradient-to-r from-primary/40 via-primary/30 to-secondary/40 backdrop-blur-md border border-primary/50 rounded-3xl shadow-2xl pointer-events-auto";
-    }
-  }, [isDarkBackground]);
+  // Classes fixas para sempre usar o estilo claro (que funciona bem em qualquer fundo)
+  const navClasses = "bg-white/30 backdrop-blur-md border border-white/40 rounded-3xl shadow-2xl pointer-events-auto";
+  const slidingBgClasses = "bg-white/50 backdrop-blur-sm rounded-2xl transition-all duration-300 ease-out shadow-lg";
+  
+  const iconClasses = (isActive: boolean) => {
+    return isActive ? 'scale-110 text-gray-800' : 'scale-100 text-gray-600';
+  };
 
-  const slidingBgClasses = useMemo(() => {
-    if (isDarkBackground) {
-      // Para fundos escuros: usar branco com transparência
-      return "bg-white/50 backdrop-blur-sm rounded-2xl transition-all duration-300 ease-out shadow-lg";
-    } else {
-      // Para fundos claros: usar cores da logo
-      return "bg-gradient-to-r from-primary/60 to-secondary/60 backdrop-blur-sm rounded-2xl transition-all duration-300 ease-out shadow-lg";
-    }
-  }, [isDarkBackground]);
-
-  const iconClasses = useCallback((isActive: boolean) => {
-    if (isDarkBackground) {
-      // Para fundos escuros: usar cores escuras
-      return isActive ? 'scale-110 text-gray-800' : 'scale-100 text-gray-600';
-    } else {
-      // Para fundos claros: usar cores da logo
-      return isActive ? 'scale-110 text-primary' : 'scale-100 text-primary/70';
-    }
-  }, [isDarkBackground]);
-
-  const textClasses = useCallback((isActive: boolean) => {
-    if (isDarkBackground) {
-      // Para fundos escuros: usar cores escuras
-      return isActive ? 'opacity-100 font-semibold text-gray-800' : 'opacity-80 text-gray-600';
-    } else {
-      // Para fundos claros: usar cores da logo
-      return isActive ? 'opacity-100 font-semibold text-primary' : 'opacity-80 text-primary/70';
-    }
-  }, [isDarkBackground]);
+  const textClasses = (isActive: boolean) => {
+    return isActive ? 'opacity-100 font-semibold text-gray-800' : 'opacity-80 text-gray-600';
+  };
 
   const handleNavigation = useCallback((path: string, index: number) => {
     if (location.pathname === path) {
