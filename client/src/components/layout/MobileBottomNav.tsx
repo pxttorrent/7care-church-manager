@@ -92,12 +92,12 @@ export const MobileBottomNav = memo(() => {
       {/* Menu principal suspenso */}
       <nav 
         ref={navRef}
-        className="bg-background/95 backdrop-blur-sm border rounded-3xl shadow-2xl pointer-events-auto"
+        className="bg-white/20 backdrop-blur-md border border-white/30 rounded-3xl shadow-2xl pointer-events-auto"
       >
         <div className="relative flex justify-around items-center py-2 px-3">
           {/* Fundo deslizante centralizado */}
           <div 
-            className="absolute top-1.5 bottom-1.5 bg-primary/20 rounded-2xl transition-all duration-300 ease-out shadow-sm"
+            className="absolute top-1.5 bottom-1.5 bg-white/30 backdrop-blur-sm rounded-2xl transition-all duration-300 ease-out shadow-lg"
             style={{
               width: `calc(${100 / allowedItems.length}% - 10px)`,
               left: `calc(${(100 / allowedItems.length) * activeIndex}% + 5px)`,
@@ -115,7 +115,7 @@ export const MobileBottomNav = memo(() => {
                   handleNavigation(item.path, index);
                 }}
                 className={`relative flex flex-col items-center justify-center w-full h-12 transition-all duration-300 ease-out ${
-                  isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+                  isActive ? 'text-white' : 'text-white/80 hover:text-white'
                 }`}
                 style={{ 
                   touchAction: 'manipulation',
