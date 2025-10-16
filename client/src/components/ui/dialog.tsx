@@ -7,6 +7,27 @@ import { cn } from "@/lib/utils"
 
 const Dialog = DialogPrimitive.Root
 
+// Componente wrapper para gerenciar o estado do modal
+const DialogWithModalTracking = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Root> & {
+    modalId?: string;
+  }
+>(({ modalId, ...props }, ref) => {
+  const { openModal, closeModal } = useModal();
+  
+  React.useEffect(() => {
+    if (props.open && modalId) {
+      openModal(modalId);
+    } else if (modalId) {
+      closeModal(modalId);
+    }
+  }, [props.open, modalId, openModal, closeModal]);
+
+  return <DialogPrimitive.Root {...props} ref={ref} />;
+});
+DialogWithModalTracking.displayName = "DialogWithModalTracking";
+
 const DialogTrigger = DialogPrimitive.Trigger
 
 const DialogPortal = DialogPrimitive.Portal
@@ -30,16 +51,8 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
-    modalId?: string;
-  }
->(({ className, children, modalId = 'default-modal', ...props }, ref) => {
-  const { openModal, closeModal } = useModal();
-  
-  React.useEffect(() => {
-    openModal(modalId);
-    return () => closeModal(modalId);
-  }, [modalId, openModal, closeModal]);
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, children, ...props }, ref) => {
 
   return (
     <DialogPortal>
@@ -128,6 +141,7 @@ DialogDescription.displayName = DialogPrimitive.Description.displayName
 
 export {
   Dialog,
+  DialogWithModalTracking,
   DialogPortal,
   DialogOverlay,
   DialogClose,

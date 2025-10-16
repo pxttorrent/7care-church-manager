@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -134,9 +134,12 @@ export const EventModal = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <DialogWithModalTracking 
+      modalId="event-modal"
+      open={isOpen} 
+      onOpenChange={(open) => !open && onClose()}
+    >
       <DialogContent 
-        modalId="event-modal"
         className="w-[90vw] max-w-md p-2 sm:p-2"
         style={{ 
           maxHeight: 'calc(100vh - 2rem)',
@@ -476,6 +479,6 @@ export const EventModal = ({
           )}
         </div>
       </DialogContent>
-    </Dialog>
+    </DialogWithModalTracking>
   );
 };
