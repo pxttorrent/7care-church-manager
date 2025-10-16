@@ -97,11 +97,11 @@ export const MobileBottomNav = memo(() => {
         <div className="relative flex justify-around items-center py-2 px-3">
           {/* Fundo deslizante centralizado */}
           <div 
-            className="absolute top-1 bottom-1 bg-primary/20 rounded-2xl transition-all duration-300 ease-out shadow-sm"
+            className="absolute top-1.5 bottom-1.5 bg-primary/20 rounded-2xl transition-all duration-300 ease-out shadow-sm"
             style={{
-              width: `calc(${100 / allowedItems.length}% - 12px)`,
-              left: `calc(${(100 / allowedItems.length) * activeIndex}% + 6px)`,
-              height: 'calc(100% - 8px)'
+              width: `calc(${100 / allowedItems.length}% - 10px)`,
+              left: `calc(${(100 / allowedItems.length) * activeIndex}% + 5px)`,
+              height: 'calc(100% - 12px)'
             }}
           />
           
@@ -123,14 +123,16 @@ export const MobileBottomNav = memo(() => {
                 }}
                 type="button"
               >
-                <item.icon className={`w-6 h-6 mb-1 transition-all duration-300 ${
-                  isActive ? 'scale-110' : 'scale-100'
-                }`} />
-                <span className={`text-xs font-medium transition-all duration-300 ${
-                  isActive ? 'opacity-100 font-semibold' : 'opacity-80'
-                }`}>
-                  {item.title}
-                </span>
+                <div className="flex flex-col items-center justify-center w-full h-full">
+                  <item.icon className={`w-5 h-5 mb-1 transition-all duration-300 ${
+                    isActive ? 'scale-110' : 'scale-100'
+                  }`} />
+                  <span className={`text-xs font-medium transition-all duration-300 ${
+                    isActive ? 'opacity-100 font-semibold' : 'opacity-80'
+                  }`}>
+                    {item.title}
+                  </span>
+                </div>
               </button>
             );
           })}
