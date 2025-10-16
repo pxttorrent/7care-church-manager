@@ -28,7 +28,7 @@ export const MobileBottomNav = memo(() => {
       submenu: []
     },
            {
-             title: user?.role === 'member' ? 'Discipulado' : 'Usuários',
+             title: user?.role === 'admin' ? 'Usuários' : 'Discipulado',
              icon: Users,
              path: user?.role === 'admin' ? '/users' : '/my-interested',
              roles: ['admin', 'missionary', 'member'],
