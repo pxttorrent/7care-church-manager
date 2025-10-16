@@ -3164,17 +3164,13 @@ app.get("/api/relationships", async (req, res) => {
   try {
     console.log('🔍 [API] GET /api/relationships - Iniciando...');
     
-    // Retornar resposta simples primeiro
-    const response = {
-      message: 'API de relacionamentos funcionando',
-      environment: process.env.NODE_ENV,
-      hasDatabaseUrl: !!process.env.DATABASE_URL,
-      timestamp: new Date().toISOString(),
-      relationships: []
-    };
+    // Buscar todos os relacionamentos do storage
+    const relationships = await storage.getAllRelationships();
     
-    console.log('✅ [API] Resposta preparada:', response);
-    res.json(response);
+    console.log(`✅ [API] Relacionamentos encontrados: ${relationships.length}`);
+    console.log('📊 [API] Dados dos relacionamentos:', relationships);
+    
+    res.json(relationships);
     
   } catch (error: any) {
     console.error('❌ [API] Erro ao buscar relacionamentos:', error);

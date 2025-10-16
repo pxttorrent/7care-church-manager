@@ -478,7 +478,7 @@ const Dashboard = React.memo(() => {
       console.log('🔍 Dashboard: Church interested data:', data);
       return data;
     },
-    enabled: !!user?.id && (user.role.includes('member') || user.role.includes('missionary')),
+    enabled: !!user?.id && (user.role === 'member' || user.role === 'missionary'),
     refetchInterval: 300000, // Refresh every 5 minutes
     staleTime: 4 * 60 * 1000, // 4 minutes
     gcTime: 10 * 60 * 1000, // 15 minutes
@@ -501,7 +501,7 @@ const Dashboard = React.memo(() => {
       console.log('🔍 Dashboard: User relationships data:', data);
       return data;
     },
-    enabled: !!user?.id && (user.role.includes('member') || user.role.includes('missionary')),
+    enabled: !!user?.id && (user.role === 'member' || user.role === 'missionary'),
     refetchInterval: 300000, // Refresh every 5 minutes
     staleTime: 4 * 60 * 1000, // 4 minutes
     gcTime: 10 * 60 * 1000, // 15 minutes
@@ -1101,15 +1101,45 @@ const Dashboard = React.memo(() => {
   };
 
   const renderMemberDashboard = () => {
-    // Calcular estatísticas de interessados
+    // Calcular estatísticas de interessados com logs detalhados
+    console.log('🔍 MEMBER DASHBOARD DEBUG:', {
+      userId: user?.id,
+      userRole: user?.role,
+      churchInterested: churchInterested,
+      churchInterestedLength: churchInterested?.length,
+      userRelationships: userRelationships,
+      userRelationshipsLength: userRelationships?.length,
+      churchInterestedLoading: churchInterestedLoading,
+      userRelationshipsLoading: userRelationshipsLoading
+    });
+
     const totalChurchInterested = (churchInterested && Array.isArray(churchInterested)) ? churchInterested.length : 0;
-    const userActiveRelationships = (userRelationships && Array.isArray(userRelationships)) ? userRelationships.filter((rel: any) => 
-      rel && typeof rel === 'object' && rel.missionaryId === user?.id && rel.status === 'active'
-    ) : [];
-    const userPendingRelationships = (userRelationships && Array.isArray(userRelationships)) ? userRelationships.filter((rel: any) => 
-      rel && typeof rel === 'object' && rel.missionaryId === user?.id && rel.status === 'pending'
-    ) : [];
+    
+    const userActiveRelationships = (userRelationships && Array.isArray(userRelationships)) ? userRelationships.filter((rel: any) => {
+      const isMatch = rel && typeof rel === 'object' && rel.missionaryId === user?.id && rel.status === 'active';
+      if (isMatch) {
+        console.log('✅ Active relationship found:', rel);
+      }
+      return isMatch;
+    }) : [];
+    
+    const userPendingRelationships = (userRelationships && Array.isArray(userRelationships)) ? userRelationships.filter((rel: any) => {
+      const isMatch = rel && typeof rel === 'object' && rel.missionaryId === user?.id && rel.status === 'pending';
+      if (isMatch) {
+        console.log('⏳ Pending relationship found:', rel);
+      }
+      return isMatch;
+    }) : [];
+    
     const totalUserInterested = userActiveRelationships.length + userPendingRelationships.length;
+
+    console.log('📊 MEMBER DASHBOARD CALCULATED:', {
+      totalChurchInterested,
+      userActiveRelationships: userActiveRelationships.length,
+      userPendingRelationships: userPendingRelationships.length,
+      totalUserInterested,
+      allRelationshipsForUser: userRelationships?.filter((rel: any) => rel?.missionaryId === user?.id)
+    });
 
     return (
       <div className="space-y-8">
