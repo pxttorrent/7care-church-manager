@@ -114,9 +114,7 @@ export const MobileBottomNav = memo(() => {
                   e.stopPropagation();
                   handleNavigation(item.path, index);
                 }}
-                className={`relative flex flex-col items-center justify-center w-full h-12 transition-all duration-300 ease-out ${
-                  isActive ? 'text-white' : 'text-white/80 hover:text-white'
-                }`}
+                className="relative flex flex-col items-center justify-center w-full h-12 transition-all duration-300 ease-out"
                 style={{ 
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent'
@@ -125,10 +123,10 @@ export const MobileBottomNav = memo(() => {
               >
                 <div className="flex flex-col items-center justify-center w-full h-full">
                   <item.icon className={`w-5 h-5 mb-1 transition-all duration-300 ${
-                    isActive ? 'scale-110' : 'scale-100'
+                    isActive ? 'scale-110 text-white' : 'scale-100 text-white'
                   }`} />
                   <span className={`text-xs font-medium transition-all duration-300 ${
-                    isActive ? 'opacity-100 font-semibold' : 'opacity-80'
+                    isActive ? 'opacity-100 font-semibold text-gray-800' : 'opacity-80 text-gray-700'
                   }`}>
                     {item.title}
                   </span>
