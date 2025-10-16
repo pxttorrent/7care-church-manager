@@ -1335,12 +1335,26 @@ const Dashboard = React.memo(() => {
   console.log('🚀 tasksData:', tasksData?.length || 0);
   console.log('🚀 stats:', stats);
 
+  // Definir fundo baseado no role do usuário
+  const isAdmin = user?.role === 'admin';
+  const backgroundClasses = isAdmin 
+    ? "min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 relative"
+    : "min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-gray-100 relative";
+  
+  const patternClasses = isAdmin
+    ? "absolute inset-0 bg-gradient-to-br from-blue-600/10 via-transparent to-blue-400/5"
+    : "absolute inset-0 bg-gradient-to-br from-blue-100/30 via-transparent to-blue-50/20";
+    
+  const radialClasses = isAdmin
+    ? "absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.15),transparent_50%)]"
+    : "absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.05),transparent_50%)]";
+
   return (
     <MobileLayout>
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 relative">
+      <div className={backgroundClasses}>
         {/* Background Pattern */}
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 via-transparent to-blue-400/5"></div>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.15),transparent_50%)]"></div>
+        <div className={patternClasses}></div>
+        <div className={radialClasses}></div>
         
         <div className="relative space-y-4 lg:space-y-8 p-3 lg:p-6 max-w-7xl mx-auto">
           
