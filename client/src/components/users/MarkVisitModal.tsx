@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -81,10 +81,14 @@ export const MarkVisitModal = ({
   const isRevisit = visitCount > 0;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <DialogWithModalTracking 
+      modalId="mark-visit-modal"
+      open={isOpen} 
+      onOpenChange={(open) => !open && onClose()}
+    >
       <DialogContent 
         className="sm:max-w-md w-[90vw]"
-        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        style={{ maxHeight: 'calc(100vh - 2rem)' }}
         aria-describedby="mark-visit-modal-description"
       >
         <div id="mark-visit-modal-description" className="sr-only">
@@ -169,6 +173,6 @@ export const MarkVisitModal = ({
           </div>
         </div>
       </DialogContent>
-    </Dialog>
+    </DialogWithModalTracking>
   );
 }; 

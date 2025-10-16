@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -104,10 +104,14 @@ export const ScheduleVisitModal = ({ user, isOpen, onClose }: ScheduleVisitModal
   if (!user) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <DialogWithModalTracking 
+      modalId="schedule-visit-modal"
+      open={isOpen} 
+      onOpenChange={(open) => !open && onClose()}
+    >
       <DialogContent 
         className="max-w-sm w-[90vw]"
-        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        style={{ maxHeight: 'calc(100vh - 2rem)' }}
         aria-describedby="schedule-visit-modal-description"
       >
         <div id="schedule-visit-modal-description" className="sr-only">
@@ -185,6 +189,6 @@ export const ScheduleVisitModal = ({ user, isOpen, onClose }: ScheduleVisitModal
           </div>
         </form>
       </DialogContent>
-    </Dialog>
+    </DialogWithModalTracking>
   );
 }; 

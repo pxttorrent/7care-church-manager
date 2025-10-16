@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -185,10 +185,14 @@ export const SpiritualCheckInModal = ({ isOpen, onClose }: SpiritualCheckInModal
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <DialogWithModalTracking 
+      modalId="spiritual-checkin-modal"
+      open={isOpen} 
+      onOpenChange={onClose}
+    >
       <DialogContent 
         className="max-w-3xl mx-auto w-[90vw]"
-        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        style={{ maxHeight: 'calc(100vh - 2rem)' }}
       >
         {/* Header */}
         <DialogHeader className="text-center pb-6">
@@ -461,6 +465,6 @@ export const SpiritualCheckInModal = ({ isOpen, onClose }: SpiritualCheckInModal
           </div>
         </div>
       </DialogContent>
-    </Dialog>
+    </DialogWithModalTracking>
   );
 };

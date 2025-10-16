@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { X, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -196,10 +196,14 @@ export function DiscipuladoresManager({
       </Button>
       
 
-      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+      <DialogWithModalTracking 
+        modalId="discipuladores-add-modal"
+        open={showAddModal} 
+        onOpenChange={setShowAddModal}
+      >
         <DialogContent 
           className="w-[95vw] max-w-[840px] flex flex-col p-0 overflow-hidden"
-          style={{ maxHeight: 'calc(100vh - 7rem)' }}
+          style={{ maxHeight: 'calc(100vh - 2rem)' }}
         >
           <div className="p-6 pb-0">
             <DialogHeader>
@@ -279,7 +283,7 @@ export function DiscipuladoresManager({
             </DialogFooter>
           </div>
         </DialogContent>
-      </Dialog>
+      </DialogWithModalTracking>
     </div>
   );
 }

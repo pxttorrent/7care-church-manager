@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -438,10 +438,14 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <DialogWithModalTracking 
+      modalId="user-detail-modal"
+      open={isOpen} 
+      onOpenChange={(open) => !open && onClose()}
+    >
       <DialogContent 
         className="max-w-6xl w-[95vw]"
-        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        style={{ maxHeight: 'calc(100vh - 2rem)' }}
       >
         <DialogHeader>
           <div className="flex items-center justify-between">
@@ -1078,7 +1082,7 @@ export const UserDetailModal = ({ user, isOpen, onClose, onUpdate }: UserDetailM
         </div>
 
       </DialogContent>
-    </Dialog>
+    </DialogWithModalTracking>
   );
 };
 

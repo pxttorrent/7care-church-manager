@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -341,10 +341,14 @@ export function ImportExcelModal({ isOpen, onClose, onImportComplete }: ImportEx
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <DialogWithModalTracking 
+      modalId="import-excel-modal"
+      open={isOpen} 
+      onOpenChange={onClose}
+    >
       <DialogContent 
         className="sm:max-w-md w-[90vw]"
-        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        style={{ maxHeight: 'calc(100vh - 2rem)' }}
         aria-describedby="import-excel-description"
       >
         <DialogHeader>
@@ -396,6 +400,6 @@ export function ImportExcelModal({ isOpen, onClose, onImportComplete }: ImportEx
           </div>
         </div>
       </DialogContent>
-    </Dialog>
+    </DialogWithModalTracking>
   );
 }

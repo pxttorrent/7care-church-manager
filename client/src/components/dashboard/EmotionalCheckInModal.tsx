@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -144,10 +144,14 @@ export const EmotionalCheckInModal = ({ isOpen, onClose }: EmotionalCheckInModal
   };
 
   return (
-            <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <DialogWithModalTracking 
+      modalId="emotional-checkin-modal"
+      open={isOpen} 
+      onOpenChange={(open) => !open && onClose()}
+    >
       <DialogContent 
         className="sm:max-w-md w-[90vw]"
-        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        style={{ maxHeight: 'calc(100vh - 2rem)' }}
         aria-describedby="emotional-checkin-description"
       >
         <DialogHeader>
@@ -284,6 +288,6 @@ export const EmotionalCheckInModal = ({ isOpen, onClose }: EmotionalCheckInModal
           </Button>
         </div>
       </DialogContent>
-    </Dialog>
+    </DialogWithModalTracking>
   );
 };

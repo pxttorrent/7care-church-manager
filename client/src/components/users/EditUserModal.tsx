@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -72,10 +72,14 @@ export const EditUserModal = ({ user, isOpen, onClose, onUpdate }: EditUserModal
   if (!user) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <DialogWithModalTracking 
+      modalId="edit-user-modal"
+      open={isOpen} 
+      onOpenChange={(open) => !open && onClose()}
+    >
       <DialogContent 
         className="max-w-2xl w-[90vw]"
-        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        style={{ maxHeight: 'calc(100vh - 2rem)' }}
         aria-describedby="edit-user-modal-description"
       >
         <div id="edit-user-modal-description" className="sr-only">
@@ -239,6 +243,6 @@ export const EditUserModal = ({ user, isOpen, onClose, onUpdate }: EditUserModal
           </div>
         </form>
       </DialogContent>
-    </Dialog>
+    </DialogWithModalTracking>
   );
 }; 

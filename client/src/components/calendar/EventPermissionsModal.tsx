@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -175,10 +175,14 @@ export const EventPermissionsModal: React.FC<EventPermissionsModalProps> = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <DialogWithModalTracking 
+      modalId="event-permissions-modal"
+      open={isOpen} 
+      onOpenChange={onClose}
+    >
       <DialogContent 
         className="max-w-5xl w-[95vw] overflow-y-auto -mt-8"
-        style={{ maxHeight: 'calc(100vh - 7rem)' }}
+        style={{ maxHeight: 'calc(100vh - 2rem)' }}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -367,6 +371,6 @@ export const EventPermissionsModal: React.FC<EventPermissionsModalProps> = ({
           </div>
         </div>
       </DialogContent>
-    </Dialog>
+    </DialogWithModalTracking>
   );
 };
