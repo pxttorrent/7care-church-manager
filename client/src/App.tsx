@@ -50,6 +50,34 @@ const queryClient = createQueryClient();
 const App = () => {
   // Setup performance optimizations
   useEffect(() => {
+    // Interceptar e suprimir erros de extensões do Chrome
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (event.reason?.message?.includes('message channel closed') || 
+          event.reason?.message?.includes('listener indicated an asynchronous response') ||
+          event.reason?.message?.includes('Extension context invalidated')) {
+        console.warn('🔇 Erro de extensão do Chrome suprimido:', event.reason?.message);
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+    };
+
+    // Interceptar erros globais de extensões
+    const handleError = (event: ErrorEvent) => {
+      if (event.message?.includes('message channel closed') || 
+          event.message?.includes('listener indicated an asynchronous response') ||
+          event.message?.includes('Extension context invalidated')) {
+        console.warn('🔇 Erro de extensão do Chrome suprimido:', event.message);
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+    };
+
+    // Adicionar listeners globais
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    window.addEventListener('error', handleError);
+
     // Clean console logs in production
     cleanConsoleInProduction();
     
@@ -64,7 +92,12 @@ const App = () => {
       // This will be implemented in the queryClient file
     }, 30 * 60 * 1000);
     
-    return () => clearInterval(cleanupInterval);
+    return () => {
+      // Remover listeners
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+      window.removeEventListener('error', handleError);
+      clearInterval(cleanupInterval);
+    };
   }, []);
 
   return (
