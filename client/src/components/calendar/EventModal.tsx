@@ -136,10 +136,11 @@ export const EventModal = ({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent 
+        modalId="event-modal"
         className="w-[90vw] max-w-md p-2 sm:p-2"
         style={{ 
-          maxHeight: 'calc(100vh - 8rem)',
-          transform: 'translate(-50%, -60%)'
+          maxHeight: 'calc(100vh - 2rem)',
+          transform: 'translate(-50%, -50%)'
         }}
         aria-describedby="event-modal-description"
       >

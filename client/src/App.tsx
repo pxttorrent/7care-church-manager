@@ -10,6 +10,7 @@ import { FirstAccessWelcome } from "./components/auth/FirstAccessWelcome";
 import { createQueryClient, setupPerformanceListeners, prefetchImportantData } from "./lib/queryClient";
 import { cleanConsoleInProduction } from "./lib/performance";
 import { SyncIndicator } from "./components/sync/SyncIndicator";
+import { ModalProvider } from "./contexts/ModalContext";
 
 // Lazy load all pages for better performance
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -103,10 +104,11 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <SyncIndicator />
-        <BrowserRouter>
+        <ModalProvider>
+          <Toaster />
+          <Sonner />
+          <SyncIndicator />
+          <BrowserRouter>
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<Login />} />
@@ -137,10 +139,11 @@ const App = () => {
               <Route path="/election-manage/:configId" element={<ElectionManage />} />
               <Route path="/election-vote/:configId" element={<ElectionVotingMobile />} />
               {/* <Route path="/test-calendar" element={<TestCalendar />} /> */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
         </BrowserRouter>
+        </ModalProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

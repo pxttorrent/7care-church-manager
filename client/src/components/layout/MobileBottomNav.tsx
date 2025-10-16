@@ -3,11 +3,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { memo } from 'react';
+import { useModal } from '@/contexts/ModalContext';
 
 export const MobileBottomNav = memo(() => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isAnyModalOpen } = useModal();
   const [activeIndex, setActiveIndex] = useState(0);
   const navRef = useRef<HTMLDivElement>(null);
   
@@ -150,7 +152,13 @@ export const MobileBottomNav = memo(() => {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 p-4 pointer-events-none" style={{ zIndex: 999999 }}>
+    <div 
+      className={`fixed bottom-0 left-0 right-0 p-4 pointer-events-none transition-transform duration-300 ease-in-out`}
+      style={{ 
+        zIndex: 999999,
+        transform: isAnyModalOpen ? 'translateY(100%)' : 'translateY(0)'
+      }}
+    >
       {/* Menu principal suspenso */}
       <nav 
         ref={navRef}
