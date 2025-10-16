@@ -92,12 +92,12 @@ export const MobileBottomNav = memo(() => {
       {/* Menu principal suspenso */}
       <nav 
         ref={navRef}
-        className="bg-white/20 backdrop-blur-md border border-white/30 rounded-3xl shadow-2xl pointer-events-auto"
+        className="bg-gradient-to-r from-primary/20 via-primary/15 to-secondary/20 backdrop-blur-md border border-primary/30 rounded-3xl shadow-2xl pointer-events-auto"
       >
         <div className="relative flex justify-around items-center py-2 px-3">
           {/* Fundo deslizante centralizado */}
           <div 
-            className="absolute top-1.5 bottom-1.5 bg-white/30 backdrop-blur-sm rounded-2xl transition-all duration-300 ease-out shadow-lg"
+            className="absolute top-1.5 bottom-1.5 bg-gradient-to-r from-primary/40 to-secondary/40 backdrop-blur-sm rounded-2xl transition-all duration-300 ease-out shadow-lg"
             style={{
               width: `calc(${100 / allowedItems.length}% - 10px)`,
               left: `calc(${(100 / allowedItems.length) * activeIndex}% + 5px)`,
@@ -123,10 +123,10 @@ export const MobileBottomNav = memo(() => {
               >
                 <div className="flex flex-col items-center justify-center w-full h-full">
                   <item.icon className={`w-5 h-5 mb-1 transition-all duration-300 ${
-                    isActive ? 'scale-110 text-white' : 'scale-100 text-white/80'
+                    isActive ? 'scale-110 text-primary' : 'scale-100 text-primary/70'
                   }`} />
                   <span className={`text-xs font-medium transition-all duration-300 ${
-                    isActive ? 'opacity-100 font-semibold text-white' : 'opacity-80 text-white/80'
+                    isActive ? 'opacity-100 font-semibold text-primary' : 'opacity-80 text-primary/70'
                   }`}>
                     {item.title}
                   </span>
