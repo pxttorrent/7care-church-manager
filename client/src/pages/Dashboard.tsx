@@ -1120,30 +1120,31 @@ const Dashboard = React.memo(() => {
             role="button"
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/my-interested'); }}
-            className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col"
+            className="group relative overflow-hidden bg-gradient-to-br from-purple-500 to-purple-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-purple-800/30 opacity-100 group-hover:from-purple-600/30 group-hover:to-purple-800/40 transition-all duration-300"></div>
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-400/30 to-purple-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-              <CardTitle className="text-sm font-semibold text-gray-700">Interessados</CardTitle>
-              <div className="p-2 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-lg">
+              <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Interessados</CardTitle>
+              <div className="p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
                 <Heart className="h-4 w-4" />
               </div>
             </CardHeader>
-            <CardContent className="relative z-10 flex-1">
+            <CardContent className="relative z-10">
               <div className="space-y-3">
                 {/* Interessados Vinculados */}
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Vinculados a você:</span>
+                  <span className="text-sm lg:text-base text-white/80">Vinculados a você:</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-purple-800 bg-clip-text text-transparent">
+                    <span className="text-2xl lg:text-3xl font-bold text-white drop-shadow-lg">
                       {userRelationshipsLoading ? '...' : totalUserInterested}
                     </span>
                     <div className="flex items-center gap-1">
                       {userActiveRelationships.length > 0 && (
-                        <div className="w-2 h-2 bg-green-500 rounded-full" title="Ativos"></div>
+                        <div className="w-2 h-2 bg-green-400 rounded-full" title="Ativos"></div>
                       )}
                       {userPendingRelationships.length > 0 && (
-                        <div className="w-2 h-2 bg-yellow-500 rounded-full" title="Pendentes"></div>
+                        <div className="w-2 h-2 bg-yellow-400 rounded-full" title="Pendentes"></div>
                       )}
                     </div>
                   </div>
@@ -1151,8 +1152,8 @@ const Dashboard = React.memo(() => {
                 
                 {/* Total da Igreja */}
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Total da igreja:</span>
-                  <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
+                  <span className="text-sm lg:text-base text-white/80">Total da igreja:</span>
+                  <span className="text-lg lg:text-xl font-bold text-white drop-shadow-lg">
                     {churchInterestedLoading ? '...' : totalChurchInterested}
                   </span>
                 </div>
@@ -1160,7 +1161,7 @@ const Dashboard = React.memo(() => {
                 {/* Barra de Progresso */}
                 {totalChurchInterested > 0 && (
                   <div className="space-y-1">
-                    <div className="flex justify-between text-xs text-gray-500">
+                    <div className="flex justify-between text-xs text-white/70">
                       <span>Seu alcance</span>
                       <span>{totalChurchInterested > 0 ? Math.round((totalUserInterested / totalChurchInterested) * 100) : 0}%</span>
                     </div>
@@ -1189,21 +1190,22 @@ const Dashboard = React.memo(() => {
             role="button"
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/calendar'); }}
-            className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col"
+            className="group relative overflow-hidden bg-gradient-to-br from-blue-500 to-blue-700 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-blue-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 to-blue-800/30 opacity-100 group-hover:from-blue-600/30 group-hover:to-blue-800/40 transition-all duration-300"></div>
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-400/30 to-blue-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-              <CardTitle className="text-sm font-semibold text-gray-700">Eventos do Mês</CardTitle>
-              <div className="p-2 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
+              <CardTitle className="text-sm lg:text-base font-semibold text-white drop-shadow-md">Eventos do Mês</CardTitle>
+              <div className="p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
                 <Calendar className="h-4 w-4" />
               </div>
             </CardHeader>
-            <CardContent className="relative z-10 flex-1">
+            <CardContent className="relative z-10">
               <div className="space-y-3">
                 {/* Eventos deste mês */}
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Eventos deste mês:</span>
-                  <span className="text-2xl font-bold bg-gradient-to-r from-green-600 to-green-800 bg-clip-text text-transparent">
+                  <span className="text-sm lg:text-base text-white/80">Eventos deste mês:</span>
+                  <span className="text-2xl lg:text-3xl font-bold text-white drop-shadow-lg">
                     {userEventsLoading ? '...' : eventsThisMonthCount}
                   </span>
                 </div>
@@ -1221,16 +1223,6 @@ const Dashboard = React.memo(() => {
 
               </div>
             </CardContent>
-            <div className="px-6 pb-4 mt-auto">
-              <Button
-                variant="link"
-                size="sm"
-                className="p-0 text-blue-700"
-                onClick={() => navigate('/calendar')}
-              >
-                Toque para ver detalhes
-              </Button>
-            </div>
           </Card>
 
           {/* Card de Gamificação Rápida */}
