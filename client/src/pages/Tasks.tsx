@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -873,7 +873,11 @@ export default function Tasks() {
                 Configurar
               </Button>
             
-              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogWithModalTracking 
+                modalId="create-task-modal"
+                open={isCreateDialogOpen} 
+                onOpenChange={setIsCreateDialogOpen}
+              >
                 <DialogTrigger asChild>
                   <Button className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transition-all duration-300 px-6 py-3">
                     <PlusCircle className="h-5 w-5 mr-2" />
@@ -980,7 +984,7 @@ export default function Tasks() {
                     </div>
                   </div>
                 </DialogContent>
-              </Dialog>
+              </DialogWithModalTracking>
             </div>
           </div>
 
@@ -1144,7 +1148,11 @@ export default function Tasks() {
           </Tabs>
 
           {/* Dialog de Edição */}
-          <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogWithModalTracking 
+            modalId="edit-task-modal"
+            open={isEditDialogOpen} 
+            onOpenChange={setIsEditDialogOpen}
+          >
             <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle className="text-xl font-semibold">Editar Tarefa</DialogTitle>
@@ -1264,7 +1272,7 @@ export default function Tasks() {
                 </div>
               )}
             </DialogContent>
-          </Dialog>
+          </DialogWithModalTracking>
         </div>
       </div>
     </MobileLayout>
