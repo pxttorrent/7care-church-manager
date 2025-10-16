@@ -60,12 +60,13 @@ export const QuickGamificationCard = ({ userData, showDetails = false }: QuickGa
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/gamification'); }}
-      className="group relative overflow-hidden bg-gradient-to-br from-white to-gray-50/50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col"
+      className="group relative overflow-hidden bg-gradient-to-br from-yellow-500 to-purple-600 border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col"
     >
-      <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/5 to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+      <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/20 to-purple-700/30 opacity-100 group-hover:from-yellow-600/30 group-hover:to-purple-700/40 transition-all duration-300"></div>
+      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-yellow-400/30 to-purple-600/40 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-        <CardTitle className="text-sm font-semibold text-gray-700">Minha Pontuação</CardTitle>
-        <div className="p-2 rounded-full bg-gradient-to-br from-yellow-500 to-purple-600 text-white shadow-lg">
+        <CardTitle className="text-sm font-semibold text-white drop-shadow-md">Minha Pontuação</CardTitle>
+        <div className="p-2 rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg group-hover:bg-white/30 transition-all duration-300">
           <Trophy className="h-4 w-4" />
         </div>
       </CardHeader>
@@ -73,18 +74,18 @@ export const QuickGamificationCard = ({ userData, showDetails = false }: QuickGa
         <div className="space-y-3">
           {/* Pontuação Total */}
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">Pontos atuais:</span>
-            <span className="text-2xl font-bold bg-gradient-to-r from-yellow-600 to-purple-800 bg-clip-text text-transparent">
+            <span className="text-sm text-white/80">Pontos atuais:</span>
+            <span className="text-2xl font-bold text-white drop-shadow-lg">
               {total}
             </span>
           </div>
           
           {/* Montanha Atual */}
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600">Montanha atual:</span>
+            <span className="text-sm text-white/80">Montanha atual:</span>
             <div className="flex items-center gap-2">
-              <MountIcon iconType={getLevelIcon(total)} className="h-6 w-6" />
-              <span className="text-sm font-semibold text-gray-800">
+              <MountIcon iconType={getLevelIcon(total)} className="h-6 w-6 text-white" />
+              <span className="text-sm font-semibold text-white drop-shadow-lg">
                 {getMountName(total)}
               </span>
             </div>
@@ -95,12 +96,12 @@ export const QuickGamificationCard = ({ userData, showDetails = false }: QuickGa
           {/* Progresso para próxima montanha */}
           {nextLevel && (
             <div className="space-y-1">
-              <div className="flex justify-between text-xs text-gray-500">
+              <div className="flex justify-between text-xs text-white/70">
                 <span>Para {nextLevel.mount}</span>
                 <span>{Math.round(progress)}%</span>
               </div>
               <Progress value={progress} className="h-2" />
-              <div className="text-center text-xs text-gray-500">
+              <div className="text-center text-xs text-white/70">
                 {pointsToNext > 0 
                   ? `${pointsToNext} pts restantes`
                   : 'Monte máximo!'
@@ -114,10 +115,13 @@ export const QuickGamificationCard = ({ userData, showDetails = false }: QuickGa
         <Button
           variant="link"
           size="sm"
-          className="p-0 text-blue-700"
-          onClick={() => navigate('/gamification')}
+          className="p-0 text-white/90 hover:text-white"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate('/gamification');
+          }}
         >
-          Toque para ver detalhes
+          Toque para ver mais detalhes
         </Button>
       </div>
     </Card>

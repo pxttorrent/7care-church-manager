@@ -1177,10 +1177,13 @@ const Dashboard = React.memo(() => {
               <Button
                 variant="link"
                 size="sm"
-                className="p-0 text-blue-700"
-                onClick={() => navigate('/my-interested')}
+                className="p-0 text-white/90 hover:text-white"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate('/my-interested');
+                }}
               >
-                Toque para ver detalhes
+                Toque para ver mais detalhes
               </Button>
             </div>
           </Card>
@@ -1223,6 +1226,19 @@ const Dashboard = React.memo(() => {
 
               </div>
             </CardContent>
+            <div className="px-6 pb-4 mt-auto">
+              <Button
+                variant="link"
+                size="sm"
+                className="p-0 text-white/90 hover:text-white"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate('/calendar');
+                }}
+              >
+                Toque para ver mais detalhes
+              </Button>
+            </div>
           </Card>
 
           {/* Card de Gamificação Rápida */}
