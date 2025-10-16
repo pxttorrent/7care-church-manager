@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Mountain, Crown, Star, TrendingUp } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { GAMIFICATION_LEVELS } from '@/lib/gamification';
 import { MountIcon } from '@/components/ui/mount-icon';
 
@@ -213,7 +213,11 @@ export const MountainJourney = ({ userPoints = 0, showCurrent = true, className 
       </CardContent>
 
       {/* Modal de detalhes do monte */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <DialogWithModalTracking 
+        modalId="mountain-journey-modal"
+        open={isModalOpen} 
+        onOpenChange={setIsModalOpen}
+      >
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-gradient-to-br from-amber-50 to-yellow-100 border-amber-200">
           <DialogHeader className="pb-6">
             <DialogTitle className="text-center text-3xl font-bold text-amber-800">
@@ -292,7 +296,7 @@ export const MountainJourney = ({ userPoints = 0, showCurrent = true, className 
             </div>
           </div>
         </DialogContent>
-      </Dialog>
+      </DialogWithModalTracking>
     </Card>
   );
 };

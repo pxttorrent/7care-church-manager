@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Trophy, 
   Mountain, 
@@ -166,7 +166,11 @@ export default function Gamification() {
       </div>
 
       {/* Modal de expansão do ícone */}
-      <Dialog open={isIconModalOpen} onOpenChange={setIsIconModalOpen}>
+      <DialogWithModalTracking 
+        modalId="gamification-icon-modal"
+        open={isIconModalOpen} 
+        onOpenChange={setIsIconModalOpen}
+      >
         <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto bg-gradient-to-br from-amber-50 to-yellow-100 border-amber-200">
           <DialogHeader className="pb-6">
             <DialogTitle className="text-center text-3xl font-bold text-amber-800">
@@ -251,7 +255,7 @@ export default function Gamification() {
             </div>
           </div>
         </DialogContent>
-      </Dialog>
+      </DialogWithModalTracking>
     </MobileLayout>
   );
 } 

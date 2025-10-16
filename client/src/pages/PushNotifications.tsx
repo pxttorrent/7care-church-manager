@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -546,7 +546,11 @@ export default function PushNotifications() {
         )}
 
         {/* Modal de envio */}
-        <Dialog open={showNotificationModal} onOpenChange={setShowNotificationModal}>
+        <DialogWithModalTracking 
+          modalId="push-notification-modal"
+          open={showNotificationModal} 
+          onOpenChange={setShowNotificationModal}
+        >
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-2xl flex items-center gap-2">
@@ -757,7 +761,7 @@ export default function PushNotifications() {
               </div>
             </div>
           </DialogContent>
-        </Dialog>
+        </DialogWithModalTracking>
       </div>
     </MobileLayout>
   );

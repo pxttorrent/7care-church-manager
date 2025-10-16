@@ -8,7 +8,7 @@ import { MobileLayout } from '@/components/layout/MobileLayout';
 import { PhotoSelector } from '@/components/ui/photo-selector';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { DialogWithModalTracking, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 const MeuCadastro = () => {
   const { user, refreshUserData } = useAuth();
@@ -401,7 +401,11 @@ const MeuCadastro = () => {
             <CardTitle>Segurança</CardTitle>
           </CardHeader>
           <CardContent>
-            <Dialog open={isChangePwdOpen} onOpenChange={setIsChangePwdOpen}>
+            <DialogWithModalTracking 
+              modalId="change-password-modal"
+              open={isChangePwdOpen} 
+              onOpenChange={setIsChangePwdOpen}
+            >
               <DialogTrigger asChild>
                 <Button variant="outline" className="w-full">
                   <Lock className="w-4 h-4 mr-2" />
@@ -452,7 +456,7 @@ const MeuCadastro = () => {
                   </Button>
                 </DialogFooter>
               </DialogContent>
-            </Dialog>
+            </DialogWithModalTracking>
           </CardContent>
         </Card>
       </div>
