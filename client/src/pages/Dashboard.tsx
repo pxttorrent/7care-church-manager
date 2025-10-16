@@ -471,11 +471,18 @@ const Dashboard = React.memo(() => {
           'x-user-id': user.id.toString()
         }
       });
+      console.log('🔍 Dashboard: Response status:', response.status, response.statusText);
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('🔍 Dashboard: Error response:', errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      console.log('🔍 Dashboard: Church interested data:', data);
+      console.log('🔍 Dashboard: Church interested data received:', {
+        dataType: typeof data,
+        dataLength: Array.isArray(data) ? data.length : 'not array',
+        data: data
+      });
       return data;
     },
     enabled: !!user?.id && (user.role === 'member' || user.role === 'missionary'),
@@ -494,11 +501,18 @@ const Dashboard = React.memo(() => {
       }
       console.log('🔍 Dashboard: Fetching user relationships for user:', user.id);
       const response = await fetch('/api/relationships');
+      console.log('🔍 Dashboard: Relationships response status:', response.status, response.statusText);
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('🔍 Dashboard: Relationships error response:', errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      console.log('🔍 Dashboard: User relationships data:', data);
+      console.log('🔍 Dashboard: User relationships data received:', {
+        dataType: typeof data,
+        dataLength: Array.isArray(data) ? data.length : 'not array',
+        data: data
+      });
       return data;
     },
     enabled: !!user?.id && (user.role === 'member' || user.role === 'missionary'),
@@ -1105,12 +1119,21 @@ const Dashboard = React.memo(() => {
     console.log('🔍 MEMBER DASHBOARD DEBUG:', {
       userId: user?.id,
       userRole: user?.role,
+      userChurch: user?.church,
       churchInterested: churchInterested,
       churchInterestedLength: churchInterested?.length,
+      churchInterestedType: typeof churchInterested,
+      churchInterestedIsArray: Array.isArray(churchInterested),
       userRelationships: userRelationships,
       userRelationshipsLength: userRelationships?.length,
+      userRelationshipsType: typeof userRelationships,
+      userRelationshipsIsArray: Array.isArray(userRelationships),
       churchInterestedLoading: churchInterestedLoading,
-      userRelationshipsLoading: userRelationshipsLoading
+      userRelationshipsLoading: userRelationshipsLoading,
+      queriesEnabled: {
+        churchInterested: !!user?.id && (user.role === 'member' || user.role === 'missionary'),
+        userRelationships: !!user?.id && (user.role === 'member' || user.role === 'missionary')
+      }
     });
 
     const totalChurchInterested = (churchInterested && Array.isArray(churchInterested)) ? churchInterested.length : 0;
