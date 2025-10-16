@@ -457,9 +457,9 @@ const Dashboard = React.memo(() => {
     }
   };
 
-  // Fetch church interested data for members
+  // Fetch church interested data for members - usando a mesma query key da página MyInterested
   const { data: churchInterested, isLoading: churchInterestedLoading } = useQuery({
-    queryKey: ['/api/my-interested', user?.id],
+    queryKey: ['church-interested', user?.id],
     queryFn: async () => {
       if (!user?.id || (user.role !== 'member' && user.role !== 'missionary')) {
         console.log('🔍 Dashboard: User not member/missionary or no ID:', { userId: user?.id, role: user?.role });
@@ -491,16 +491,16 @@ const Dashboard = React.memo(() => {
     gcTime: 10 * 60 * 1000, // 15 minutes
   });
 
-  // Fetch user relationships for members
+  // Fetch user relationships for members - usando a mesma query key da página MyInterested
   const { data: userRelationships, isLoading: userRelationshipsLoading } = useQuery({
-    queryKey: ['/api/relationships', user?.id],
+    queryKey: ['my-relationships', user?.id],
     queryFn: async () => {
       if (!user?.id || (user.role !== 'member' && user.role !== 'missionary')) {
         console.log('🔍 Dashboard: User not member/missionary or no ID:', { userId: user?.id, role: user?.role });
         return [];
       }
       console.log('🔍 Dashboard: Fetching user relationships for user:', user.id);
-      const response = await fetch('/api/relationships');
+      const response = await fetch(`/api/relationships/missionary/${user.id}`);
       console.log('🔍 Dashboard: Relationships response status:', response.status, response.statusText);
       if (!response.ok) {
         const errorText = await response.text();
