@@ -51,11 +51,17 @@ export const MobileBottomNav = memo(() => {
   ], [user?.role]);
 
   // Filtrar itens baseado no role do usuário - memoizado
-  const allowedItems = useMemo(() => 
-    menuStructure.filter(item => 
+  const allowedItems = useMemo(() => {
+    const filtered = menuStructure.filter(item => 
       user && item.roles.includes(user.role)
-    ), [menuStructure, user]
-  );
+    );
+    console.log('🔍 MobileBottomNav - Debug:', {
+      userRole: user?.role,
+      menuStructure: menuStructure.map(item => ({ title: item.title, roles: item.roles })),
+      filteredItems: filtered.map(item => ({ title: item.title, roles: item.roles }))
+    });
+    return filtered;
+  }, [menuStructure, user]);
 
   // Atualizar índice ativo baseado na rota atual
   useEffect(() => {
@@ -98,6 +104,20 @@ export const MobileBottomNav = memo(() => {
     setActiveIndex(index);
     window.location.href = path;
   }, [location.pathname]);
+
+  // Log para debug
+  console.log('🔍 MobileBottomNav - Render:', {
+    userRole: user?.role,
+    allowedItemsCount: allowedItems.length,
+    activeIndex,
+    location: location.pathname
+  });
+
+  // Se não há itens permitidos, não renderizar o menu
+  if (allowedItems.length === 0) {
+    console.warn('⚠️ MobileBottomNav: Nenhum item permitido para o role:', user?.role);
+    return null;
+  }
 
   return (
     <div className="fixed bottom-0 left-0 right-0 p-4 pointer-events-none" style={{ zIndex: 999999 }}>
