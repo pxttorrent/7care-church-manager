@@ -6283,15 +6283,10 @@ async function registerRoutes(app2) {
   app2.get("/api/relationships", async (req, res) => {
     try {
       console.log("\u{1F50D} [API] GET /api/relationships - Iniciando...");
-      const response = {
-        message: "API de relacionamentos funcionando",
-        environment: process.env.NODE_ENV,
-        hasDatabaseUrl: !!process.env.DATABASE_URL,
-        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        relationships: []
-      };
-      console.log("\u2705 [API] Resposta preparada:", response);
-      res.json(response);
+      const relationships2 = await storage.getAllRelationships();
+      console.log(`\u2705 [API] Relacionamentos encontrados: ${relationships2.length}`);
+      console.log("\u{1F4CA} [API] Dados dos relacionamentos:", relationships2);
+      res.json(relationships2);
     } catch (error) {
       console.error("\u274C [API] Erro ao buscar relacionamentos:", error);
       res.status(500).json({

@@ -54,7 +54,16 @@ const Menu = () => {
     { title: 'Tutorial', icon: FileText, path: '/first-access', color: 'bg-cyan-500' }
   ];
 
-  const currentMenuItems = menuItems[user?.role || 'interested'];
+  const currentMenuItems = menuItems[user?.role || 'interested'] || menuItems['interested'];
+
+  // Debug log para identificar problemas com o role
+  console.log('🔍 MENU DEBUG:', {
+    userRole: user?.role,
+    userExists: !!user,
+    menuItemsKeys: Object.keys(menuItems),
+    currentMenuItems: currentMenuItems,
+    currentMenuItemsLength: currentMenuItems?.length
+  });
 
   // Refresh user data when component mounts to ensure we have the latest church information
   useEffect(() => {
@@ -119,7 +128,7 @@ const Menu = () => {
         <div>
           <h3 className="text-lg font-semibold mb-3">Funcionalidades</h3>
           <div className="grid grid-cols-2 gap-3">
-            {currentMenuItems.map((item) => (
+            {(currentMenuItems || []).map((item) => (
               <Card 
                 key={item.path} 
                 className="shadow-sm hover:shadow-md transition-shadow cursor-pointer"
