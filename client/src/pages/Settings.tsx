@@ -138,6 +138,8 @@ export default function Settings() {
   // Função para salvar subscription no backend
   const saveSubscriptionToServer = async (subscription: PushSubscription) => {
     try {
+      console.log('💾 PUSH: Salvando subscription no servidor para usuário:', user?.id);
+      
       const response = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: {
@@ -149,13 +151,19 @@ export default function Settings() {
         }),
       });
 
+      console.log('📡 PUSH: Resposta do servidor:', response.status, response.statusText);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ PUSH: Erro na resposta do servidor:', errorText);
         throw new Error('Failed to save subscription');
       }
 
-      return await response.json();
+      const result = await response.json();
+      console.log('✅ PUSH: Subscription salva com sucesso:', result);
+      return result;
     } catch (error) {
-      console.error('Error saving subscription:', error);
+      console.error('❌ PUSH: Erro ao salvar subscription:', error);
       throw error;
     }
   };

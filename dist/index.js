@@ -4415,16 +4415,23 @@ async function registerRoutes(app2) {
       if (!user || user.role !== "missionary" && user.role !== "member") {
         return res.status(403).json({ error: "Apenas mission\xE1rios e membros podem acessar esta rota" });
       }
-      console.log(`Usu\xE1rio encontrado: ${user.name} (ID: ${user.id}, Role: ${user.role}, Status: ${user.status})`);
+      console.log(`\u{1F50D} [API] Usu\xE1rio encontrado: ${user.name} (ID: ${user.id}, Role: ${user.role}, Status: ${user.status})`);
       const allUsers = await storage.getAllUsers();
-      console.log(`Igreja do usu\xE1rio: ${user.church}, C\xF3digo: ${user.churchCode}`);
-      console.log(`Total de usu\xE1rios no sistema: ${allUsers.length}`);
+      console.log(`\u{1F50D} [API] Igreja do usu\xE1rio: "${user.church}", C\xF3digo: "${user.churchCode}"`);
+      console.log(`\u{1F50D} [API] Total de usu\xE1rios no sistema: ${allUsers.length}`);
+      const allInterested = allUsers.filter((u) => u.role === "interested");
+      console.log(`\u{1F50D} [API] Total de interessados no sistema: ${allInterested.length}`);
+      console.log(`\u{1F50D} [API] Igrejas dos interessados:`, [...new Set(allInterested.map((u) => u.church))]);
       const churchInterested = allUsers.filter(
         (u) => u.role === "interested" && u.church === user.church
       );
-      console.log(`Interessados da mesma igreja encontrados: ${churchInterested.length}`);
+      console.log(`\u{1F50D} [API] Interessados da mesma igreja "${user.church}" encontrados: ${churchInterested.length}`);
+      console.log(`\u{1F50D} [API] Nomes dos interessados da igreja:`, churchInterested.map((u) => u.name));
       const relationships2 = await storage.getRelationshipsByMissionary(userId);
+      console.log(`\u{1F50D} [API] Relacionamentos encontrados para ${user.name} (ID: ${userId}): ${relationships2.length}`);
+      console.log(`\u{1F50D} [API] Detalhes dos relacionamentos:`, relationships2);
       const linkedInterestedIds = relationships2.map((r) => r.interestedId);
+      console.log(`\u{1F50D} [API] IDs dos interessados vinculados:`, linkedInterestedIds);
       const processedUsers = churchInterested.map((user2) => {
         const isLinked = linkedInterestedIds.includes(user2.id);
         if (isLinked) {

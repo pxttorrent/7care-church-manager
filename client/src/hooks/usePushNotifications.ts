@@ -48,30 +48,45 @@ export const usePushNotifications = () => {
 
   const subscribe = async () => {
     try {
+      console.log('🔔 PUSH: Iniciando processo de inscrição...');
+      
       const hasPermission = await requestPermission();
       if (!hasPermission) {
+        console.error('❌ PUSH: Permissão negada para notificações');
         throw new Error('Permission denied for notifications');
       }
+      
+      console.log('✅ PUSH: Permissão concedida');
 
       const registration = await navigator.serviceWorker.ready;
+      console.log('✅ PUSH: Service Worker pronto');
       
       // VAPID public key
       const vapidPublicKey = 'BD6cS7ooCOhh1lfv-D__PNYDv3S_S9EyR4bpowVJHcBxYIl5gtTFs8AThEO-MZnpzsKIZuRY3iR2oOMBDAOH2wY';
+      console.log('🔑 PUSH: Chave VAPID configurada');
       
       const sub = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: vapidPublicKey,
       });
 
+      console.log('✅ PUSH: Inscrição criada com sucesso:', {
+        endpoint: sub.endpoint,
+        keys: {
+          p256dh: sub.getKey('p256dh') ? 'presente' : 'ausente',
+          auth: sub.getKey('auth') ? 'presente' : 'ausente'
+        }
+      });
+
       setSubscription(sub);
       setIsSubscribed(true);
       
-      // Here you would send the subscription to your server
-      console.log('Push subscription:', sub);
+      // Aqui você enviaria a subscription para o servidor
+      console.log('📤 PUSH: Subscription pronta para envio ao servidor');
       
       return sub;
     } catch (error) {
-      console.error('Error subscribing to push notifications:', error);
+      console.error('❌ PUSH: Erro ao se inscrever nas notificações:', error);
       throw error;
     }
   };

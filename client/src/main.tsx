@@ -49,6 +49,30 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
   }
 }
 
-// Sistema offline/PWA completamente removido
+// Registrar Service Worker para notificações push
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log('✅ Service Worker registrado com sucesso:', registration.scope);
+      
+      // Verificar se há atualizações
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('🔄 Nova versão do Service Worker disponível');
+              // Opcional: mostrar notificação para o usuário atualizar
+            }
+          });
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao registrar Service Worker:', error);
+    }
+  });
+}
 
 createRoot(document.getElementById("root")!).render(<App />);
