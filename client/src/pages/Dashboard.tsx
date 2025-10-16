@@ -465,7 +465,7 @@ const Dashboard = React.memo(() => {
         console.log('🔍 Dashboard: User not member/missionary or no ID:', { userId: user?.id, role: user?.role });
         return [];
       }
-      console.log('🔍 Dashboard: Fetching church interested for user:', user.id);
+      console.log('🔍 Dashboard: Fetching church interested for user:', user.id, 'Name:', user.name, 'Role:', user.role, 'Church:', user.church);
       const response = await fetch('/api/my-interested', {
         headers: {
           'x-user-id': user.id.toString()
@@ -499,7 +499,7 @@ const Dashboard = React.memo(() => {
         console.log('🔍 Dashboard: User not member/missionary or no ID:', { userId: user?.id, role: user?.role });
         return [];
       }
-      console.log('🔍 Dashboard: Fetching user relationships for user:', user.id);
+      console.log('🔍 Dashboard: Fetching user relationships for user:', user.id, 'Name:', user.name, 'Role:', user.role, 'Church:', user.church);
       const response = await fetch(`/api/relationships/missionary/${user.id}`);
       console.log('🔍 Dashboard: Relationships response status:', response.status, response.statusText);
       if (!response.ok) {
@@ -1116,23 +1116,32 @@ const Dashboard = React.memo(() => {
 
   const renderMemberDashboard = () => {
     // Calcular estatísticas de interessados com logs detalhados
-    console.log('🔍 MEMBER DASHBOARD DEBUG:', {
+    console.log('🔍 MEMBER DASHBOARD DEBUG - BEATRIZ.LEITES:', {
       userId: user?.id,
+      userName: user?.name,
       userRole: user?.role,
       userChurch: user?.church,
+      userChurchCode: user?.churchCode,
+      userStatus: user?.status,
       churchInterested: churchInterested,
       churchInterestedLength: churchInterested?.length,
       churchInterestedType: typeof churchInterested,
       churchInterestedIsArray: Array.isArray(churchInterested),
+      churchInterestedSample: churchInterested?.slice(0, 2), // Primeiros 2 itens
       userRelationships: userRelationships,
       userRelationshipsLength: userRelationships?.length,
       userRelationshipsType: typeof userRelationships,
       userRelationshipsIsArray: Array.isArray(userRelationships),
+      userRelationshipsSample: userRelationships?.slice(0, 2), // Primeiros 2 itens
       churchInterestedLoading: churchInterestedLoading,
       userRelationshipsLoading: userRelationshipsLoading,
       queriesEnabled: {
         churchInterested: !!user?.id && (user.role === 'member' || user.role === 'missionary'),
         userRelationships: !!user?.id && (user.role === 'member' || user.role === 'missionary')
+      },
+      queryKeys: {
+        churchInterested: ['church-interested', user?.id],
+        userRelationships: ['my-relationships', user?.id]
       }
     });
 

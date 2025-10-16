@@ -768,25 +768,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Permitir missionários com status pending também
-      console.log(`Usuário encontrado: ${user.name} (ID: ${user.id}, Role: ${user.role}, Status: ${user.status})`);
+      console.log(`🔍 [API] Usuário encontrado: ${user.name} (ID: ${user.id}, Role: ${user.role}, Status: ${user.status})`);
 
       // Buscar todos os usuários
       const allUsers = await storage.getAllUsers();
       
       // Filtrar apenas interessados da mesma igreja do usuário
-      console.log(`Igreja do usuário: ${user.church}, Código: ${user.churchCode}`);
-      console.log(`Total de usuários no sistema: ${allUsers.length}`);
+      console.log(`🔍 [API] Igreja do usuário: "${user.church}", Código: "${user.churchCode}"`);
+      console.log(`🔍 [API] Total de usuários no sistema: ${allUsers.length}`);
+      
+      // Debug: mostrar alguns usuários interessados
+      const allInterested = allUsers.filter(u => u.role === 'interested');
+      console.log(`🔍 [API] Total de interessados no sistema: ${allInterested.length}`);
+      console.log(`🔍 [API] Igrejas dos interessados:`, [...new Set(allInterested.map(u => u.church))]);
       
       const churchInterested = allUsers.filter(u => 
         u.role === 'interested' && 
         u.church === user.church
       );
       
-      console.log(`Interessados da mesma igreja encontrados: ${churchInterested.length}`);
+      console.log(`🔍 [API] Interessados da mesma igreja "${user.church}" encontrados: ${churchInterested.length}`);
+      console.log(`🔍 [API] Nomes dos interessados da igreja:`, churchInterested.map(u => u.name));
       
       // Buscar relacionamentos existentes
       const relationships = await storage.getRelationshipsByMissionary(userId);
+      console.log(`🔍 [API] Relacionamentos encontrados para ${user.name} (ID: ${userId}): ${relationships.length}`);
+      console.log(`🔍 [API] Detalhes dos relacionamentos:`, relationships);
       const linkedInterestedIds = relationships.map(r => r.interestedId);
+      console.log(`🔍 [API] IDs dos interessados vinculados:`, linkedInterestedIds);
       
       // Processar usuários interessados
       const processedUsers: any[] = churchInterested.map(user => {
