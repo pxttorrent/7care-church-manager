@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -260,7 +260,7 @@ interface MonthlyCalendarViewProps {
   events?: CalendarEvent[]; // Eventos vindos do sistema offline
 }
 
-export function MonthlyCalendarView({ 
+export const MonthlyCalendarView = memo(function MonthlyCalendarView({ 
   onEventClick, 
   onNewEvent, 
   onDateClick,
@@ -1142,4 +1142,4 @@ export function MonthlyCalendarView({
       )}
     </div>
   );
-}
+});

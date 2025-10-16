@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 
 interface BirthdayUser {
@@ -17,45 +17,37 @@ interface BirthdaysData {
 }
 
 export const useBirthdays = () => {
-  const [birthdays, setBirthdays] = useState<BirthdaysData>({ today: [], thisMonth: [], all: [] });
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  useEffect(() => {
-    const fetchBirthdays = async () => {
-      try {
-        setIsLoading(true);
-        
-        const headers: Record<string, string> = {};
-        if (user?.id) {
-          headers['x-user-id'] = user.id.toString();
-          headers['x-user-role'] = user.role;
-        }
-        
-        const response = await fetch('/api/users/birthdays', {
-          headers
-        });
-        
-        if (!response.ok) {
-          throw new Error('Falha ao buscar aniversariantes');
-        }
-        
-        const data = await response.json();
-        setBirthdays(data);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Erro desconhecido');
-        console.error('Erro ao buscar aniversariantes:', err);
-      } finally {
-        setIsLoading(false);
+  const { data: birthdays = { today: [], thisMonth: [], all: [] }, isLoading, error } = useQuery<BirthdaysData>({
+    queryKey: ['birthdays', user?.id],
+    queryFn: async () => {
+      const headers: Record<string, string> = {};
+      if (user?.id) {
+        headers['x-user-id'] = user.id.toString();
+        headers['x-user-role'] = user.role;
       }
-    };
+      
+      const response = await fetch('/api/users/birthdays', {
+        headers
+      });
+      
+      if (!response.ok) {
+        throw new Error('Falha ao buscar aniversariantes');
+      }
+      
+      return response.json();
+    },
+    enabled: !!user, // Só executa se o usuário estiver logado
+    staleTime: 5 * 60 * 1000, // 5 minutos - cache inteligente
+    gcTime: 10 * 60 * 1000, // 10 minutos - manter em cache
+    refetchInterval: 15 * 60 * 1000, // 15 minutos - refresh automático
+    refetchOnWindowFocus: false // Não refazer ao focar janela
+  });
 
-    if (user) {
-      fetchBirthdays();
-    }
-  }, [user]);
-
-  return { birthdays, isLoading, error };
+  return { 
+    birthdays, 
+    isLoading, 
+    error: error ? (error instanceof Error ? error.message : 'Erro desconhecido') : null 
+  };
 };

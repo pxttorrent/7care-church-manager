@@ -51,7 +51,7 @@ export default function Calendar() {
   }, []);
   
   // ========================================
-  // BUSCAR EVENTOS DIRETO DA API (SEM CACHE - SEMPRE FRESH)
+  // BUSCAR EVENTOS COM CACHE OTIMIZADO
   // ========================================
   const { data: rawEvents, isLoading: eventsLoading, refetch } = useQuery<any[]>({
     queryKey: ['events'],
@@ -59,9 +59,7 @@ export default function Calendar() {
       console.log('📡 [API] Buscando eventos do servidor...');
       const response = await fetch('/api/calendar/events', {
         headers: { 
-          'x-user-id': '1',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
+          'x-user-id': '1'
         }
       });
       if (!response.ok) throw new Error('Erro ao buscar eventos');
@@ -82,11 +80,11 @@ export default function Calendar() {
       
       return uniqueEvents;
     },
-    refetchInterval: false,
-    staleTime: 0, // Nunca usar cache antigo
-    cacheTime: 0, // Não manter em cache
-    refetchOnMount: true,
-    refetchOnWindowFocus: false
+    staleTime: 2 * 60 * 1000, // 2 minutos - cache inteligente
+    gcTime: 5 * 60 * 1000, // 5 minutos - manter em cache
+    refetchInterval: 10 * 60 * 1000, // 10 minutos - refresh automático
+    refetchOnMount: false, // Usar cache se disponível
+    refetchOnWindowFocus: false // Não refazer ao focar janela
   });
 
   // Normalizar eventos (converter date/end_date para startDate/endDate)
