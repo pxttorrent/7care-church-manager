@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { CustomModal } from "@/components/ui/custom-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -82,6 +82,7 @@ export const EventModal = ({
     organizer: ''
   });
 
+
   const handleSave = () => {
     onSave(formData);
     setIsEditing(false);
@@ -133,58 +134,52 @@ export const EventModal = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent 
-        className="w-[90vw] max-w-md p-2 sm:p-2"
-        style={{ maxHeight: 'calc(100vh - 7rem)' }}
-        aria-describedby="event-modal-description"
-      >
-        <DialogHeader className="flex flex-row items-center justify-between sticky top-0 bg-background pt-1 pb-1 border-b z-10">
-          <DialogTitle className="text-xs sm:text-sm">
-            {event ? (isEditing ? 'Editar Evento' : 'Detalhes do Evento') : 'Novo Evento'}
-          </DialogTitle>
-          <div id="event-modal-description" className="sr-only">
-            {event ? (isEditing ? 'Formulário para editar evento existente' : 'Visualização dos detalhes do evento') : 'Formulário para criar novo evento'}
+    <CustomModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={event ? (isEditing ? 'Editar Evento' : 'Detalhes do Evento') : 'Novo Evento'}
+      description={event ? (isEditing ? 'Formulário para editar evento existente' : 'Visualização dos detalhes do evento') : 'Formulário para criar novo evento'}
+      defaultSize={{ width: 450, height: 700 }}
+    >
+      {/* Controles de ação no topo */}
+      <div className="flex justify-end gap-2 mb-4 pb-3 border-b">
+        {event && !isEditing ? (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setIsEditing(true)}
+            data-testid="button-edit-event"
+            className="h-7 px-3 text-xs"
+          >
+            <Edit2 className="h-3 w-3 mr-1" />
+            Editar
+          </Button>
+        ) : (
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleCancel}
+              data-testid="button-cancel-edit"
+              className="h-7 px-3 text-xs"
+            >
+              <X className="h-3 w-3 mr-1" />
+              Cancelar
+            </Button>
+            <Button 
+              size="sm" 
+              onClick={handleSave}
+              data-testid="button-save-event"
+              className="h-7 px-3 text-xs"
+            >
+              <Save className="h-3 w-3 mr-1" />
+              Salvar
+            </Button>
           </div>
-          <div className="flex gap-1">
-            {event && !isEditing ? (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setIsEditing(true)}
-                data-testid="button-edit-event"
-                className="h-6 px-2 text-xs"
-              >
-                <Edit2 className="h-3 w-3 mr-1" />
-                Editar
-              </Button>
-            ) : (
-              <div className="flex gap-1">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleCancel}
-                  data-testid="button-cancel-edit"
-                  className="h-6 px-2 text-xs"
-                >
-                  <X className="h-3 w-3 mr-1" />
-                  Cancelar
-                </Button>
-                <Button 
-                  size="sm" 
-                  onClick={handleSave}
-                  data-testid="button-save-event"
-                  className="h-6 px-2 text-xs"
-                >
-                  <Save className="h-3 w-3 mr-1" />
-                  Salvar
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogHeader>
+        )}
+      </div>
 
-        <div className="space-y-2 pt-1 pb-2">
+      <div className="space-y-4">
           {/* Event Header */}
           {!isEditing && event && (
             <div className="flex items-start space-x-2">
@@ -454,23 +449,22 @@ export const EventModal = ({
             </div>
           </div>
 
-          {/* Action Buttons */}
-          {event && !isEditing && onDelete && (
-            <div className="flex justify-end pt-3 border-t mt-4">
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => onDelete(event.id)}
-                data-testid="button-delete-event"
-                className="h-7 px-2 text-xs"
-              >
-                <Trash2 className="h-3 w-3 mr-1" />
-                Excluir
-              </Button>
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+        {/* Action Buttons */}
+        {event && !isEditing && onDelete && (
+          <div className="flex justify-end pt-3 border-t mt-4">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => onDelete(event.id)}
+              data-testid="button-delete-event"
+              className="h-7 px-3 text-xs"
+            >
+              <Trash2 className="h-3 w-3 mr-1" />
+              Excluir
+            </Button>
+          </div>
+        )}
+      </div>
+    </CustomModal>
   );
 };
