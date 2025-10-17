@@ -179,15 +179,24 @@ export const useAdminOffline = () => {
     }
   }, [status.isAdmin, status.isOfflineEnabled]);
 
+  // Função auxiliar para testar endpoint
+  const testEndpoint = async (endpoint: string): Promise<boolean> => {
+    try {
+      const response = await fetch(endpoint, { method: 'HEAD' });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  };
+
   // Funções para cachear dados específicos
   const cacheUsersData = async () => {
     try {
-      // Endpoints reais que existem no aplicativo
+      // Endpoints que sabemos que funcionam
       const endpoints = [
         '/api/users',
         '/api/users/with-points', 
-        '/api/users/birthdays',
-        '/api/my-interested'
+        '/api/users/birthdays'
       ];
       
       let cachedCount = 0;
@@ -199,16 +208,18 @@ export const useAdminOffline = () => {
             await offlineDB.cacheData(endpoint, data);
             console.log(`✅ Dados cacheados: ${endpoint}`);
             cachedCount++;
+          } else {
+            console.log(`⚠️ Endpoint com erro ${response.status}: ${endpoint}`);
           }
         } catch (e) {
-          // Continuar para próximo endpoint
+          console.log(`❌ Erro ao acessar ${endpoint}:`, e.message);
         }
       }
       
       if (cachedCount > 0) {
         console.log(`✅ ${cachedCount} endpoints de usuários cacheados com sucesso`);
       } else {
-        console.log('ℹ️ Nenhum endpoint de usuários encontrado');
+        console.log('ℹ️ Nenhum endpoint de usuários funcionando');
       }
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados de usuários:', error);
@@ -250,11 +261,9 @@ export const useAdminOffline = () => {
 
   const cacheTasksData = async () => {
     try {
-      // Endpoints reais de atividades/tarefas que existem
+      // Endpoints que sabemos que funcionam
       const endpoints = [
-        '/api/activities',
-        '/api/meetings',
-        '/api/point-activities'
+        '/api/meetings'
       ];
       
       let cachedCount = 0;
@@ -266,16 +275,18 @@ export const useAdminOffline = () => {
             await offlineDB.cacheData(endpoint, data);
             console.log(`✅ Dados cacheados: ${endpoint}`);
             cachedCount++;
+          } else {
+            console.log(`⚠️ Endpoint com erro ${response.status}: ${endpoint}`);
           }
         } catch (e) {
-          // Continuar para próximo endpoint
+          console.log(`❌ Erro ao acessar ${endpoint}:`, e.message);
         }
       }
       
       if (cachedCount > 0) {
         console.log(`✅ ${cachedCount} endpoints de atividades cacheados com sucesso`);
       } else {
-        console.log('ℹ️ Nenhum endpoint de atividades encontrado');
+        console.log('ℹ️ Nenhum endpoint de atividades funcionando');
       }
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados de atividades:', error);
@@ -284,10 +295,8 @@ export const useAdminOffline = () => {
 
   const cacheGamificationData = async () => {
     try {
-      // Endpoints reais de gamificação que existem
+      // Endpoints que sabemos que funcionam
       const endpoints = [
-        '/api/achievements',
-        '/api/point-activities',
         '/api/users/with-points'
       ];
       
@@ -300,16 +309,18 @@ export const useAdminOffline = () => {
             await offlineDB.cacheData(endpoint, data);
             console.log(`✅ Dados cacheados: ${endpoint}`);
             cachedCount++;
+          } else {
+            console.log(`⚠️ Endpoint com erro ${response.status}: ${endpoint}`);
           }
         } catch (e) {
-          // Continuar para próximo endpoint
+          console.log(`❌ Erro ao acessar ${endpoint}:`, e.message);
         }
       }
       
       if (cachedCount > 0) {
         console.log(`✅ ${cachedCount} endpoints de gamificação cacheados com sucesso`);
       } else {
-        console.log('ℹ️ Nenhum endpoint de gamificação encontrado');
+        console.log('ℹ️ Nenhum endpoint de gamificação funcionando');
       }
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados de gamificação:', error);
@@ -390,13 +401,11 @@ export const useAdminOffline = () => {
 
   const cacheAdditionalData = async () => {
     try {
-      // Cachear dados adicionais importantes
+      // Cachear dados adicionais que sabemos que funcionam
       const endpoints = [
         '/api/prayers',
         '/api/relationships',
-        '/api/discipleship-requests',
-        '/api/emotional-checkins/admin',
-        '/api/spiritual-checkins/scores'
+        '/api/discipleship-requests'
       ];
       
       let cachedCount = 0;
@@ -408,16 +417,18 @@ export const useAdminOffline = () => {
             await offlineDB.cacheData(endpoint, data);
             console.log(`✅ Dados adicionais cacheados: ${endpoint}`);
             cachedCount++;
+          } else {
+            console.log(`⚠️ Endpoint com erro ${response.status}: ${endpoint}`);
           }
         } catch (e) {
-          // Continuar para próximo endpoint
+          console.log(`❌ Erro ao acessar ${endpoint}:`, e.message);
         }
       }
       
       if (cachedCount > 0) {
         console.log(`✅ ${cachedCount} endpoints adicionais cacheados com sucesso`);
       } else {
-        console.log('ℹ️ Nenhum endpoint adicional encontrado');
+        console.log('ℹ️ Nenhum endpoint adicional funcionando');
       }
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados adicionais:', error);
