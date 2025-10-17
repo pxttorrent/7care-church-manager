@@ -7,7 +7,7 @@ import { useOffline } from '@/hooks/useOffline';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Wifi, WifiOff, Database, RefreshCw, Trash2, Play, Clock, AlertTriangle, Settings, Battery, Activity, Zap, Cloud } from 'lucide-react';
+import { Wifi, WifiOff, Database, RefreshCw, Trash2, Play, Clock, AlertTriangle, Settings, Battery, Activity, Zap, Cloud, Shield, ShieldOff } from 'lucide-react';
 import { useState } from 'react';
 
 export const OfflineStatus = () => {
@@ -21,6 +21,7 @@ export const OfflineStatus = () => {
     isSyncActive,
     backgroundSyncSupported,
     backgroundSyncRegistrations,
+    interceptorEnabled,
     fetchWithOfflineFallback,
     clearCache,
     updateStats,
@@ -33,7 +34,10 @@ export const OfflineStatus = () => {
     syncNow,
     updateSyncConfig,
     registerBackgroundSync,
-    forceBackgroundSync
+    forceBackgroundSync,
+    enableInterceptor,
+    disableInterceptor,
+    clearAllInterceptorCache
   } = useOffline();
 
   const [testResult, setTestResult] = useState<string>('');
@@ -170,6 +174,32 @@ export const OfflineStatus = () => {
       }
     } catch (error) {
       setTestResult(`❌ Erro ao forçar Background Sync: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    }
+  };
+
+  // Função para habilitar/desabilitar interceptador
+  const handleToggleInterceptor = () => {
+    try {
+      if (interceptorEnabled) {
+        disableInterceptor();
+        setTestResult('🔴 Interceptador desabilitado - APIs não serão interceptadas');
+      } else {
+        enableInterceptor();
+        setTestResult('🟢 Interceptador habilitado - Todas as APIs serão interceptadas');
+      }
+    } catch (error) {
+      setTestResult(`❌ Erro ao alternar interceptador: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    }
+  };
+
+  // Função para limpar cache do interceptador
+  const handleClearInterceptorCache = async () => {
+    try {
+      setTestResult('🗑️ Limpando cache do interceptador...');
+      await clearAllInterceptorCache();
+      setTestResult('✅ Cache do interceptador limpo!');
+    } catch (error) {
+      setTestResult(`❌ Erro ao limpar cache: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -393,6 +423,39 @@ export const OfflineStatus = () => {
                 </div>
               )}
             </div>
+
+            <div>
+              <h4 className="font-semibold flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Interceptador Global:
+              </h4>
+              <div className="grid grid-cols-2 gap-4 text-sm mt-2">
+                <div>
+                  <span className="text-muted-foreground">Status:</span>
+                  <Badge variant={interceptorEnabled ? "default" : "secondary"} className="ml-2">
+                    {interceptorEnabled ? 'Ativo' : 'Inativo'}
+                  </Badge>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Cobertura:</span>
+                  <span className="ml-2 font-medium">Todas as APIs</span>
+                </div>
+              </div>
+              
+              {/* Informações do interceptador */}
+              <div className="mt-2 p-2 bg-muted rounded text-xs">
+                <div className="flex items-center gap-2 mb-1">
+                  <Shield className="h-3 w-3" />
+                  <span className="font-medium">Funcionalidades:</span>
+                </div>
+                <div className="space-y-1">
+                  <div>• Cache automático para GET requests</div>
+                  <div>• Fila automática para POST/PUT/DELETE</div>
+                  <div>• Fallback offline inteligente</div>
+                  <div>• Intercepta TODAS as chamadas fetch()</div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -478,7 +541,36 @@ export const OfflineStatus = () => {
             </Button>
           </div>
 
-          {/* Linha 4: Background Sync */}
+          {/* Linha 4: Interceptador */}
+          <div className="flex gap-2">
+            <Button 
+              onClick={handleToggleInterceptor}
+              disabled={!isInitialized}
+              variant={interceptorEnabled ? "default" : "outline"}
+              size="sm"
+              className="flex-1"
+            >
+              {interceptorEnabled ? (
+                <ShieldOff className="h-4 w-4 mr-2" />
+              ) : (
+                <Shield className="h-4 w-4 mr-2" />
+              )}
+              {interceptorEnabled ? 'Desabilitar' : 'Habilitar'} Interceptor
+            </Button>
+            
+            <Button 
+              onClick={handleClearInterceptorCache}
+              disabled={!isInitialized || !interceptorEnabled}
+              variant="destructive"
+              size="sm"
+              className="flex-1"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Limpar Cache API
+            </Button>
+          </div>
+
+          {/* Linha 5: Background Sync */}
           {backgroundSyncSupported && (
             <div className="flex gap-2">
               <Button 
@@ -505,7 +597,7 @@ export const OfflineStatus = () => {
             </div>
           )}
 
-          {/* Linha 5: Limpeza */}
+          {/* Linha 6: Limpeza */}
           <div className="flex gap-2">
             <Button 
               onClick={handleClearCache}
@@ -534,13 +626,14 @@ export const OfflineStatus = () => {
         {/* Instruções */}
         <div className="text-xs text-muted-foreground space-y-1">
           <p><strong>Como testar:</strong></p>
-          <p>1. <strong>Cache:</strong> "Testar Sistema" faz requisição e salva cache</p>
-          <p>2. <strong>Fila:</strong> "Testar Fila" adiciona operação offline</p>
-          <p>3. <strong>Sync Auto:</strong> "Iniciar" ativa sincronização automática</p>
-          <p>4. <strong>Sync Manual:</strong> "Sincronizar Agora" força sincronização</p>
-          <p>5. <strong>BG Sync:</strong> "Registrar BG Sync" permite sync com app fechado</p>
-          <p>6. <strong>Offline:</strong> Desconecte internet e teste (usará cache)</p>
-          <p>7. <strong>Inteligente:</strong> Pausa com bateria baixa, pausa quando offline</p>
+          <p>1. <strong>Interceptador:</strong> "Habilitar Interceptor" ativa cache automático para TODAS as APIs</p>
+          <p>2. <strong>Cache:</strong> "Testar Sistema" faz requisição e salva cache</p>
+          <p>3. <strong>Fila:</strong> "Testar Fila" adiciona operação offline</p>
+          <p>4. <strong>Sync Auto:</strong> "Iniciar" ativa sincronização automática</p>
+          <p>5. <strong>Sync Manual:</strong> "Sincronizar Agora" força sincronização</p>
+          <p>6. <strong>BG Sync:</strong> "Registrar BG Sync" permite sync com app fechado</p>
+          <p>7. <strong>Offline:</strong> Desconecte internet e teste (usará cache automático)</p>
+          <p>8. <strong>Inteligente:</strong> Pausa com bateria baixa, pausa quando offline</p>
         </div>
       </CardContent>
     </Card>

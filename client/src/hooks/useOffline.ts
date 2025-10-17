@@ -7,6 +7,7 @@ import { offlineDB } from '@/lib/offlineDatabase';
 import { offlineQueue, QueueOperation, QueueStats } from '@/lib/offlineQueue';
 import { offlineSync, SyncConfig, SyncStats, SyncEvent } from '@/lib/offlineSync';
 import { backgroundSyncService, SyncRegistration } from '@/lib/backgroundSync';
+import { offlineInterceptor } from '@/lib/offlineInterceptor';
 
 export interface OfflineStatus {
   isOnline: boolean;
@@ -23,6 +24,7 @@ export interface OfflineStatus {
   isSyncActive: boolean;
   backgroundSyncSupported: boolean;
   backgroundSyncRegistrations: SyncRegistration[];
+  interceptorEnabled: boolean;
 }
 
 export const useOffline = () => {
@@ -66,37 +68,43 @@ export const useOffline = () => {
     },
     isSyncActive: false,
     backgroundSyncSupported: backgroundSyncService.isSupported(),
-    backgroundSyncRegistrations: []
+    backgroundSyncRegistrations: [],
+    interceptorEnabled: false
   });
 
   // Inicializar sistema offline
   useEffect(() => {
-    const initializeOfflineSystem = async () => {
-      try {
-        await offlineDB.initialize();
-        await offlineQueue.initialize();
-        await offlineSync.initialize();
-        
-        const cacheStats = await offlineDB.getCacheStats();
-        const queueStats = await offlineQueue.getQueueStats();
-        const syncStats = offlineSync.getStats();
-        const syncConfig = offlineSync.getConfig();
-        
-        setStatus(prev => ({
-          ...prev,
-          isInitialized: true,
-          cacheStats,
-          queueStats,
-          syncStats,
-          syncConfig,
-          isSyncActive: offlineSync.isActive()
-        }));
-        
-        console.log('✅ Sistema offline inicializado');
-      } catch (error) {
-        console.error('❌ Erro ao inicializar sistema offline:', error);
-      }
-    };
+        const initializeOfflineSystem = async () => {
+          try {
+            await offlineDB.initialize();
+            await offlineQueue.initialize();
+            await offlineSync.initialize();
+            
+            // Inicializar interceptador global
+            await offlineInterceptor.initialize();
+            
+            const cacheStats = await offlineDB.getCacheStats();
+            const queueStats = await offlineQueue.getQueueStats();
+            const syncStats = offlineSync.getStats();
+            const syncConfig = offlineSync.getConfig();
+            const interceptorStats = await offlineInterceptor.getStats();
+            
+            setStatus(prev => ({
+              ...prev,
+              isInitialized: true,
+              cacheStats,
+              queueStats,
+              syncStats,
+              syncConfig,
+              isSyncActive: offlineSync.isActive(),
+              interceptorEnabled: interceptorStats.config.enabled
+            }));
+            
+            console.log('✅ Sistema offline completo inicializado');
+          } catch (error) {
+            console.error('❌ Erro ao inicializar sistema offline:', error);
+          }
+        };
 
     initializeOfflineSystem();
   }, []);
@@ -334,6 +342,47 @@ export const useOffline = () => {
     }
   }, []);
 
+  // Funções do Interceptador
+  const enableInterceptor = useCallback(() => {
+    try {
+      offlineInterceptor.enable();
+      setStatus(prev => ({ ...prev, interceptorEnabled: true }));
+      console.log('✅ Interceptador habilitado');
+    } catch (error) {
+      console.error('❌ Erro ao habilitar interceptador:', error);
+    }
+  }, []);
+
+  const disableInterceptor = useCallback(() => {
+    try {
+      offlineInterceptor.disable();
+      setStatus(prev => ({ ...prev, interceptorEnabled: false }));
+      console.log('🔴 Interceptador desabilitado');
+    } catch (error) {
+      console.error('❌ Erro ao desabilitar interceptador:', error);
+    }
+  }, []);
+
+  const clearEndpointCache = useCallback(async (endpoint: string) => {
+    try {
+      await offlineInterceptor.clearCacheForEndpoint(endpoint);
+      await updateStats();
+      console.log(`✅ Cache limpo para endpoint: ${endpoint}`);
+    } catch (error) {
+      console.error('❌ Erro ao limpar cache do endpoint:', error);
+    }
+  }, [updateStats]);
+
+  const clearAllInterceptorCache = useCallback(async () => {
+    try {
+      await offlineInterceptor.clearAllCache();
+      await updateStats();
+      console.log('✅ Todo o cache do interceptador foi limpo');
+    } catch (error) {
+      console.error('❌ Erro ao limpar todo o cache:', error);
+    }
+  }, [updateStats]);
+
   // Listener para eventos de sincronização
   useEffect(() => {
     const handleSyncEvent = (event: SyncEvent) => {
@@ -402,6 +451,11 @@ export const useOffline = () => {
     // Funções de Background Sync
     registerBackgroundSync,
     forceBackgroundSync,
+    // Funções do Interceptador
+    enableInterceptor,
+    disableInterceptor,
+    clearEndpointCache,
+    clearAllInterceptorCache,
     // Funções diretas do banco
     cacheData: offlineDB.cacheData.bind(offlineDB),
     getCachedData: offlineDB.getCachedData.bind(offlineDB),
