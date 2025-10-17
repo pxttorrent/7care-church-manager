@@ -268,8 +268,7 @@ export const useAdminOffline = () => {
     try {
       // Endpoints de tarefas que REALMENTE existem e funcionam
       const endpoints = [
-        '/api/meetings',
-        '/api/activities'
+        '/api/meetings'
       ];
       
       let cachedCount = 0;
@@ -467,8 +466,7 @@ export const useAdminOffline = () => {
       const endpoints = [
         '/api/relationships',
         '/api/discipleship-requests',
-        '/api/emotional-checkins/admin',
-        '/api/my-interested'
+        '/api/emotional-checkins/admin'
       ];
       
       let cachedCount = 0;
