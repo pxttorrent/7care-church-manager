@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { offlineDB } from '@/lib/offlineDatabase';
 import { offlineQueue, QueueOperation, QueueStats } from '@/lib/offlineQueue';
+import { offlineSync, SyncConfig, SyncStats, SyncEvent } from '@/lib/offlineSync';
 
 export interface OfflineStatus {
   isOnline: boolean;
@@ -16,6 +17,9 @@ export interface OfflineStatus {
     newestItem: number;
   };
   queueStats: QueueStats;
+  syncStats: SyncStats;
+  syncConfig: SyncConfig;
+  isSyncActive: boolean;
 }
 
 export const useOffline = () => {
@@ -36,7 +40,28 @@ export const useOffline = () => {
       byPriority: {},
       oldestOperation: 0,
       newestOperation: 0
-    }
+    },
+    syncStats: {
+      lastSync: 0,
+      totalSyncs: 0,
+      successfulSyncs: 0,
+      failedSyncs: 0,
+      averageSyncTime: 0,
+      pendingOperations: 0,
+      batteryLevel: 100,
+      connectionType: 'unknown'
+    },
+    syncConfig: {
+      enabled: true,
+      interval: 30000,
+      batteryThreshold: 20,
+      wifiOnly: false,
+      maxRetries: 3,
+      retryDelay: 5000,
+      priorityEndpoints: [],
+      blacklistedEndpoints: []
+    },
+    isSyncActive: false
   });
 
   // Inicializar sistema offline
@@ -45,15 +70,21 @@ export const useOffline = () => {
       try {
         await offlineDB.initialize();
         await offlineQueue.initialize();
+        await offlineSync.initialize();
         
         const cacheStats = await offlineDB.getCacheStats();
         const queueStats = await offlineQueue.getQueueStats();
+        const syncStats = offlineSync.getStats();
+        const syncConfig = offlineSync.getConfig();
         
         setStatus(prev => ({
           ...prev,
           isInitialized: true,
           cacheStats,
-          queueStats
+          queueStats,
+          syncStats,
+          syncConfig,
+          isSyncActive: offlineSync.isActive()
         }));
         
         console.log('✅ Sistema offline inicializado');
@@ -217,6 +248,66 @@ export const useOffline = () => {
     }
   }, []);
 
+  // Funções de sincronização
+  const startSync = useCallback(async () => {
+    try {
+      await offlineSync.start();
+      setStatus(prev => ({ ...prev, isSyncActive: true }));
+    } catch (error) {
+      console.error('❌ Erro ao iniciar sincronização:', error);
+    }
+  }, []);
+
+  const stopSync = useCallback(() => {
+    try {
+      offlineSync.stop();
+      setStatus(prev => ({ ...prev, isSyncActive: false }));
+    } catch (error) {
+      console.error('❌ Erro ao parar sincronização:', error);
+    }
+  }, []);
+
+  const syncNow = useCallback(async () => {
+    try {
+      const result = await offlineSync.syncNow();
+      await updateStats();
+      return result;
+    } catch (error) {
+      console.error('❌ Erro na sincronização manual:', error);
+      throw error;
+    }
+  }, [updateStats]);
+
+  const updateSyncConfig = useCallback((newConfig: Partial<SyncConfig>) => {
+    try {
+      offlineSync.updateConfig(newConfig);
+      const updatedConfig = offlineSync.getConfig();
+      setStatus(prev => ({ ...prev, syncConfig: updatedConfig }));
+    } catch (error) {
+      console.error('❌ Erro ao atualizar configuração:', error);
+    }
+  }, []);
+
+  // Listener para eventos de sincronização
+  useEffect(() => {
+    const handleSyncEvent = (event: SyncEvent) => {
+      const syncStats = offlineSync.getStats();
+      const isSyncActive = offlineSync.isActive();
+      
+      setStatus(prev => ({
+        ...prev,
+        syncStats,
+        isSyncActive
+      }));
+    };
+
+    offlineSync.addEventListener(handleSyncEvent);
+
+    return () => {
+      offlineSync.removeEventListener(handleSyncEvent);
+    };
+  }, []);
+
   return {
     ...status,
     fetchWithOfflineFallback,
@@ -227,6 +318,11 @@ export const useOffline = () => {
     processQueue,
     clearQueue,
     getPendingOperations,
+    // Funções de sincronização
+    startSync,
+    stopSync,
+    syncNow,
+    updateSyncConfig,
     // Funções diretas do banco
     cacheData: offlineDB.cacheData.bind(offlineDB),
     getCachedData: offlineDB.getCachedData.bind(offlineDB),
