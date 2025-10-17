@@ -185,36 +185,64 @@ self.addEventListener('fetch', (event) => {
                 }
                 
                 // Se não há index.html no cache, retornar página offline
-                return new Response(
-                  `<!DOCTYPE html>
-                  <html>
-                    <head>
-                      <title>Offline - 7care</title>
-                      <meta charset="utf-8">
-                      <meta name="viewport" content="width=device-width, initial-scale=1">
-                      <style>
-                        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-                        .offline-container { max-width: 400px; margin: 0 auto; }
-                        .offline-icon { font-size: 64px; margin-bottom: 20px; }
-                        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
-                        button:hover { background: #0056b3; }
-                      </style>
-                    </head>
-                    <body>
-                      <div class="offline-container">
-                        <div class="offline-icon">📱</div>
-                        <h1>Modo Offline</h1>
-                        <p>Você está offline. Algumas funcionalidades podem estar limitadas.</p>
-                        <button onclick="window.location.reload()">Tentar Novamente</button>
-                      </div>
-                    </body>
-                  </html>`,
-                  {
-                    status: 200,
-                    statusText: 'OK',
-                    headers: { 'Content-Type': 'text/html' }
+                const offlineHTML = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline - 7care</title>
+  <style>
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+      text-align: center; 
+      padding: 50px 20px; 
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .offline-container { 
+      max-width: 400px; 
+      margin: 0 auto; 
+      background: white;
+      padding: 40px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .offline-icon { 
+      font-size: 64px; 
+      margin-bottom: 20px; 
+    }
+    h1 { color: #333; margin-bottom: 10px; }
+    p { color: #666; margin-bottom: 30px; }
+    button { 
+      background: #007bff; 
+      color: white; 
+      border: none; 
+      padding: 12px 24px; 
+      border-radius: 6px; 
+      cursor: pointer; 
+      font-size: 16px;
+    }
+    button:hover { background: #0056b3; }
+  </style>
+</head>
+<body>
+  <div class="offline-container">
+    <div class="offline-icon">📱</div>
+    <h1>Modo Offline</h1>
+    <p>Você está offline. Algumas funcionalidades podem estar limitadas.</p>
+    <button onclick="window.location.reload()">Tentar Novamente</button>
+  </div>
+</body>
+</html>`;
+                
+                return new Response(offlineHTML, {
+                  status: 200,
+                  statusText: 'OK',
+                  headers: { 
+                    'Content-Type': 'text/html; charset=utf-8',
+                    'Cache-Control': 'no-cache'
                   }
-                );
+                });
               });
             }
             
@@ -223,7 +251,10 @@ self.addEventListener('fetch', (event) => {
               return new Response('Asset not found', { 
                 status: 404, 
                 statusText: 'Not Found',
-                headers: { 'Content-Type': 'text/plain' }
+                headers: { 
+                  'Content-Type': 'text/plain; charset=utf-8',
+                  'Cache-Control': 'no-cache'
+                }
               });
             }
             

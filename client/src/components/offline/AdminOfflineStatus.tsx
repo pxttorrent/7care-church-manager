@@ -38,6 +38,31 @@ export const AdminOfflineStatus = () => {
 
   const [testResult, setTestResult] = useState<string>('');
 
+  // Verificação de segurança para evitar erros
+  if (!user) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            Sistema Offline
+          </CardTitle>
+          <CardDescription>
+            Carregando informações do usuário...
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Verificando permissões...
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Função para formatar tamanho
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
