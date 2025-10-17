@@ -190,11 +190,243 @@ self.addEventListener('sync', (event) => {
   
   if (event.tag === 'background-sync') {
     event.waitUntil(
-      // Aqui você pode implementar sincronização em background
-      Promise.resolve()
+      syncOfflineData()
+    );
+  }
+  
+  if (event.tag === 'sync-users') {
+    event.waitUntil(
+      syncSpecificData('users')
+    );
+  }
+  
+  if (event.tag === 'sync-tasks') {
+    event.waitUntil(
+      syncSpecificData('tasks')
+    );
+  }
+  
+  if (event.tag === 'sync-calendar') {
+    event.waitUntil(
+      syncSpecificData('calendar')
     );
   }
 });
+
+// Função para sincronizar dados offline
+async function syncOfflineData() {
+  try {
+    console.log('🔄 Service Worker: Iniciando sincronização offline...');
+    
+    // Verificar se há dados para sincronizar
+    const offlineData = await getOfflineData();
+    
+    if (!offlineData || offlineData.length === 0) {
+      console.log('📭 Service Worker: Nenhum dado offline para sincronizar');
+      return;
+    }
+    
+    console.log(`📊 Service Worker: ${offlineData.length} operações offline encontradas`);
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    // Processar cada operação offline
+    for (const operation of offlineData) {
+      try {
+        await processOfflineOperation(operation);
+        successCount++;
+        console.log(`✅ Service Worker: Operação sincronizada: ${operation.type} ${operation.endpoint}`);
+      } catch (error) {
+        errorCount++;
+        console.error(`❌ Service Worker: Erro na sincronização:`, error);
+        
+        // Se falhou, atualizar contador de tentativas
+        await updateOperationRetryCount(operation.id, error);
+      }
+    }
+    
+    console.log(`📈 Service Worker: Sincronização concluída: ${successCount} sucessos, ${errorCount} falhas`);
+    
+    // Notificar o cliente sobre o resultado
+    await notifyClients({
+      type: 'sync-completed',
+      success: successCount,
+      errors: errorCount,
+      total: offlineData.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Service Worker: Erro na sincronização offline:', error);
+    
+    // Notificar o cliente sobre o erro
+    await notifyClients({
+      type: 'sync-error',
+      error: error.message
+    });
+  }
+}
+
+// Função para sincronizar dados específicos
+async function syncSpecificData(type) {
+  try {
+    console.log(`🔄 Service Worker: Sincronizando ${type}...`);
+    
+    const offlineData = await getOfflineDataByType(type);
+    
+    if (!offlineData || offlineData.length === 0) {
+      console.log(`📭 Service Worker: Nenhum dado ${type} para sincronizar`);
+      return;
+    }
+    
+    for (const operation of offlineData) {
+      await processOfflineOperation(operation);
+    }
+    
+    console.log(`✅ Service Worker: ${type} sincronizado com sucesso`);
+    
+  } catch (error) {
+    console.error(`❌ Service Worker: Erro na sincronização de ${type}:`, error);
+  }
+}
+
+// Função para processar uma operação offline
+async function processOfflineOperation(operation) {
+  const options = {
+    method: operation.method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...operation.headers
+    }
+  };
+  
+  if (operation.data && ['POST', 'PUT'].includes(operation.method)) {
+    options.body = JSON.stringify(operation.data);
+  }
+  
+  const response = await fetch(operation.endpoint, options);
+  
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+  
+  // Remover operação da fila offline após sucesso
+  await removeOfflineOperation(operation.id);
+  
+  return response;
+}
+
+// Função para obter dados offline do IndexedDB
+async function getOfflineData() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('7care-offline-queue', 1);
+    
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction(['queue'], 'readonly');
+      const store = transaction.objectStore('queue');
+      const getAllRequest = store.getAll();
+      
+      getAllRequest.onsuccess = () => {
+        resolve(getAllRequest.result || []);
+      };
+      
+      getAllRequest.onerror = () => {
+        reject(getAllRequest.error);
+      };
+    };
+    
+    request.onerror = () => {
+      reject(request.error);
+    };
+  });
+}
+
+// Função para obter dados offline por tipo
+async function getOfflineDataByType(type) {
+  const allData = await getOfflineData();
+  return allData.filter(operation => 
+    operation.endpoint.includes(`/${type}`) || 
+    operation.metadata?.category === type
+  );
+}
+
+// Função para remover operação offline
+async function removeOfflineOperation(id) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('7care-offline-queue', 1);
+    
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction(['queue'], 'readwrite');
+      const store = transaction.objectStore('queue');
+      const deleteRequest = store.delete(id);
+      
+      deleteRequest.onsuccess = () => {
+        resolve();
+      };
+      
+      deleteRequest.onerror = () => {
+        reject(deleteRequest.error);
+      };
+    };
+    
+    request.onerror = () => {
+      reject(request.error);
+    };
+  });
+}
+
+// Função para atualizar contador de tentativas
+async function updateOperationRetryCount(id, error) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('7care-offline-queue', 1);
+    
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction(['queue'], 'readwrite');
+      const store = transaction.objectStore('queue');
+      const getRequest = store.get(id);
+      
+      getRequest.onsuccess = () => {
+        const operation = getRequest.result;
+        if (operation) {
+          operation.retryCount = (operation.retryCount || 0) + 1;
+          operation.lastError = error.message;
+          operation.lastRetryTime = Date.now();
+          
+          // Se excedeu o máximo de tentativas, remover
+          if (operation.retryCount >= (operation.maxRetries || 3)) {
+            store.delete(id);
+          } else {
+            store.put(operation);
+          }
+        }
+        resolve();
+      };
+      
+      getRequest.onerror = () => {
+        reject(getRequest.error);
+      };
+    };
+    
+    request.onerror = () => {
+      reject(request.error);
+    };
+  });
+}
+
+// Função para notificar clientes
+async function notifyClients(data) {
+  try {
+    const clients = await self.clients.matchAll();
+    clients.forEach(client => {
+      client.postMessage(data);
+    });
+  } catch (error) {
+    console.error('❌ Service Worker: Erro ao notificar clientes:', error);
+  }
+}
 
 // Message handling
 self.addEventListener('message', (event) => {

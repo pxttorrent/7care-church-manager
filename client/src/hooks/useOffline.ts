@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { offlineDB } from '@/lib/offlineDatabase';
 import { offlineQueue, QueueOperation, QueueStats } from '@/lib/offlineQueue';
 import { offlineSync, SyncConfig, SyncStats, SyncEvent } from '@/lib/offlineSync';
+import { backgroundSyncService, SyncRegistration } from '@/lib/backgroundSync';
 
 export interface OfflineStatus {
   isOnline: boolean;
@@ -20,6 +21,8 @@ export interface OfflineStatus {
   syncStats: SyncStats;
   syncConfig: SyncConfig;
   isSyncActive: boolean;
+  backgroundSyncSupported: boolean;
+  backgroundSyncRegistrations: SyncRegistration[];
 }
 
 export const useOffline = () => {
@@ -61,7 +64,9 @@ export const useOffline = () => {
       priorityEndpoints: [],
       blacklistedEndpoints: []
     },
-    isSyncActive: false
+    isSyncActive: false,
+    backgroundSyncSupported: backgroundSyncService.isSupported(),
+    backgroundSyncRegistrations: []
   });
 
   // Inicializar sistema offline
@@ -288,6 +293,47 @@ export const useOffline = () => {
     }
   }, []);
 
+  // Funções de Background Sync
+  const registerBackgroundSync = useCallback(async (type?: 'users' | 'tasks' | 'calendar') => {
+    try {
+      let success = false;
+      
+      if (type) {
+        success = await backgroundSyncService.registerTypeSync(type);
+      } else {
+        success = await backgroundSyncService.registerGeneralSync();
+      }
+      
+      if (success) {
+        // Atualizar registros
+        const registrations = backgroundSyncService.getRegistrationStatus();
+        setStatus(prev => ({ ...prev, backgroundSyncRegistrations: registrations }));
+      }
+      
+      return success;
+    } catch (error) {
+      console.error('❌ Erro ao registrar Background Sync:', error);
+      return false;
+    }
+  }, []);
+
+  const forceBackgroundSync = useCallback(async () => {
+    try {
+      const success = await backgroundSyncService.forceSync();
+      
+      if (success) {
+        // Atualizar registros
+        const registrations = backgroundSyncService.getRegistrationStatus();
+        setStatus(prev => ({ ...prev, backgroundSyncRegistrations: registrations }));
+      }
+      
+      return success;
+    } catch (error) {
+      console.error('❌ Erro ao forçar Background Sync:', error);
+      return false;
+    }
+  }, []);
+
   // Listener para eventos de sincronização
   useEffect(() => {
     const handleSyncEvent = (event: SyncEvent) => {
@@ -308,6 +354,36 @@ export const useOffline = () => {
     };
   }, []);
 
+  // Listener para eventos de Background Sync
+  useEffect(() => {
+    const handleBackgroundSyncCompleted = (event: CustomEvent) => {
+      console.log('✅ Background Sync concluído:', event.detail);
+      
+      // Atualizar estatísticas
+      updateStats();
+      
+      // Atualizar registros
+      const registrations = backgroundSyncService.getRegistrationStatus();
+      setStatus(prev => ({ ...prev, backgroundSyncRegistrations: registrations }));
+    };
+
+    const handleBackgroundSyncError = (event: CustomEvent) => {
+      console.error('❌ Background Sync falhou:', event.detail);
+      
+      // Atualizar registros
+      const registrations = backgroundSyncService.getRegistrationStatus();
+      setStatus(prev => ({ ...prev, backgroundSyncRegistrations: registrations }));
+    };
+
+    window.addEventListener('background-sync-completed', handleBackgroundSyncCompleted as EventListener);
+    window.addEventListener('background-sync-error', handleBackgroundSyncError as EventListener);
+
+    return () => {
+      window.removeEventListener('background-sync-completed', handleBackgroundSyncCompleted as EventListener);
+      window.removeEventListener('background-sync-error', handleBackgroundSyncError as EventListener);
+    };
+  }, [updateStats]);
+
   return {
     ...status,
     fetchWithOfflineFallback,
@@ -323,6 +399,9 @@ export const useOffline = () => {
     stopSync,
     syncNow,
     updateSyncConfig,
+    // Funções de Background Sync
+    registerBackgroundSync,
+    forceBackgroundSync,
     // Funções diretas do banco
     cacheData: offlineDB.cacheData.bind(offlineDB),
     getCachedData: offlineDB.getCachedData.bind(offlineDB),

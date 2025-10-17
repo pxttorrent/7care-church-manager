@@ -7,7 +7,7 @@ import { useOffline } from '@/hooks/useOffline';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Wifi, WifiOff, Database, RefreshCw, Trash2, Play, Clock, AlertTriangle, Settings, Battery, Activity } from 'lucide-react';
+import { Wifi, WifiOff, Database, RefreshCw, Trash2, Play, Clock, AlertTriangle, Settings, Battery, Activity, Zap, Cloud } from 'lucide-react';
 import { useState } from 'react';
 
 export const OfflineStatus = () => {
@@ -19,6 +19,8 @@ export const OfflineStatus = () => {
     syncStats,
     syncConfig,
     isSyncActive,
+    backgroundSyncSupported,
+    backgroundSyncRegistrations,
     fetchWithOfflineFallback,
     clearCache,
     updateStats,
@@ -29,7 +31,9 @@ export const OfflineStatus = () => {
     startSync,
     stopSync,
     syncNow,
-    updateSyncConfig
+    updateSyncConfig,
+    registerBackgroundSync,
+    forceBackgroundSync
   } = useOffline();
 
   const [testResult, setTestResult] = useState<string>('');
@@ -134,6 +138,38 @@ export const OfflineStatus = () => {
       }
     } catch (error) {
       setTestResult(`❌ Erro ao alternar sincronização: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    }
+  };
+
+  // Função para registrar Background Sync
+  const handleRegisterBackgroundSync = async () => {
+    try {
+      setTestResult('🔄 Registrando Background Sync...');
+      const success = await registerBackgroundSync();
+      
+      if (success) {
+        setTestResult('✅ Background Sync registrado! Sincronização funcionará mesmo com app fechado.');
+      } else {
+        setTestResult('⚠️ Background Sync não suportado ou falhou ao registrar.');
+      }
+    } catch (error) {
+      setTestResult(`❌ Erro ao registrar Background Sync: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    }
+  };
+
+  // Função para forçar Background Sync
+  const handleForceBackgroundSync = async () => {
+    try {
+      setTestResult('🚀 Forçando Background Sync...');
+      const success = await forceBackgroundSync();
+      
+      if (success) {
+        setTestResult('✅ Background Sync forçado! Verifique o console para logs.');
+      } else {
+        setTestResult('⚠️ Background Sync não suportado ou falhou.');
+      }
+    } catch (error) {
+      setTestResult(`❌ Erro ao forçar Background Sync: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -311,6 +347,52 @@ export const OfflineStatus = () => {
                 </div>
               </div>
             </div>
+
+            <div>
+              <h4 className="font-semibold flex items-center gap-2">
+                <Cloud className="h-4 w-4" />
+                Background Sync:
+              </h4>
+              <div className="grid grid-cols-2 gap-4 text-sm mt-2">
+                <div>
+                  <span className="text-muted-foreground">Suporte:</span>
+                  <Badge variant={backgroundSyncSupported ? "default" : "secondary"} className="ml-2">
+                    {backgroundSyncSupported ? 'Disponível' : 'Não suportado'}
+                  </Badge>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Registros:</span>
+                  <span className="ml-2 font-medium">{backgroundSyncRegistrations.length}</span>
+                </div>
+              </div>
+              
+              {/* Lista de registros */}
+              {backgroundSyncRegistrations.length > 0 && (
+                <div className="mt-2 p-2 bg-muted rounded text-xs">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Zap className="h-3 w-3" />
+                    <span className="font-medium">Registros Ativos:</span>
+                  </div>
+                  <div className="space-y-1">
+                    {backgroundSyncRegistrations.map((reg, index) => (
+                      <div key={index} className="flex justify-between items-center">
+                        <span>{reg.tag}</span>
+                        <Badge 
+                          variant={
+                            reg.status === 'completed' ? 'default' :
+                            reg.status === 'failed' ? 'destructive' :
+                            reg.status === 'pending' ? 'secondary' : 'outline'
+                          }
+                          className="text-xs"
+                        >
+                          {reg.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -396,7 +478,34 @@ export const OfflineStatus = () => {
             </Button>
           </div>
 
-          {/* Linha 4: Limpeza */}
+          {/* Linha 4: Background Sync */}
+          {backgroundSyncSupported && (
+            <div className="flex gap-2">
+              <Button 
+                onClick={handleRegisterBackgroundSync}
+                disabled={!isInitialized}
+                variant="outline"
+                size="sm"
+                className="flex-1"
+              >
+                <Cloud className="h-4 w-4 mr-2" />
+                Registrar BG Sync
+              </Button>
+              
+              <Button 
+                onClick={handleForceBackgroundSync}
+                disabled={!isInitialized}
+                variant="outline"
+                size="sm"
+                className="flex-1"
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                Forçar BG Sync
+              </Button>
+            </div>
+          )}
+
+          {/* Linha 5: Limpeza */}
           <div className="flex gap-2">
             <Button 
               onClick={handleClearCache}
@@ -429,8 +538,9 @@ export const OfflineStatus = () => {
           <p>2. <strong>Fila:</strong> "Testar Fila" adiciona operação offline</p>
           <p>3. <strong>Sync Auto:</strong> "Iniciar" ativa sincronização automática</p>
           <p>4. <strong>Sync Manual:</strong> "Sincronizar Agora" força sincronização</p>
-          <p>5. <strong>Offline:</strong> Desconecte internet e teste (usará cache)</p>
-          <p>6. <strong>Inteligente:</strong> Pausa com bateria baixa, pausa quando offline</p>
+          <p>5. <strong>BG Sync:</strong> "Registrar BG Sync" permite sync com app fechado</p>
+          <p>6. <strong>Offline:</strong> Desconecte internet e teste (usará cache)</p>
+          <p>7. <strong>Inteligente:</strong> Pausa com bateria baixa, pausa quando offline</p>
         </div>
       </CardContent>
     </Card>
