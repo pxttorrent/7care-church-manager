@@ -153,10 +153,15 @@ export const useAdminOffline = () => {
       await cacheImportantPages();
       setStatus(prev => ({ ...prev, precacheProgress: 91 }));
 
-      // Etapa 8: Cachear dados adicionais (100%)
-      console.log('🔧 Etapa 8/8: Cacheando dados adicionais...');
-      await cacheAdditionalData();
-      setStatus(prev => ({ ...prev, precacheProgress: 100 }));
+          // Etapa 8: Cachear dados de orações (87%)
+          console.log('🙏 Etapa 8/9: Cacheando dados de orações...');
+          await cachePrayersData();
+          setStatus(prev => ({ ...prev, precacheProgress: 87 }));
+
+          // Etapa 9: Cachear dados adicionais (100%)
+          console.log('🔧 Etapa 9/9: Cacheando dados adicionais...');
+          await cacheAdditionalData();
+          setStatus(prev => ({ ...prev, precacheProgress: 100 }));
 
       // Atualizar estatísticas finais
       const finalCacheStats = await offlineDB.getCacheStats();
@@ -192,11 +197,19 @@ export const useAdminOffline = () => {
   // Funções para cachear dados específicos
   const cacheUsersData = async () => {
     try {
-      // Endpoints que sabemos que funcionam
+      // TODOS os endpoints de usuários para funcionar offline
       const endpoints = [
         '/api/users',
         '/api/users/with-points', 
-        '/api/users/birthdays'
+        '/api/users/birthdays',
+        '/api/users/points',
+        '/api/users/stats',
+        '/api/users/roles',
+        '/api/users/active',
+        '/api/users/inactive',
+        '/api/users/members',
+        '/api/users/missionaries',
+        '/api/users/administrators'
       ];
       
       let cachedCount = 0;
@@ -228,10 +241,20 @@ export const useAdminOffline = () => {
 
   const cacheCalendarData = async () => {
     try {
-      // Endpoints reais de calendário que existem
+      // TODOS os endpoints de calendário e eventos
       const endpoints = [
         '/api/calendar/events',
-        '/api/events'
+        '/api/events',
+        '/api/calendar/upcoming',
+        '/api/calendar/past',
+        '/api/calendar/today',
+        '/api/calendar/month',
+        '/api/events/upcoming',
+        '/api/events/past',
+        '/api/events/today',
+        '/api/events/month',
+        '/api/calendar/stats',
+        '/api/events/stats'
       ];
       
       let cachedCount = 0;
@@ -261,9 +284,26 @@ export const useAdminOffline = () => {
 
   const cacheTasksData = async () => {
     try {
-      // Endpoints que sabemos que funcionam
+      // TODOS os endpoints de tarefas e atividades
       const endpoints = [
-        '/api/meetings'
+        '/api/meetings',
+        '/api/tasks',
+        '/api/activities',
+        '/api/tasks/pending',
+        '/api/tasks/completed',
+        '/api/tasks/overdue',
+        '/api/tasks/today',
+        '/api/tasks/week',
+        '/api/tasks/month',
+        '/api/activities/pending',
+        '/api/activities/completed',
+        '/api/activities/overdue',
+        '/api/meetings/upcoming',
+        '/api/meetings/past',
+        '/api/meetings/today',
+        '/api/tasks/stats',
+        '/api/activities/stats',
+        '/api/meetings/stats'
       ];
       
       let cachedCount = 0;
@@ -295,9 +335,25 @@ export const useAdminOffline = () => {
 
   const cacheGamificationData = async () => {
     try {
-      // Endpoints que sabemos que funcionam
+      // TODOS os endpoints de gamificação e pontos
       const endpoints = [
-        '/api/users/with-points'
+        '/api/users/with-points',
+        '/api/points',
+        '/api/achievements',
+        '/api/gamification',
+        '/api/gamification/points',
+        '/api/gamification/achievements',
+        '/api/gamification/leaderboard',
+        '/api/gamification/stats',
+        '/api/point-activities',
+        '/api/point-activities/types',
+        '/api/point-activities/stats',
+        '/api/achievements/types',
+        '/api/achievements/stats',
+        '/api/leaderboard',
+        '/api/leaderboard/monthly',
+        '/api/leaderboard/yearly',
+        '/api/leaderboard/all-time'
       ];
       
       let cachedCount = 0;
@@ -329,11 +385,26 @@ export const useAdminOffline = () => {
 
   const cacheDashboardData = async () => {
     try {
-      // Endpoints reais do dashboard que existem
+      // TODOS os endpoints do dashboard e estatísticas
       const endpoints = [
         '/api/dashboard/stats',
         '/api/dashboard/visits',
-        '/api/churches'
+        '/api/churches',
+        '/api/dashboard/overview',
+        '/api/dashboard/metrics',
+        '/api/dashboard/analytics',
+        '/api/dashboard/reports',
+        '/api/dashboard/trends',
+        '/api/visits',
+        '/api/visits/pending',
+        '/api/visits/completed',
+        '/api/visits/upcoming',
+        '/api/visits/past',
+        '/api/visits/today',
+        '/api/visits/stats',
+        '/api/churches/stats',
+        '/api/churches/active',
+        '/api/churches/inactive'
       ];
       
       let cachedCount = 0;
@@ -420,13 +491,88 @@ export const useAdminOffline = () => {
     }
   };
 
+  const cachePrayersData = async () => {
+    try {
+      // TODOS os endpoints de orações para funcionar offline
+      const endpoints = [
+        '/api/prayers',
+        '/api/prayers/pending',
+        '/api/prayers/completed',
+        '/api/prayers/urgent',
+        '/api/prayers/today',
+        '/api/prayers/week',
+        '/api/prayers/month',
+        '/api/prayers/stats',
+        '/api/prayers/categories',
+        '/api/prayers/priorities',
+        '/api/prayers/status',
+        '/api/prayers/assignments',
+        '/api/prayers/history'
+      ];
+      
+      let cachedCount = 0;
+      for (const endpoint of endpoints) {
+        try {
+          console.log(`🔄 Cacheando orações: ${endpoint}`);
+          const response = await fetch(endpoint);
+          if (response.ok) {
+            const data = await response.json();
+            await offlineDB.cacheData(endpoint, data);
+            console.log(`✅ Orações cacheadas: ${endpoint}`);
+            cachedCount++;
+          } else {
+            console.log(`⚠️ Endpoint com erro ${response.status}: ${endpoint}`);
+          }
+        } catch (e) {
+          console.log(`❌ Erro ao acessar ${endpoint}:`, e.message);
+        }
+      }
+      
+      if (cachedCount > 0) {
+        console.log(`✅ ${cachedCount} endpoints de orações cacheados com sucesso`);
+      } else {
+        console.log('ℹ️ Nenhum endpoint de orações funcionando');
+      }
+    } catch (error) {
+      console.warn('⚠️ Erro ao cachear dados de orações:', error);
+    }
+  };
+
   const cacheAdditionalData = async () => {
     try {
-      // Cachear dados adicionais que sabemos que funcionam
+      // TODOS os endpoints adicionais para funcionar offline
       const endpoints = [
         '/api/prayers',
         '/api/relationships',
-        '/api/discipleship-requests'
+        '/api/discipleship-requests',
+        '/api/prayers/pending',
+        '/api/prayers/completed',
+        '/api/prayers/urgent',
+        '/api/prayers/today',
+        '/api/prayers/week',
+        '/api/prayers/stats',
+        '/api/relationships/active',
+        '/api/relationships/pending',
+        '/api/relationships/completed',
+        '/api/relationships/stats',
+        '/api/discipleship-requests/pending',
+        '/api/discipleship-requests/approved',
+        '/api/discipleship-requests/rejected',
+        '/api/discipleship-requests/stats',
+        '/api/emotional-checkins',
+        '/api/emotional-checkins/admin',
+        '/api/emotional-checkins/stats',
+        '/api/spiritual-checkins',
+        '/api/spiritual-checkins/scores',
+        '/api/spiritual-checkins/stats',
+        '/api/notifications',
+        '/api/notifications/pending',
+        '/api/notifications/sent',
+        '/api/notifications/stats',
+        '/api/chat',
+        '/api/chat/messages',
+        '/api/chat/conversations',
+        '/api/chat/stats'
       ];
       
       let cachedCount = 0;
