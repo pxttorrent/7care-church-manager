@@ -428,6 +428,12 @@ export const useAdminOffline = () => {
     try {
       console.log('🧪 Testando sistema offline...');
       
+      // Garantir que offlineDB está inicializado
+      if (!offlineDB) {
+        console.error('❌ offlineDB não está disponível');
+        return;
+      }
+      
       // Teste 1: Verificar se dados estão no cache
       const testEndpoints = [
         '/api/users',
@@ -440,7 +446,7 @@ export const useAdminOffline = () => {
         try {
           const cachedData = await offlineDB.getCachedData(endpoint);
           if (cachedData && cachedData.data) {
-            console.log(`✅ Cache OK: ${endpoint} (${cachedData.data.length || 'dados'} itens)`);
+            console.log(`✅ Cache OK: ${endpoint} (${Array.isArray(cachedData.data) ? cachedData.data.length : 'dados'} itens)`);
             cacheTestsPassed++;
           } else {
             console.log(`❌ Cache vazio: ${endpoint}`);
@@ -451,12 +457,14 @@ export const useAdminOffline = () => {
       }
       
       // Teste 2: Verificar Service Worker cache
+      let swTestPassed = false;
       try {
         const swStats = await getCacheStats();
         console.log('📊 Service Worker Cache Stats:', swStats);
         
         if (swStats && swStats.totalSize > 0) {
           console.log(`✅ Service Worker cache ativo: ${swStats.totalSize} bytes`);
+          swTestPassed = true;
         } else {
           console.log('❌ Service Worker cache vazio');
         }
@@ -484,14 +492,18 @@ export const useAdminOffline = () => {
       
       // Resultado dos testes
       const totalTests = testEndpoints.length + testPages.length + 1; // +1 para SW test
-      const passedTests = cacheTestsPassed + pageTestsPassed + (swStats?.totalSize > 0 ? 1 : 0);
+      const passedTests = cacheTestsPassed + pageTestsPassed + (swTestPassed ? 1 : 0);
       
       console.log(`📊 Resultado dos testes: ${passedTests}/${totalTests} passaram`);
+      console.log(`📈 Cache de dados: ${cacheTestsPassed}/${testEndpoints.length}`);
+      console.log(`📄 Páginas cacheadas: ${pageTestsPassed}/${testPages.length}`);
+      console.log(`🔧 Service Worker: ${swTestPassed ? 'OK' : 'Falhou'}`);
       
       if (passedTests >= totalTests * 0.7) {
         console.log('✅ Sistema offline funcionando corretamente!');
       } else {
         console.log('⚠️ Sistema offline pode ter problemas - alguns testes falharam');
+        console.log('💡 Dica: Verifique se o Service Worker está ativo e se os dados foram cacheados');
       }
       
     } catch (error) {
