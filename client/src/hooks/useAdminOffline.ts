@@ -176,8 +176,12 @@ export const useAdminOffline = () => {
 
       console.log('✅ Pré-cache completo para admin concluído!');
       
-      // Teste do sistema offline após cache
-      await testOfflineSystem();
+             // Teste do sistema offline após cache
+             try {
+               await testOfflineSystem();
+             } catch (testError) {
+               console.warn('⚠️ Erro no teste do sistema offline:', testError);
+             }
     } catch (error) {
       console.error('❌ Erro no pré-cache:', error);
       setStatus(prev => ({ ...prev, isPrecaching: false }));
@@ -500,20 +504,23 @@ export const useAdminOffline = () => {
     try {
       console.log('🧪 Testando sistema offline...');
       
-      // Garantir que offlineDB está inicializado
+      // Verificar se offlineDB está disponível
       if (!offlineDB) {
-        console.error('❌ offlineDB não está disponível');
+        console.error('❌ offlineDB não está disponível - importação falhou');
+        console.log('🔍 Verificando imports...');
+        console.log('🔍 offlineDB import:', typeof offlineDB);
         return;
       }
-
-      // Verificar se offlineDB está inicializado
+      
+      console.log('🔧 offlineDB disponível, inicializando...');
+      
+      // Garantir que offlineDB está inicializado
       try {
-        console.log('🔧 Verificando offlineDB...', offlineDB);
         await offlineDB.initialize();
         console.log('✅ offlineDB inicializado para teste');
       } catch (error) {
         console.error('❌ Erro ao inicializar offlineDB:', error);
-        console.log('🔍 offlineDB object:', offlineDB);
+        console.log('🔍 Error details:', error.message);
         return;
       }
       
