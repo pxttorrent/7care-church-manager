@@ -121,11 +121,30 @@ self.addEventListener('fetch', (event) => {
           return response;
         }
         
-        // Se não está no cache, tenta fetch mas sem cachear se falhar
-        return fetch(event.request).catch(() => {
-          console.warn('⚠️ Asset não encontrado:', event.request.url);
-          return new Response('Asset not found', { status: 404 });
-        });
+        // Se não está no cache, tenta fetch
+        return fetch(event.request)
+          .then((fetchResponse) => {
+            // Verifica se a resposta é válida
+            if (fetchResponse && fetchResponse.status === 200 && fetchResponse.type === 'basic') {
+              // Cacheia a resposta para uso futuro
+              const responseToCache = fetchResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, responseToCache);
+                console.log('💾 Asset cacheado:', event.request.url);
+              }).catch((error) => {
+                console.warn('⚠️ Erro ao cachear asset:', error);
+              });
+            }
+            return fetchResponse;
+          })
+          .catch((error) => {
+            console.warn('⚠️ Asset não encontrado:', event.request.url, error.message);
+            return new Response('Asset not found', { 
+              status: 404, 
+              statusText: 'Not Found',
+              headers: { 'Content-Type': 'text/plain' }
+            });
+          });
       })
     );
     return;
@@ -176,8 +195,8 @@ self.addEventListener('fetch', (event) => {
           .catch((error) => {
             console.warn('⚠️ Service Worker: Erro na requisição:', event.request.url, error.message);
             
-            // Para páginas, tentar servir index.html do cache
-            if (event.request.destination === 'document') {
+            // Para páginas (não assets), tentar servir index.html do cache
+            if (event.request.destination === 'document' && !isAssetFile(event.request.url)) {
               return caches.match('/index.html').then((response) => {
                 if (response) {
                   console.log('📦 Servindo index.html do cache para rota:', event.request.url);
