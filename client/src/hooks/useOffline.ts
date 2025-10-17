@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { offlineDB } from '@/lib/offlineDatabase';
+import { offlineQueue, QueueOperation, QueueStats } from '@/lib/offlineQueue';
 
 export interface OfflineStatus {
   isOnline: boolean;
@@ -14,6 +15,7 @@ export interface OfflineStatus {
     oldestItem: number;
     newestItem: number;
   };
+  queueStats: QueueStats;
 }
 
 export const useOffline = () => {
@@ -25,20 +27,33 @@ export const useOffline = () => {
       totalSize: 0,
       oldestItem: 0,
       newestItem: 0
+    },
+    queueStats: {
+      total: 0,
+      pending: 0,
+      failed: 0,
+      byType: {},
+      byPriority: {},
+      oldestOperation: 0,
+      newestOperation: 0
     }
   });
 
-  // Inicializar banco offline
+  // Inicializar sistema offline
   useEffect(() => {
-    const initializeOfflineDB = async () => {
+    const initializeOfflineSystem = async () => {
       try {
         await offlineDB.initialize();
+        await offlineQueue.initialize();
+        
         const cacheStats = await offlineDB.getCacheStats();
+        const queueStats = await offlineQueue.getQueueStats();
         
         setStatus(prev => ({
           ...prev,
           isInitialized: true,
-          cacheStats
+          cacheStats,
+          queueStats
         }));
         
         console.log('✅ Sistema offline inicializado');
@@ -47,7 +62,7 @@ export const useOffline = () => {
       }
     };
 
-    initializeOfflineDB();
+    initializeOfflineSystem();
   }, []);
 
   // Detectar mudanças de conectividade
@@ -147,12 +162,58 @@ export const useOffline = () => {
   }, []);
 
   // Função para atualizar estatísticas
-  const updateCacheStats = useCallback(async () => {
+  const updateStats = useCallback(async () => {
     try {
       const cacheStats = await offlineDB.getCacheStats();
-      setStatus(prev => ({ ...prev, cacheStats }));
+      const queueStats = await offlineQueue.getQueueStats();
+      setStatus(prev => ({ ...prev, cacheStats, queueStats }));
     } catch (error) {
       console.error('❌ Erro ao atualizar estatísticas:', error);
+    }
+  }, []);
+
+  // Função para adicionar operação à fila
+  const addToQueue = useCallback(async (operation: Omit<QueueOperation, 'id' | 'timestamp' | 'retryCount'>) => {
+    try {
+      const id = await offlineQueue.addOperation(operation);
+      await updateStats();
+      return id;
+    } catch (error) {
+      console.error('❌ Erro ao adicionar à fila:', error);
+      throw error;
+    }
+  }, [updateStats]);
+
+  // Função para processar fila manualmente
+  const processQueue = useCallback(async () => {
+    try {
+      const result = await offlineQueue.processQueue();
+      await updateStats();
+      return result;
+    } catch (error) {
+      console.error('❌ Erro ao processar fila:', error);
+      throw error;
+    }
+  }, [updateStats]);
+
+  // Função para limpar fila
+  const clearQueue = useCallback(async () => {
+    try {
+      await offlineQueue.clearQueue();
+      await updateStats();
+      console.log('✅ Fila limpa com sucesso');
+    } catch (error) {
+      console.error('❌ Erro ao limpar fila:', error);
+    }
+  }, [updateStats]);
+
+  // Função para obter operações pendentes
+  const getPendingOperations = useCallback(async () => {
+    try {
+      return await offlineQueue.getPendingOperations();
+    } catch (error) {
+      console.error('❌ Erro ao buscar operações:', error);
+      return [];
     }
   }, []);
 
@@ -160,7 +221,12 @@ export const useOffline = () => {
     ...status,
     fetchWithOfflineFallback,
     clearCache,
-    updateCacheStats,
+    updateStats,
+    // Funções da fila
+    addToQueue,
+    processQueue,
+    clearQueue,
+    getPendingOperations,
     // Funções diretas do banco
     cacheData: offlineDB.cacheData.bind(offlineDB),
     getCachedData: offlineDB.getCachedData.bind(offlineDB),

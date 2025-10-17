@@ -7,7 +7,7 @@ import { useOffline } from '@/hooks/useOffline';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Wifi, WifiOff, Database, RefreshCw, Trash2 } from 'lucide-react';
+import { Wifi, WifiOff, Database, RefreshCw, Trash2, Play, Clock, AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 
 export const OfflineStatus = () => {
@@ -15,9 +15,14 @@ export const OfflineStatus = () => {
     isOnline,
     isInitialized,
     cacheStats,
+    queueStats,
     fetchWithOfflineFallback,
     clearCache,
-    updateCacheStats
+    updateStats,
+    addToQueue,
+    processQueue,
+    clearQueue,
+    getPendingOperations
   } = useOffline();
 
   const [testResult, setTestResult] = useState<string>('');
@@ -36,7 +41,7 @@ export const OfflineStatus = () => {
       );
       
       // Atualizar estatísticas
-      await updateCacheStats();
+      await updateStats();
     } catch (error) {
       setTestResult(`❌ Erro: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
@@ -49,6 +54,53 @@ export const OfflineStatus = () => {
       setTestResult('✅ Cache limpo com sucesso!');
     } catch (error) {
       setTestResult(`❌ Erro ao limpar cache: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    }
+  };
+
+  // Função para testar fila offline
+  const testOfflineQueue = async () => {
+    try {
+      setTestResult('🔄 Testando fila offline...');
+      
+      // Adicionar operação de teste à fila
+      const operationId = await addToQueue({
+        type: 'CREATE',
+        endpoint: '/api/test-offline',
+        method: 'POST',
+        data: { test: true, timestamp: Date.now() },
+        priority: 'normal',
+        maxRetries: 3,
+        metadata: {
+          description: 'Teste de operação offline',
+          category: 'test'
+        }
+      });
+      
+      setTestResult(`✅ Operação adicionada à fila: ${operationId}`);
+      await updateStats();
+    } catch (error) {
+      setTestResult(`❌ Erro ao testar fila: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    }
+  };
+
+  // Função para processar fila manualmente
+  const handleProcessQueue = async () => {
+    try {
+      setTestResult('🔄 Processando fila...');
+      const result = await processQueue();
+      setTestResult(`✅ Fila processada: ${result.success} sucessos, ${result.failed} falhas`);
+    } catch (error) {
+      setTestResult(`❌ Erro ao processar fila: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    }
+  };
+
+  // Função para limpar fila
+  const handleClearQueue = async () => {
+    try {
+      await clearQueue();
+      setTestResult('✅ Fila limpa com sucesso!');
+    } catch (error) {
+      setTestResult(`❌ Erro ao limpar fila: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -102,25 +154,73 @@ export const OfflineStatus = () => {
 
         {/* Estatísticas do Cache */}
         {isInitialized && (
-          <div className="space-y-2">
-            <h4 className="font-semibold">Estatísticas do Cache:</h4>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Itens:</span>
-                <span className="ml-2 font-medium">{cacheStats.totalItems}</span>
+          <div className="space-y-4">
+            <div>
+              <h4 className="font-semibold flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Cache:
+              </h4>
+              <div className="grid grid-cols-2 gap-4 text-sm mt-2">
+                <div>
+                  <span className="text-muted-foreground">Itens:</span>
+                  <span className="ml-2 font-medium">{cacheStats.totalItems}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Tamanho:</span>
+                  <span className="ml-2 font-medium">{formatBytes(cacheStats.totalSize)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Mais antigo:</span>
+                  <span className="ml-2 font-medium text-xs">{formatDate(cacheStats.oldestItem)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Mais recente:</span>
+                  <span className="ml-2 font-medium text-xs">{formatDate(cacheStats.newestItem)}</span>
+                </div>
               </div>
-              <div>
-                <span className="text-muted-foreground">Tamanho:</span>
-                <span className="ml-2 font-medium">{formatBytes(cacheStats.totalSize)}</span>
+            </div>
+
+            <div>
+              <h4 className="font-semibold flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                Fila de Operações:
+              </h4>
+              <div className="grid grid-cols-2 gap-4 text-sm mt-2">
+                <div>
+                  <span className="text-muted-foreground">Total:</span>
+                  <span className="ml-2 font-medium">{queueStats.total}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Pendentes:</span>
+                  <Badge variant={queueStats.pending > 0 ? "default" : "secondary"} className="ml-2">
+                    {queueStats.pending}
+                  </Badge>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Falhas:</span>
+                  <Badge variant={queueStats.failed > 0 ? "destructive" : "secondary"} className="ml-2">
+                    {queueStats.failed}
+                  </Badge>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Mais antiga:</span>
+                  <span className="ml-2 font-medium text-xs">{formatDate(queueStats.oldestOperation)}</span>
+                </div>
               </div>
-              <div>
-                <span className="text-muted-foreground">Mais antigo:</span>
-                <span className="ml-2 font-medium text-xs">{formatDate(cacheStats.oldestItem)}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Mais recente:</span>
-                <span className="ml-2 font-medium text-xs">{formatDate(cacheStats.newestItem)}</span>
-              </div>
+              
+              {/* Estatísticas por tipo */}
+              {Object.keys(queueStats.byType).length > 0 && (
+                <div className="mt-2">
+                  <span className="text-muted-foreground text-xs">Por tipo:</span>
+                  <div className="flex gap-1 mt-1">
+                    {Object.entries(queueStats.byType).map(([type, count]) => (
+                      <Badge key={type} variant="outline" className="text-xs">
+                        {type}: {count}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -133,44 +233,88 @@ export const OfflineStatus = () => {
         )}
 
         {/* Botões de Teste */}
-        <div className="flex gap-2">
-          <Button 
-            onClick={testOfflineSystem}
-            disabled={!isInitialized}
-            size="sm"
-            className="flex-1"
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Testar Sistema
-          </Button>
-          
-          <Button 
-            onClick={updateCacheStats}
-            disabled={!isInitialized}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Atualizar Stats
-          </Button>
-          
-          <Button 
-            onClick={handleClearCache}
-            disabled={!isInitialized || cacheStats.totalItems === 0}
-            variant="destructive"
-            size="sm"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Limpar Cache
-          </Button>
+        <div className="space-y-2">
+          {/* Linha 1: Testes básicos */}
+          <div className="flex gap-2">
+            <Button 
+              onClick={testOfflineSystem}
+              disabled={!isInitialized}
+              size="sm"
+              className="flex-1"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Testar Sistema
+            </Button>
+            
+            <Button 
+              onClick={testOfflineQueue}
+              disabled={!isInitialized}
+              variant="outline"
+              size="sm"
+              className="flex-1"
+            >
+              <Clock className="h-4 w-4 mr-2" />
+              Testar Fila
+            </Button>
+          </div>
+
+          {/* Linha 2: Gerenciamento */}
+          <div className="flex gap-2">
+            <Button 
+              onClick={handleProcessQueue}
+              disabled={!isInitialized || queueStats.total === 0}
+              variant="default"
+              size="sm"
+              className="flex-1"
+            >
+              <Play className="h-4 w-4 mr-2" />
+              Processar Fila
+            </Button>
+            
+            <Button 
+              onClick={updateStats}
+              disabled={!isInitialized}
+              variant="outline"
+              size="sm"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Atualizar
+            </Button>
+          </div>
+
+          {/* Linha 3: Limpeza */}
+          <div className="flex gap-2">
+            <Button 
+              onClick={handleClearCache}
+              disabled={!isInitialized || cacheStats.totalItems === 0}
+              variant="destructive"
+              size="sm"
+              className="flex-1"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Limpar Cache
+            </Button>
+            
+            <Button 
+              onClick={handleClearQueue}
+              disabled={!isInitialized || queueStats.total === 0}
+              variant="destructive"
+              size="sm"
+              className="flex-1"
+            >
+              <AlertTriangle className="h-4 w-4 mr-2" />
+              Limpar Fila
+            </Button>
+          </div>
         </div>
 
         {/* Instruções */}
         <div className="text-xs text-muted-foreground space-y-1">
           <p><strong>Como testar:</strong></p>
-          <p>1. Clique em "Testar Sistema" para fazer uma requisição</p>
-          <p>2. Desconecte a internet e teste novamente (usará cache)</p>
-          <p>3. Reconecte e teste para sincronizar dados</p>
+          <p>1. <strong>Cache:</strong> "Testar Sistema" faz requisição e salva cache</p>
+          <p>2. <strong>Fila:</strong> "Testar Fila" adiciona operação offline</p>
+          <p>3. <strong>Offline:</strong> Desconecte internet e teste (usará cache)</p>
+          <p>4. <strong>Sync:</strong> Reconecte e "Processar Fila" sincroniza</p>
         </div>
       </CardContent>
     </Card>
