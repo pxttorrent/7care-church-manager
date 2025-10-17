@@ -149,6 +149,19 @@ class OfflineInterceptor {
   }
 
   private shouldExcludeEndpoint(url: string): boolean {
+    // Verificar esquemas não suportados
+    if (url.startsWith('chrome-extension:') ||
+        url.startsWith('chrome:') ||
+        url.startsWith('moz-extension:') ||
+        url.startsWith('edge-extension:') ||
+        url.startsWith('safari-extension:') ||
+        url.startsWith('data:') ||
+        url.startsWith('blob:') ||
+        !url.startsWith('http')) {
+      return true;
+    }
+
+    // Verificar endpoints excluídos
     return this.config.excludedEndpoints.some(endpoint => url.includes(endpoint));
   }
 
