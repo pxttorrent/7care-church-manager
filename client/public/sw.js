@@ -107,6 +107,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Para requisições de assets, tentar cache primeiro
+  if (isAssetFile(event.request.url)) {
+    event.respondWith(
+      caches.match(event.request).then((response) => {
+        if (response) {
+          console.log('📦 Asset do cache:', event.request.url);
+          return response;
+        }
+        
+        // Se não está no cache, tenta fetch mas sem cachear se falhar
+        return fetch(event.request).catch(() => {
+          console.warn('⚠️ Asset não encontrado:', event.request.url);
+          return new Response('Asset not found', { status: 404 });
+        });
+      })
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
@@ -150,7 +169,7 @@ self.addEventListener('fetch', (event) => {
             return fetchResponse;
           })
           .catch((error) => {
-            console.error('❌ Service Worker: Erro na requisição:', error);
+            console.warn('⚠️ Service Worker: Erro na requisição:', event.request.url, error.message);
             
             // Para páginas, tentar servir index.html do cache
             if (event.request.destination === 'document') {
@@ -194,14 +213,22 @@ self.addEventListener('fetch', (event) => {
               });
             }
             
-            // Para outros recursos, re-lança o erro
-            throw error;
+            // Para assets, retornar resposta 404 em vez de erro
+            if (isAssetFile(event.request.url)) {
+              return new Response('Asset not found', { 
+                status: 404, 
+                statusText: 'Not Found',
+                headers: { 'Content-Type': 'text/plain' }
+              });
+            }
+            
+            // Para outros recursos, retornar resposta de erro
+            return new Response('Resource not available', { 
+              status: 408, 
+              statusText: 'Request Timeout',
+              headers: { 'Content-Type': 'text/plain' }
+            });
           });
-      })
-      .catch((error) => {
-        console.error('❌ Service Worker: Erro geral na requisição:', error);
-        // Retorna erro para não quebrar a aplicação
-        return new Response('Erro de rede', { status: 408 });
       })
   );
 });

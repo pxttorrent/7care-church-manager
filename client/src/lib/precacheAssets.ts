@@ -8,17 +8,32 @@ const CRITICAL_ASSETS = [
   '/assets/index-CSJvB5oa.css',
   
   // JavaScript principal
-  '/assets/index-BHVexqSn.js',
+  '/assets/index-CwpLeuZK.js',
   '/assets/vendor-v6ZOr5pf.js',
   
   // UI Components
   '/assets/ui-CM4P41nz.js',
   
-  // Páginas principais
-  '/assets/Dashboard-DHm7c-mC.js',
-  '/assets/Users-3JIDq0X_.js',
-  '/assets/Calendar-WtAF6SMz.js',
-  '/assets/Settings-Hchpffcx.js',
+  // Páginas principais (nomes atuais do build)
+  '/assets/Dashboard-BoOTJ6EK.js',
+  '/assets/Users-BgSc4TE5.js',
+  '/assets/Calendar-OmPIzKFj.js',
+  '/assets/Settings-B39PtK9-.js',
+  
+  // Assets dinâmicos críticos
+  '/assets/charts-56rtB2he.js',
+  '/assets/dialog-5AauICAY.js',
+  '/assets/avatar-Te2cL-OZ.js',
+  '/assets/cake-Bg_x9x8b.js',
+  '/assets/trending-up-CpTQnMrE.js',
+  '/assets/mount-icon-DKUggKtl.js',
+  '/assets/pointsCalculator-BwBrJ8sV.js',
+  '/assets/heart-f_Goj_6w.js',
+  '/assets/square-check-big-Bav-IFLK.js',
+  '/assets/scroll-area-BzbHQAkl.js',
+  '/assets/textarea-DLnnPmmi.js',
+  '/assets/checkbox-53PPl33n.js',
+  '/assets/circle-help-6Z7SS3ln.js',
   
   // Assets estáticos
   '/assets/mountain-1-DA6NDOMe.png',
@@ -35,7 +50,8 @@ const CRITICAL_ASSETS = [
   '/7care-logo.png',
   '/7carelogonew.png',
   '/pwa-192x192.png',
-  '/pwa-512x512.png'
+  '/pwa-512x512.png',
+  '/favicon.ico'
 ];
 
 /**
