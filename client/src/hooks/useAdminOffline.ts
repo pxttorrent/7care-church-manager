@@ -170,6 +170,9 @@ export const useAdminOffline = () => {
       }));
 
       console.log('✅ Pré-cache completo para admin concluído!');
+      
+      // Teste do sistema offline após cache
+      await testOfflineSystem();
     } catch (error) {
       console.error('❌ Erro no pré-cache:', error);
       setStatus(prev => ({ ...prev, isPrecaching: false }));
@@ -418,6 +421,81 @@ export const useAdminOffline = () => {
       }
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados adicionais:', error);
+    }
+  };
+
+  const testOfflineSystem = async () => {
+    try {
+      console.log('🧪 Testando sistema offline...');
+      
+      // Teste 1: Verificar se dados estão no cache
+      const testEndpoints = [
+        '/api/users',
+        '/api/dashboard/stats',
+        '/api/calendar/events'
+      ];
+      
+      let cacheTestsPassed = 0;
+      for (const endpoint of testEndpoints) {
+        try {
+          const cachedData = await offlineDB.getCachedData(endpoint);
+          if (cachedData && cachedData.data) {
+            console.log(`✅ Cache OK: ${endpoint} (${cachedData.data.length || 'dados'} itens)`);
+            cacheTestsPassed++;
+          } else {
+            console.log(`❌ Cache vazio: ${endpoint}`);
+          }
+        } catch (error) {
+          console.log(`❌ Erro no cache: ${endpoint}`, error);
+        }
+      }
+      
+      // Teste 2: Verificar Service Worker cache
+      try {
+        const swStats = await getCacheStats();
+        console.log('📊 Service Worker Cache Stats:', swStats);
+        
+        if (swStats && swStats.totalSize > 0) {
+          console.log(`✅ Service Worker cache ativo: ${swStats.totalSize} bytes`);
+        } else {
+          console.log('❌ Service Worker cache vazio');
+        }
+      } catch (error) {
+        console.log('❌ Erro ao verificar SW cache:', error);
+      }
+      
+      // Teste 3: Verificar páginas cacheadas
+      const testPages = ['/dashboard', '/users', '/calendar'];
+      let pageTestsPassed = 0;
+      
+      for (const page of testPages) {
+        try {
+          const cachedPage = await offlineDB.getCachedData(page);
+          if (cachedPage && cachedPage.data) {
+            console.log(`✅ Página cacheada: ${page}`);
+            pageTestsPassed++;
+          } else {
+            console.log(`❌ Página não cacheada: ${page}`);
+          }
+        } catch (error) {
+          console.log(`❌ Erro ao verificar página: ${page}`, error);
+        }
+      }
+      
+      // Resultado dos testes
+      const totalTests = testEndpoints.length + testPages.length + 1; // +1 para SW test
+      const passedTests = cacheTestsPassed + pageTestsPassed + (swStats?.totalSize > 0 ? 1 : 0);
+      
+      console.log(`📊 Resultado dos testes: ${passedTests}/${totalTests} passaram`);
+      
+      if (passedTests >= totalTests * 0.7) {
+        console.log('✅ Sistema offline funcionando corretamente!');
+      } else {
+        console.log('⚠️ Sistema offline pode ter problemas - alguns testes falharam');
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao testar sistema offline:', error);
     }
   };
 

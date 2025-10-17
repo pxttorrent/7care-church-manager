@@ -50,6 +50,11 @@ self.addEventListener('install', (event) => {
         console.log('📦 Service Worker: Cacheando rotas dinâmicas...');
         // Cachear index.html para todas as rotas
         return cache.add('/index.html');
+      }),
+      // Cache das rotas principais
+      caches.open(DYNAMIC_CACHE_NAME).then((cache) => {
+        console.log('📦 Service Worker: Cacheando páginas principais...');
+        return cache.addAll(ROUTES_TO_CACHE.map(route => route));
       })
     ])
     .then(() => {
