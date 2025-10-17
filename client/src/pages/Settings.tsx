@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { OfflineStatus } from '@/components/offline/OfflineStatus';
 import { 
   Settings as SettingsIcon, 
   User, 
@@ -1845,7 +1846,7 @@ export default function Settings() {
 
         <Tabs defaultValue={defaultTab} className="space-y-6">
           {/* Desktop Tabs */}
-          <TabsList className="hidden md:grid w-full grid-cols-10">
+          <TabsList className="hidden md:grid w-full grid-cols-11">
             <TabsTrigger value="notifications" className="text-xs">Notificações</TabsTrigger>
             {!isMemberOnlyNotifications && (
               <>
@@ -1853,6 +1854,7 @@ export default function Settings() {
                 <TabsTrigger value="appearance" className="text-xs">Aparência</TabsTrigger>
               </>
             )}
+            <TabsTrigger value="offline" className="text-xs">Offline</TabsTrigger>
 
             {user?.role === 'admin' && (
               <TabsTrigger value="calendar" className="text-xs">Calendário</TabsTrigger>
@@ -1880,6 +1882,7 @@ export default function Settings() {
                 <TabsTrigger value="appearance" className="text-xs flex-shrink-0 px-2">Aparência</TabsTrigger>
               </>
             )}
+            <TabsTrigger value="offline" className="text-xs flex-shrink-0 px-2">Offline</TabsTrigger>
 
             {user?.role === 'admin' && (
               <TabsTrigger value="calendar" className="text-xs flex-shrink-0 px-2">Calendário</TabsTrigger>
@@ -2037,6 +2040,24 @@ export default function Settings() {
                     data-testid="switch-weekly-report"
                   />
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Offline Settings */}
+          <TabsContent value="offline" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  Sistema Offline
+                </CardTitle>
+                <CardDescription>
+                  Gerencie funcionalidades offline e sincronização de dados
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <OfflineStatus />
               </CardContent>
             </Card>
           </TabsContent>

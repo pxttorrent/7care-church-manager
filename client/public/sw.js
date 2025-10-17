@@ -29,15 +29,15 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   console.log('✅ Service Worker: Ativando...');
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
             console.log('🗑️ Service Worker: Removendo cache antigo:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
+              return caches.delete(cacheName);
+            }
+          })
+        );
     })
   );
   // Toma controle imediato
@@ -50,7 +50,7 @@ self.addEventListener('fetch', (event) => {
   if (event.request.url.includes('/api/')) {
     return;
   }
-  
+
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
@@ -72,10 +72,10 @@ self.addEventListener('push', (event) => {
   console.log('📱 Service Worker: Push notification recebida');
   
   let data = {};
-  if (event.data) {
+    if (event.data) {
     try {
       data = event.data.json();
-    } catch (e) {
+      } catch (e) {
       data = { title: '7care', body: event.data.text() };
     }
   }
@@ -100,7 +100,7 @@ self.addEventListener('push', (event) => {
       }
     ]
   };
-  
+
   event.waitUntil(
     self.registration.showNotification(options.title, options)
   );
@@ -111,27 +111,27 @@ self.addEventListener('notificationclick', (event) => {
   console.log('👆 Service Worker: Notificação clicada');
   
   event.notification.close();
-  
-  if (event.action === 'close') {
-    return;
-  }
-  
+    
+    if (event.action === 'close') {
+      return;
+    }
+    
   // Abrir o app
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then((clientList) => {
         // Se já há uma janela aberta, focar nela
         for (const client of clientList) {
-          if (client.url.includes(self.location.origin) && 'focus' in client) {
-            return client.focus();
+            if (client.url.includes(self.location.origin) && 'focus' in client) {
+              return client.focus();
+            }
           }
-        }
         // Senão, abrir nova janela
-        if (clients.openWindow) {
+          if (clients.openWindow) {
           return clients.openWindow('/dashboard');
-        }
-      })
-  );
+          }
+        })
+    );
 });
 
 // Background sync (se suportado)
@@ -149,9 +149,9 @@ self.addEventListener('sync', (event) => {
 // Message handling
 self.addEventListener('message', (event) => {
   console.log('💬 Service Worker: Mensagem recebida:', event.data);
-  
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+      self.skipWaiting();
   }
 });
 
