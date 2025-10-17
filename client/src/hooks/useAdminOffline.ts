@@ -115,29 +115,34 @@ export const useAdminOffline = () => {
     try {
       setStatus(prev => ({ ...prev, isPrecaching: true, precacheProgress: 0 }));
 
-      // Etapa 1: Pré-cachear assets críticos (20%)
-      console.log('📦 Etapa 1/5: Pré-cacheando assets críticos...');
+      // Etapa 1: Pré-cachear assets críticos (16%)
+      console.log('📦 Etapa 1/6: Pré-cacheando assets críticos...');
       await precacheCriticalAssets();
-      setStatus(prev => ({ ...prev, precacheProgress: 20 }));
+      setStatus(prev => ({ ...prev, precacheProgress: 16 }));
 
-      // Etapa 2: Cachear dados de usuários (40%)
-      console.log('👥 Etapa 2/5: Cacheando dados de usuários...');
+      // Etapa 2: Cachear dados de usuários (33%)
+      console.log('👥 Etapa 2/6: Cacheando dados de usuários...');
       await cacheUsersData();
-      setStatus(prev => ({ ...prev, precacheProgress: 40 }));
+      setStatus(prev => ({ ...prev, precacheProgress: 33 }));
 
-      // Etapa 3: Cachear dados de calendário (60%)
-      console.log('📅 Etapa 3/5: Cacheando dados de calendário...');
+      // Etapa 3: Cachear dados de calendário (50%)
+      console.log('📅 Etapa 3/6: Cacheando dados de calendário...');
       await cacheCalendarData();
-      setStatus(prev => ({ ...prev, precacheProgress: 60 }));
+      setStatus(prev => ({ ...prev, precacheProgress: 50 }));
 
-      // Etapa 4: Cachear dados de tarefas (80%)
-      console.log('📋 Etapa 4/5: Cacheando dados de tarefas...');
+      // Etapa 4: Cachear dados de tarefas (66%)
+      console.log('📋 Etapa 4/6: Cacheando dados de tarefas...');
       await cacheTasksData();
-      setStatus(prev => ({ ...prev, precacheProgress: 80 }));
+      setStatus(prev => ({ ...prev, precacheProgress: 66 }));
 
-      // Etapa 5: Cachear dados de gamificação (100%)
-      console.log('🎮 Etapa 5/5: Cacheando dados de gamificação...');
+      // Etapa 5: Cachear dados de gamificação (83%)
+      console.log('🎮 Etapa 5/6: Cacheando dados de gamificação...');
       await cacheGamificationData();
+      setStatus(prev => ({ ...prev, precacheProgress: 83 }));
+
+      // Etapa 6: Cachear dados do dashboard (100%)
+      console.log('📊 Etapa 6/6: Cacheando dados do dashboard...');
+      await cacheDashboardData();
       setStatus(prev => ({ ...prev, precacheProgress: 100 }));
 
       // Atualizar estatísticas finais
@@ -161,12 +166,22 @@ export const useAdminOffline = () => {
   // Funções para cachear dados específicos
   const cacheUsersData = async () => {
     try {
-      const response = await fetch('/api/users');
-      if (response.ok) {
-        const data = await response.json();
-        await offlineDB.cacheData('/api/users', data);
-        console.log('✅ Dados de usuários cacheados');
+      // Tentar diferentes endpoints de usuários
+      const endpoints = ['/api/users', '/api/user/list', '/api/members'];
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint);
+          if (response.ok) {
+            const data = await response.json();
+            await offlineDB.cacheData(endpoint, data);
+            console.log(`✅ Dados de usuários cacheados de ${endpoint}`);
+            return;
+          }
+        } catch (e) {
+          // Continuar para próximo endpoint
+        }
       }
+      console.warn('⚠️ Nenhum endpoint de usuários encontrado');
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados de usuários:', error);
     }
@@ -174,12 +189,22 @@ export const useAdminOffline = () => {
 
   const cacheCalendarData = async () => {
     try {
-      const response = await fetch('/api/calendar/events');
-      if (response.ok) {
-        const data = await response.json();
-        await offlineDB.cacheData('/api/calendar/events', data);
-        console.log('✅ Dados de calendário cacheados');
+      // Tentar diferentes endpoints de calendário
+      const endpoints = ['/api/calendar/events', '/api/events', '/api/calendar'];
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint);
+          if (response.ok) {
+            const data = await response.json();
+            await offlineDB.cacheData(endpoint, data);
+            console.log(`✅ Dados de calendário cacheados de ${endpoint}`);
+            return;
+          }
+        } catch (e) {
+          // Continuar para próximo endpoint
+        }
       }
+      console.warn('⚠️ Nenhum endpoint de calendário encontrado');
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados de calendário:', error);
     }
@@ -187,12 +212,22 @@ export const useAdminOffline = () => {
 
   const cacheTasksData = async () => {
     try {
-      const response = await fetch('/api/tasks');
-      if (response.ok) {
-        const data = await response.json();
-        await offlineDB.cacheData('/api/tasks', data);
-        console.log('✅ Dados de tarefas cacheados');
+      // Tentar diferentes endpoints de tarefas
+      const endpoints = ['/api/tasks', '/api/task/list', '/api/activities'];
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint);
+          if (response.ok) {
+            const data = await response.json();
+            await offlineDB.cacheData(endpoint, data);
+            console.log(`✅ Dados de tarefas cacheados de ${endpoint}`);
+            return;
+          }
+        } catch (e) {
+          // Continuar para próximo endpoint
+        }
       }
+      console.warn('⚠️ Nenhum endpoint de tarefas encontrado');
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados de tarefas:', error);
     }
@@ -200,14 +235,58 @@ export const useAdminOffline = () => {
 
   const cacheGamificationData = async () => {
     try {
-      const response = await fetch('/api/gamification/points');
-      if (response.ok) {
-        const data = await response.json();
-        await offlineDB.cacheData('/api/gamification/points', data);
-        console.log('✅ Dados de gamificação cacheados');
+      // Tentar diferentes endpoints de gamificação
+      const endpoints = [
+        '/api/gamification/points',
+        '/api/gamification',
+        '/api/points',
+        '/api/user/points',
+        '/api/achievements'
+      ];
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint);
+          if (response.ok) {
+            const data = await response.json();
+            await offlineDB.cacheData(endpoint, data);
+            console.log(`✅ Dados de gamificação cacheados de ${endpoint}`);
+            return;
+          }
+        } catch (e) {
+          // Continuar para próximo endpoint
+        }
       }
+      console.warn('⚠️ Nenhum endpoint de gamificação encontrado');
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados de gamificação:', error);
+    }
+  };
+
+  const cacheDashboardData = async () => {
+    try {
+      // Tentar diferentes endpoints do dashboard
+      const endpoints = [
+        '/api/dashboard/stats',
+        '/api/dashboard',
+        '/api/stats',
+        '/api/analytics'
+      ];
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint);
+          if (response.ok) {
+            const data = await response.json();
+            await offlineDB.cacheData(endpoint, data);
+            console.log(`✅ Dados do dashboard cacheados de ${endpoint}`);
+            return;
+          }
+        } catch (e) {
+          // Continuar para próximo endpoint
+        }
+      }
+      console.warn('⚠️ Nenhum endpoint do dashboard encontrado');
+    } catch (error) {
+      console.warn('⚠️ Erro ao cachear dados do dashboard:', error);
     }
   };
 
