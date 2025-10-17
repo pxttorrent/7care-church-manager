@@ -8,32 +8,32 @@ const CRITICAL_ASSETS = [
   '/assets/index-CSJvB5oa.css',
   
   // JavaScript principal
-  '/assets/index-CwpLeuZK.js',
+  '/assets/index-CDIWC20k.js',
   '/assets/vendor-v6ZOr5pf.js',
   
   // UI Components
   '/assets/ui-CM4P41nz.js',
   
   // Páginas principais (nomes atuais do build)
-  '/assets/Dashboard-BoOTJ6EK.js',
-  '/assets/Users-BgSc4TE5.js',
-  '/assets/Calendar-OmPIzKFj.js',
-  '/assets/Settings-B39PtK9-.js',
+  '/assets/Dashboard-CrfjKqQJ.js',
+  '/assets/Users-otF5BSHV.js',
+  '/assets/Calendar-EFI3ioOU.js',
+  '/assets/Settings-CPCwrb45.js',
   
   // Assets dinâmicos críticos
   '/assets/charts-56rtB2he.js',
-  '/assets/dialog-5AauICAY.js',
-  '/assets/avatar-Te2cL-OZ.js',
-  '/assets/cake-Bg_x9x8b.js',
-  '/assets/trending-up-CpTQnMrE.js',
+  '/assets/dialog-CGIZeUNn.js',
+  '/assets/avatar-BIkkK4KF.js',
+  '/assets/cake-BWS7T4BP.js',
+  '/assets/trending-up-C5lcAmr_.js',
   '/assets/mount-icon-DKUggKtl.js',
   '/assets/pointsCalculator-BwBrJ8sV.js',
-  '/assets/heart-f_Goj_6w.js',
-  '/assets/square-check-big-Bav-IFLK.js',
-  '/assets/scroll-area-BzbHQAkl.js',
-  '/assets/textarea-DLnnPmmi.js',
-  '/assets/checkbox-53PPl33n.js',
-  '/assets/circle-help-6Z7SS3ln.js',
+  '/assets/heart-Bqdgqqdu.js',
+  '/assets/square-check-big-C8VdJLYx.js',
+  '/assets/scroll-area-bfSRiOPh.js',
+  '/assets/textarea-FK3yiH0X.js',
+  '/assets/checkbox-DrH8ZQe0.js',
+  '/assets/circle-help-EV9t7rHK.js',
   
   // Assets estáticos
   '/assets/mountain-1-DA6NDOMe.png',
