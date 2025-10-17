@@ -444,6 +444,17 @@ export const useAdminOffline = () => {
         console.error('❌ offlineDB não está disponível');
         return;
       }
+
+      // Verificar se offlineDB está inicializado
+      try {
+        console.log('🔧 Verificando offlineDB...', offlineDB);
+        await offlineDB.initialize();
+        console.log('✅ offlineDB inicializado para teste');
+      } catch (error) {
+        console.error('❌ Erro ao inicializar offlineDB:', error);
+        console.log('🔍 offlineDB object:', offlineDB);
+        return;
+      }
       
       // Teste 1: Verificar se dados estão no cache
       const testEndpoints = [
