@@ -54,7 +54,25 @@ self.addEventListener('install', (event) => {
       // Cache das rotas principais
       caches.open(DYNAMIC_CACHE_NAME).then((cache) => {
         console.log('📦 Service Worker: Cacheando páginas principais...');
-        return cache.addAll(ROUTES_TO_CACHE.map(route => route));
+        return Promise.all(
+          ROUTES_TO_CACHE.map(route => 
+            fetch(route, {
+              method: 'GET',
+              headers: {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+              }
+            })
+            .then(response => {
+              if (response.ok) {
+                return cache.put(route, response);
+              }
+              console.log(`⚠️ SW: Página não encontrada: ${route}`);
+            })
+            .catch(error => {
+              console.log(`❌ SW: Erro ao cachear ${route}:`, error.message);
+            })
+          )
+        );
       })
     ])
     .then(() => {

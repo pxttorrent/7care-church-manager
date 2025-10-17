@@ -363,7 +363,7 @@ export const useAdminOffline = () => {
 
   const cacheImportantPages = async () => {
     try {
-      // Cachear páginas importantes do aplicativo
+      // Cachear TODAS as páginas principais para funcionar offline
       const pages = [
         '/dashboard',
         '/users',
@@ -371,28 +371,49 @@ export const useAdminOffline = () => {
         '/settings',
         '/tasks',
         '/gamification',
-        '/prayers'
+        '/prayers',
+        '/chat',
+        '/my-interested',
+        '/elections',
+        '/election-config',
+        '/election-voting',
+        '/election-results',
+        '/election-dashboard',
+        '/election-manage',
+        '/push-notifications',
+        '/contact',
+        '/meu-cadastro'
       ];
       
       let cachedCount = 0;
       for (const page of pages) {
         try {
-          const response = await fetch(page);
+          console.log(`🔄 Cacheando página: ${page}`);
+          const response = await fetch(page, {
+            method: 'GET',
+            headers: {
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Cache-Control': 'no-cache'
+            }
+          });
+          
           if (response.ok) {
             const data = await response.text();
             await offlineDB.cacheData(page, data);
-            console.log(`✅ Página cacheados: ${page}`);
+            console.log(`✅ Página cacheada: ${page}`);
             cachedCount++;
+          } else {
+            console.log(`⚠️ Página com erro ${response.status}: ${page}`);
           }
         } catch (e) {
-          // Continuar para próxima página
+          console.log(`❌ Erro ao acessar ${page}:`, e.message);
         }
       }
       
       if (cachedCount > 0) {
         console.log(`✅ ${cachedCount} páginas cacheadas com sucesso`);
       } else {
-        console.log('ℹ️ Nenhuma página adicional encontrada');
+        console.log('ℹ️ Nenhuma página foi cacheada');
       }
     } catch (error) {
       console.warn('⚠️ Erro ao cachear páginas importantes:', error);
