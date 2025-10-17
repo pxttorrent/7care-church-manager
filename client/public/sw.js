@@ -188,8 +188,14 @@ self.addEventListener('fetch', (event) => {
         // Se não está no cache, tenta fetch
         return fetch(event.request)
           .then((fetchResponse) => {
-            // Verifica se a resposta é válida
-            if (fetchResponse && fetchResponse.status === 200 && fetchResponse.type === 'basic') {
+            // Verifica se a resposta é válida e é realmente um asset
+            if (fetchResponse && 
+                fetchResponse.status === 200 && 
+                fetchResponse.type === 'basic' &&
+                fetchResponse.headers.get('content-type')?.includes('javascript') ||
+                fetchResponse.headers.get('content-type')?.includes('css') ||
+                fetchResponse.headers.get('content-type')?.includes('image')) {
+              
               // Cacheia a resposta para uso futuro
               const responseToCache = fetchResponse.clone();
               caches.open(CACHE_NAME).then((cache) => {
@@ -204,18 +210,12 @@ self.addEventListener('fetch', (event) => {
           .catch((error) => {
             console.warn('⚠️ Asset não encontrado:', event.request.url, error.message);
             
-            // Para arquivos JavaScript, tentar servir index.html como fallback
+            // Para arquivos JavaScript, retornar erro 404 em vez de HTML
             if (event.request.url.endsWith('.js')) {
-              return caches.match('/index.html').then((indexResponse) => {
-                if (indexResponse) {
-                  console.log('📦 Servindo index.html para JS:', event.request.url);
-                  return indexResponse;
-                }
-                return new Response('Asset not found', { 
-                  status: 404, 
-                  statusText: 'Not Found',
-                  headers: { 'Content-Type': 'text/plain' }
-                });
+              return new Response('JavaScript file not found', { 
+                status: 404, 
+                statusText: 'Not Found',
+                headers: { 'Content-Type': 'text/plain' }
               });
             }
             
