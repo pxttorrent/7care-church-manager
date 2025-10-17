@@ -19,9 +19,11 @@ import {
   Settings
 } from 'lucide-react';
 import { useAdminOffline } from '@/hooks/useAdminOffline';
+import { useAuth } from '@/hooks/useAuth';
 import { useState } from 'react';
 
 export const AdminOfflineStatus = () => {
+  const { user } = useAuth();
   const {
     isAdmin,
     isOfflineEnabled,
