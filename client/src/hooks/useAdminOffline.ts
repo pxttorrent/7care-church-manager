@@ -197,19 +197,11 @@ export const useAdminOffline = () => {
   // Funções para cachear dados específicos
   const cacheUsersData = async () => {
     try {
-      // TODOS os endpoints de usuários para funcionar offline
+      // Endpoints de usuários que REALMENTE existem e funcionam
       const endpoints = [
         '/api/users',
         '/api/users/with-points', 
-        '/api/users/birthdays',
-        '/api/users/points',
-        '/api/users/stats',
-        '/api/users/roles',
-        '/api/users/active',
-        '/api/users/inactive',
-        '/api/users/members',
-        '/api/users/missionaries',
-        '/api/users/administrators'
+        '/api/users/birthdays'
       ];
       
       let cachedCount = 0;
@@ -241,20 +233,10 @@ export const useAdminOffline = () => {
 
   const cacheCalendarData = async () => {
     try {
-      // TODOS os endpoints de calendário e eventos
+      // Endpoints de calendário que REALMENTE existem e funcionam
       const endpoints = [
         '/api/calendar/events',
-        '/api/events',
-        '/api/calendar/upcoming',
-        '/api/calendar/past',
-        '/api/calendar/today',
-        '/api/calendar/month',
-        '/api/events/upcoming',
-        '/api/events/past',
-        '/api/events/today',
-        '/api/events/month',
-        '/api/calendar/stats',
-        '/api/events/stats'
+        '/api/events'
       ];
       
       let cachedCount = 0;
@@ -284,26 +266,10 @@ export const useAdminOffline = () => {
 
   const cacheTasksData = async () => {
     try {
-      // TODOS os endpoints de tarefas e atividades
+      // Endpoints de tarefas que REALMENTE existem e funcionam
       const endpoints = [
         '/api/meetings',
-        '/api/tasks',
-        '/api/activities',
-        '/api/tasks/pending',
-        '/api/tasks/completed',
-        '/api/tasks/overdue',
-        '/api/tasks/today',
-        '/api/tasks/week',
-        '/api/tasks/month',
-        '/api/activities/pending',
-        '/api/activities/completed',
-        '/api/activities/overdue',
-        '/api/meetings/upcoming',
-        '/api/meetings/past',
-        '/api/meetings/today',
-        '/api/tasks/stats',
-        '/api/activities/stats',
-        '/api/meetings/stats'
+        '/api/activities'
       ];
       
       let cachedCount = 0;
@@ -335,25 +301,9 @@ export const useAdminOffline = () => {
 
   const cacheGamificationData = async () => {
     try {
-      // TODOS os endpoints de gamificação e pontos
+      // Endpoints de gamificação que REALMENTE existem e funcionam
       const endpoints = [
-        '/api/users/with-points',
-        '/api/points',
-        '/api/achievements',
-        '/api/gamification',
-        '/api/gamification/points',
-        '/api/gamification/achievements',
-        '/api/gamification/leaderboard',
-        '/api/gamification/stats',
-        '/api/point-activities',
-        '/api/point-activities/types',
-        '/api/point-activities/stats',
-        '/api/achievements/types',
-        '/api/achievements/stats',
-        '/api/leaderboard',
-        '/api/leaderboard/monthly',
-        '/api/leaderboard/yearly',
-        '/api/leaderboard/all-time'
+        '/api/users/with-points'
       ];
       
       let cachedCount = 0;
@@ -385,26 +335,11 @@ export const useAdminOffline = () => {
 
   const cacheDashboardData = async () => {
     try {
-      // TODOS os endpoints do dashboard e estatísticas
+      // Endpoints do dashboard que REALMENTE existem e funcionam
       const endpoints = [
         '/api/dashboard/stats',
         '/api/dashboard/visits',
-        '/api/churches',
-        '/api/dashboard/overview',
-        '/api/dashboard/metrics',
-        '/api/dashboard/analytics',
-        '/api/dashboard/reports',
-        '/api/dashboard/trends',
-        '/api/visits',
-        '/api/visits/pending',
-        '/api/visits/completed',
-        '/api/visits/upcoming',
-        '/api/visits/past',
-        '/api/visits/today',
-        '/api/visits/stats',
-        '/api/churches/stats',
-        '/api/churches/active',
-        '/api/churches/inactive'
+        '/api/churches'
       ];
       
       let cachedCount = 0;
@@ -493,21 +428,9 @@ export const useAdminOffline = () => {
 
   const cachePrayersData = async () => {
     try {
-      // TODOS os endpoints de orações para funcionar offline
+      // Endpoints de orações que REALMENTE existem e funcionam
       const endpoints = [
-        '/api/prayers',
-        '/api/prayers/pending',
-        '/api/prayers/completed',
-        '/api/prayers/urgent',
-        '/api/prayers/today',
-        '/api/prayers/week',
-        '/api/prayers/month',
-        '/api/prayers/stats',
-        '/api/prayers/categories',
-        '/api/prayers/priorities',
-        '/api/prayers/status',
-        '/api/prayers/assignments',
-        '/api/prayers/history'
+        '/api/prayers'
       ];
       
       let cachedCount = 0;
@@ -540,39 +463,12 @@ export const useAdminOffline = () => {
 
   const cacheAdditionalData = async () => {
     try {
-      // TODOS os endpoints adicionais para funcionar offline
+      // Endpoints adicionais que REALMENTE existem e funcionam
       const endpoints = [
-        '/api/prayers',
         '/api/relationships',
         '/api/discipleship-requests',
-        '/api/prayers/pending',
-        '/api/prayers/completed',
-        '/api/prayers/urgent',
-        '/api/prayers/today',
-        '/api/prayers/week',
-        '/api/prayers/stats',
-        '/api/relationships/active',
-        '/api/relationships/pending',
-        '/api/relationships/completed',
-        '/api/relationships/stats',
-        '/api/discipleship-requests/pending',
-        '/api/discipleship-requests/approved',
-        '/api/discipleship-requests/rejected',
-        '/api/discipleship-requests/stats',
-        '/api/emotional-checkins',
         '/api/emotional-checkins/admin',
-        '/api/emotional-checkins/stats',
-        '/api/spiritual-checkins',
-        '/api/spiritual-checkins/scores',
-        '/api/spiritual-checkins/stats',
-        '/api/notifications',
-        '/api/notifications/pending',
-        '/api/notifications/sent',
-        '/api/notifications/stats',
-        '/api/chat',
-        '/api/chat/messages',
-        '/api/chat/conversations',
-        '/api/chat/stats'
+        '/api/my-interested'
       ];
       
       let cachedCount = 0;

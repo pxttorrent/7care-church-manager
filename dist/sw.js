@@ -40,11 +40,57 @@ self.addEventListener('install', (event) => {
   console.log('🔧 Service Worker: Instalando...');
   event.waitUntil(
     Promise.all([
-      // Cache assets estáticos
-      caches.open(CACHE_NAME).then((cache) => {
-        console.log('📦 Service Worker: Cacheando assets estáticos...');
-        return cache.addAll(STATIC_ASSETS);
-      }),
+  // Cache assets estáticos
+  caches.open(CACHE_NAME).then((cache) => {
+    console.log('📦 Service Worker: Cacheando assets estáticos...');
+    return cache.addAll(STATIC_ASSETS);
+  }),
+  // Cache dinâmico de assets JavaScript e CSS
+  caches.open(CACHE_NAME).then((cache) => {
+    console.log('📦 Service Worker: Cacheando assets dinâmicos...');
+    const jsFiles = [
+      'index-BpN44rnV.js', 'vendor-v6ZOr5pf.js', 'ui-CM4P41nz.js',
+      'Settings-LBrroCNY.js', 'Users-B3LIawO1.js', 'Dashboard-CpeJ-rXc.js',
+      'Calendar-POsRcrrO.js', 'Tasks-D58WWjCb.js', 'Gamification-BmE9Nk0n.js',
+      'Prayers-DclfhcBc.js', 'Chat-C8ZS5gJY.js', 'MeuCadastro-4n9JGhUo.js',
+      'MyInterested-C2VENFTB.js', 'ElectionConfig-CJQ00Uw8.js',
+      'ElectionManage-BaPG0vs_.js', 'ElectionResults-Bbk9Ecs2.js',
+      'ElectionDashboard-BNh2EjAP.js', 'ElectionVoting-BINjBBrt.js',
+      'ElectionVotingMobile-B2TxtVY4.js', 'UnifiedElection-DlgYtjwL.js',
+      'PushNotifications-B-mebG88.js', 'NotificationsHistory-DDCWRkBc.js',
+      'Interested-B7Wy9gt6.js', 'Contact-B4ztSDWr.js', 'NotFound-CLGyijbd.js',
+      'Menu-B4D8OK7C.js', 'useQuery-Dcz4YoqZ.js', 'useMutation-DFBGdzkn.js',
+      'useUserPoints-B-Wh3Kbr.js', 'scroll-area-CL-nVq_g.js',
+      'switch-DW8-tzX6.js', 'dialog-DVG-Awdy.js', 'avatar-Dj7gpRb8.js',
+      'tabs-BZMiELME.js', 'checkbox-BDyH_4em.js', 'pointsCalculator-BwBrJ8sV.js',
+      'mount-icon-DKUggKtl.js', 'notificationService-Bb4GK-tC.js',
+      'forms-KTNORM9f.js', 'play-CTL3iTvv.js', 'loader-circle-CNA8acZi.js',
+      'plus-CmtCobmg.js', 'arrow-left-D5SlpiPK.js', 'arrow-right-BSeB2Suq.js',
+      'search-z5J5_LIz.js', 'clock-DoYSs2sb.js', 'trending-up-BV-HZivw.js',
+      'pause-DY1VTWd9.js', 'square-check-big-BH-PZ3lt.js', 'target-DAAWro05.js',
+      'vote-CN6KMSoq.js', 'charts-56rtB2he.js', 'circle-help-DvHXWlHf.js',
+      'heart-BvpgfAvo.js', 'circle-alert-BuV88jgD.js', 'user-check-jrjWhojT.js',
+      'upload-B0Tylt2g.js', 'map-pin-Cz_RdOoT.js', 'triangle-alert-Boav6eut.js',
+      'image-eAhc5-Eu.js', 'shield-BDsH0jEw.js', 'award-n6b6hUjN.js',
+      'send-CLBmhFu2.js', 'smile-DZTx2ezV.js', 'user-plus-22iVuXg2.js',
+      'square-pen-e3B9PJVH.js', 'save-BK-idmwy.js', 'file-text-zpjM3wwU.js',
+      'trash-2-R-yJ_0tl.js', 'textarea-BRclULGN.js', 'cake-DBqK07cc.js',
+      'separator-Bjb904nk.js', 'mountain-DEHeP3G0.js', 'crown-ZZo_76ua.js',
+      'calendar-C9RovCy9.js', 'table-DOD5XfY-.js'
+    ];
+    
+    return Promise.all(
+      jsFiles.map(file => 
+        fetch(`/assets/${file}`)
+          .then(response => {
+            if (response.ok) {
+              return cache.put(`/assets/${file}`, response);
+            }
+          })
+          .catch(() => {}) // Ignora erros silenciosamente
+      )
+    );
+  }),
       // Cache dinâmico para rotas
       caches.open(DYNAMIC_CACHE_NAME).then((cache) => {
         console.log('📦 Service Worker: Cacheando rotas dinâmicas...');
@@ -157,6 +203,22 @@ self.addEventListener('fetch', (event) => {
           })
           .catch((error) => {
             console.warn('⚠️ Asset não encontrado:', event.request.url, error.message);
+            
+            // Para arquivos JavaScript, tentar servir index.html como fallback
+            if (event.request.url.endsWith('.js')) {
+              return caches.match('/index.html').then((indexResponse) => {
+                if (indexResponse) {
+                  console.log('📦 Servindo index.html para JS:', event.request.url);
+                  return indexResponse;
+                }
+                return new Response('Asset not found', { 
+                  status: 404, 
+                  statusText: 'Not Found',
+                  headers: { 'Content-Type': 'text/plain' }
+                });
+              });
+            }
+            
             return new Response('Asset not found', { 
               status: 404, 
               statusText: 'Not Found',
