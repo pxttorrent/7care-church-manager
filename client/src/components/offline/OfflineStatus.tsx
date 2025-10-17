@@ -22,6 +22,7 @@ export const OfflineStatus = () => {
     backgroundSyncSupported,
     backgroundSyncRegistrations,
     interceptorEnabled,
+    swCacheStats,
     fetchWithOfflineFallback,
     clearCache,
     updateStats,
@@ -37,7 +38,8 @@ export const OfflineStatus = () => {
     forceBackgroundSync,
     enableInterceptor,
     disableInterceptor,
-    clearAllInterceptorCache
+    clearAllInterceptorCache,
+    precacheAssets
   } = useOffline();
 
   const [testResult, setTestResult] = useState<string>('');
@@ -200,6 +202,17 @@ export const OfflineStatus = () => {
       setTestResult('✅ Cache do interceptador limpo!');
     } catch (error) {
       setTestResult(`❌ Erro ao limpar cache: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    }
+  };
+
+  // Função para pré-cachear assets
+  const handlePrecacheAssets = async () => {
+    try {
+      setTestResult('📦 Pré-cacheando assets críticos...');
+      await precacheAssets();
+      setTestResult(`✅ Assets pré-cacheados! Cache: ${swCacheStats.cachePercentage}% completo`);
+    } catch (error) {
+      setTestResult(`❌ Erro ao pré-cachear assets: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -456,6 +469,45 @@ export const OfflineStatus = () => {
                 </div>
               </div>
             </div>
+
+            <div>
+              <h4 className="font-semibold flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Service Worker Cache:
+              </h4>
+              <div className="grid grid-cols-2 gap-4 text-sm mt-2">
+                <div>
+                  <span className="text-muted-foreground">Assets:</span>
+                  <span className="ml-2 font-medium">{swCacheStats.cachedAssets}/{swCacheStats.totalAssets}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Cobertura:</span>
+                  <Badge variant={swCacheStats.cachePercentage > 80 ? "default" : swCacheStats.cachePercentage > 50 ? "secondary" : "destructive"} className="ml-2">
+                    {swCacheStats.cachePercentage}%
+                  </Badge>
+                </div>
+              </div>
+              
+              {/* Detalhes do cache */}
+              {Object.keys(swCacheStats.assetsByCache).length > 0 && (
+                <div className="mt-2 p-2 bg-muted rounded text-xs">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Database className="h-3 w-3" />
+                    <span className="font-medium">Caches Ativos:</span>
+                  </div>
+                  <div className="space-y-1">
+                    {Object.entries(swCacheStats.assetsByCache).map(([cacheName, count]) => (
+                      <div key={cacheName} className="flex justify-between items-center">
+                        <span>{cacheName}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {count} assets
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -481,6 +533,20 @@ export const OfflineStatus = () => {
             </Button>
             
             <Button 
+              onClick={handlePrecacheAssets}
+              disabled={!isInitialized}
+              variant="outline"
+              size="sm"
+              className="flex-1"
+            >
+              <Database className="h-4 w-4 mr-2" />
+              Pré-cachear Assets
+            </Button>
+          </div>
+
+          {/* Linha 1.5: Teste de fila */}
+          <div className="flex gap-2">
+            <Button 
               onClick={testOfflineQueue}
               disabled={!isInitialized}
               variant="outline"
@@ -489,6 +555,17 @@ export const OfflineStatus = () => {
             >
               <Clock className="h-4 w-4 mr-2" />
               Testar Fila
+            </Button>
+            
+            <Button 
+              onClick={handleProcessQueue}
+              disabled={!isInitialized || queueStats.total === 0}
+              variant="outline"
+              size="sm"
+              className="flex-1"
+            >
+              <Play className="h-4 w-4 mr-2" />
+              Processar Fila
             </Button>
           </div>
 
@@ -626,14 +703,15 @@ export const OfflineStatus = () => {
         {/* Instruções */}
         <div className="text-xs text-muted-foreground space-y-1">
           <p><strong>Como testar:</strong></p>
-          <p>1. <strong>Interceptador:</strong> "Habilitar Interceptor" ativa cache automático para TODAS as APIs</p>
-          <p>2. <strong>Cache:</strong> "Testar Sistema" faz requisição e salva cache</p>
-          <p>3. <strong>Fila:</strong> "Testar Fila" adiciona operação offline</p>
-          <p>4. <strong>Sync Auto:</strong> "Iniciar" ativa sincronização automática</p>
-          <p>5. <strong>Sync Manual:</strong> "Sincronizar Agora" força sincronização</p>
-          <p>6. <strong>BG Sync:</strong> "Registrar BG Sync" permite sync com app fechado</p>
-          <p>7. <strong>Offline:</strong> Desconecte internet e teste (usará cache automático)</p>
-          <p>8. <strong>Inteligente:</strong> Pausa com bateria baixa, pausa quando offline</p>
+          <p>1. <strong>Pré-cache:</strong> "Pré-cachear Assets" baixa todos os arquivos para funcionar offline</p>
+          <p>2. <strong>Interceptador:</strong> "Habilitar Interceptor" ativa cache automático para TODAS as APIs</p>
+          <p>3. <strong>Cache:</strong> "Testar Sistema" faz requisição e salva cache</p>
+          <p>4. <strong>Fila:</strong> "Testar Fila" adiciona operação offline</p>
+          <p>5. <strong>Sync Auto:</strong> "Iniciar" ativa sincronização automática</p>
+          <p>6. <strong>Sync Manual:</strong> "Sincronizar Agora" força sincronização</p>
+          <p>7. <strong>BG Sync:</strong> "Registrar BG Sync" permite sync com app fechado</p>
+          <p>8. <strong>Offline:</strong> Desconecte internet e teste (usará cache automático)</p>
+          <p>9. <strong>Inteligente:</strong> Pausa com bateria baixa, pausa quando offline</p>
         </div>
       </CardContent>
     </Card>

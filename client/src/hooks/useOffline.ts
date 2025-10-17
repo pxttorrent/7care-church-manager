@@ -8,6 +8,7 @@ import { offlineQueue, QueueOperation, QueueStats } from '@/lib/offlineQueue';
 import { offlineSync, SyncConfig, SyncStats, SyncEvent } from '@/lib/offlineSync';
 import { backgroundSyncService, SyncRegistration } from '@/lib/backgroundSync';
 import { offlineInterceptor } from '@/lib/offlineInterceptor';
+import { precacheCriticalAssets, checkCacheStatus, getCacheStats } from '@/lib/precacheAssets';
 
 export interface OfflineStatus {
   isOnline: boolean;
@@ -25,6 +26,13 @@ export interface OfflineStatus {
   backgroundSyncSupported: boolean;
   backgroundSyncRegistrations: SyncRegistration[];
   interceptorEnabled: boolean;
+  swCacheStats: {
+    totalAssets: number;
+    cachedAssets: number;
+    cachePercentage: number;
+    cacheNames: string[];
+    assetsByCache: Record<string, number>;
+  };
 }
 
 export const useOffline = () => {
@@ -69,7 +77,14 @@ export const useOffline = () => {
     isSyncActive: false,
     backgroundSyncSupported: backgroundSyncService.isSupported(),
     backgroundSyncRegistrations: [],
-    interceptorEnabled: false
+    interceptorEnabled: false,
+    swCacheStats: {
+      totalAssets: 0,
+      cachedAssets: 0,
+      cachePercentage: 0,
+      cacheNames: [],
+      assetsByCache: {}
+    }
   });
 
   // Inicializar sistema offline
@@ -83,11 +98,19 @@ export const useOffline = () => {
             // Inicializar interceptador global
             await offlineInterceptor.initialize();
             
+            // Pré-cachear assets críticos
+            try {
+              await precacheCriticalAssets();
+            } catch (error) {
+              console.warn('⚠️ Erro ao pré-cachear assets:', error);
+            }
+            
             const cacheStats = await offlineDB.getCacheStats();
             const queueStats = await offlineQueue.getQueueStats();
             const syncStats = offlineSync.getStats();
             const syncConfig = offlineSync.getConfig();
             const interceptorStats = await offlineInterceptor.getStats();
+            const swCacheStats = await getCacheStats();
             
             setStatus(prev => ({
               ...prev,
@@ -97,7 +120,8 @@ export const useOffline = () => {
               syncStats,
               syncConfig,
               isSyncActive: offlineSync.isActive(),
-              interceptorEnabled: interceptorStats.config.enabled
+              interceptorEnabled: interceptorStats.config.enabled,
+              swCacheStats
             }));
             
             console.log('✅ Sistema offline completo inicializado');
@@ -383,6 +407,19 @@ export const useOffline = () => {
     }
   }, [updateStats]);
 
+  // Função para pré-cachear assets críticos
+  const precacheAssets = useCallback(async () => {
+    try {
+      await precacheCriticalAssets();
+      const swCacheStats = await getCacheStats();
+      setStatus(prev => ({ ...prev, swCacheStats }));
+      console.log('✅ Assets críticos pré-cacheados');
+    } catch (error) {
+      console.error('❌ Erro ao pré-cachear assets:', error);
+      throw error;
+    }
+  }, []);
+
   // Listener para eventos de sincronização
   useEffect(() => {
     const handleSyncEvent = (event: SyncEvent) => {
@@ -456,6 +493,8 @@ export const useOffline = () => {
     disableInterceptor,
     clearEndpointCache,
     clearAllInterceptorCache,
+    // Funções de pré-cache
+    precacheAssets,
     // Funções diretas do banco
     cacheData: offlineDB.cacheData.bind(offlineDB),
     getCachedData: offlineDB.getCachedData.bind(offlineDB),

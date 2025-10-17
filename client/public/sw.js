@@ -1,25 +1,63 @@
 // Service Worker para notificações push
-const CACHE_NAME = '7care-v1';
+const CACHE_NAME = '7care-v2';
 const STATIC_ASSETS = [
   '/',
-  '/dashboard',
+  '/index.html',
   '/manifest.json',
   '/pwa-192x192.png',
-  '/pwa-512x512.png'
+  '/pwa-512x512.png',
+  '/browserconfig.xml',
+  '/favicon.ico',
+  '/placeholder.svg',
+  '/robots.txt'
+];
+
+// Assets dinâmicos que serão cacheados sob demanda
+const DYNAMIC_CACHE_NAME = '7care-dynamic-v2';
+const ROUTES_TO_CACHE = [
+  '/dashboard',
+  '/users',
+  '/calendar',
+  '/tasks',
+  '/gamification',
+  '/settings',
+  '/meu-cadastro',
+  '/chat',
+  '/prayers',
+  '/my-interested',
+  '/elections',
+  '/election-config',
+  '/election-voting',
+  '/election-results',
+  '/election-dashboard',
+  '/election-manage',
+  '/push-notifications',
+  '/contact'
 ];
 
 // Instalar service worker
 self.addEventListener('install', (event) => {
   console.log('🔧 Service Worker: Instalando...');
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('📦 Service Worker: Cache aberto');
+    Promise.all([
+      // Cache assets estáticos
+      caches.open(CACHE_NAME).then((cache) => {
+        console.log('📦 Service Worker: Cacheando assets estáticos...');
         return cache.addAll(STATIC_ASSETS);
+      }),
+      // Cache dinâmico para rotas
+      caches.open(DYNAMIC_CACHE_NAME).then((cache) => {
+        console.log('📦 Service Worker: Cacheando rotas dinâmicas...');
+        // Cachear index.html para todas as rotas
+        return cache.add('/index.html');
       })
-      .catch((error) => {
-        console.error('❌ Service Worker: Erro ao cachear assets:', error);
-      })
+    ])
+    .then(() => {
+      console.log('✅ Service Worker: Instalação concluída');
+    })
+    .catch((error) => {
+      console.error('❌ Service Worker: Erro ao cachear assets:', error);
+    })
   );
   // Força ativação imediata
   self.skipWaiting();
@@ -32,7 +70,7 @@ self.addEventListener('activate', (event) => {
       caches.keys().then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
+          if (cacheName !== CACHE_NAME && cacheName !== DYNAMIC_CACHE_NAME) {
             console.log('🗑️ Service Worker: Removendo cache antigo:', cacheName);
               return caches.delete(cacheName);
             }
@@ -74,6 +112,7 @@ self.addEventListener('fetch', (event) => {
       .then((response) => {
         // Retorna do cache se disponível
         if (response) {
+          console.log('📦 Cache hit:', event.request.url);
           return response;
         }
         
@@ -84,7 +123,6 @@ self.addEventListener('fetch', (event) => {
             if (!fetchResponse || 
                 fetchResponse.status !== 200 || 
                 fetchResponse.type !== 'basic' ||
-                !fetchResponse.headers.get('content-type')?.includes('text') ||
                 event.request.method !== 'GET') {
               return fetchResponse;
             }
@@ -92,11 +130,15 @@ self.addEventListener('fetch', (event) => {
             // Clona a resposta para cache
             const responseToCache = fetchResponse.clone();
 
+            // Determina qual cache usar baseado no tipo de recurso
+            const cacheName = isAssetFile(event.request.url) ? CACHE_NAME : DYNAMIC_CACHE_NAME;
+
             // Adiciona ao cache para uso futuro (com tratamento de erro)
-            caches.open(CACHE_NAME)
+            caches.open(cacheName)
               .then((cache) => {
                 try {
                   cache.put(event.request, responseToCache);
+                  console.log('💾 Cacheado:', event.request.url, 'em', cacheName);
                 } catch (error) {
                   console.warn('⚠️ Service Worker: Erro ao salvar no cache:', error);
                 }
@@ -110,28 +152,46 @@ self.addEventListener('fetch', (event) => {
           .catch((error) => {
             console.error('❌ Service Worker: Erro na requisição:', error);
             
-            // Retorna uma resposta de erro personalizada para páginas
+            // Para páginas, tentar servir index.html do cache
             if (event.request.destination === 'document') {
-              return new Response(
-                `<!DOCTYPE html>
-                <html>
-                  <head>
-                    <title>Erro de Conexão - 7care</title>
-                    <meta charset="utf-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1">
-                  </head>
-                  <body>
-                    <h1>Sem conexão</h1>
-                    <p>Verifique sua internet e tente novamente.</p>
-                    <button onclick="window.location.reload()">Tentar Novamente</button>
-                  </body>
-                </html>`,
-                {
-                  status: 200,
-                  statusText: 'OK',
-                  headers: { 'Content-Type': 'text/html' }
+              return caches.match('/index.html').then((response) => {
+                if (response) {
+                  console.log('📦 Servindo index.html do cache para rota:', event.request.url);
+                  return response;
                 }
-              );
+                
+                // Se não há index.html no cache, retornar página offline
+                return new Response(
+                  `<!DOCTYPE html>
+                  <html>
+                    <head>
+                      <title>Offline - 7care</title>
+                      <meta charset="utf-8">
+                      <meta name="viewport" content="width=device-width, initial-scale=1">
+                      <style>
+                        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+                        .offline-container { max-width: 400px; margin: 0 auto; }
+                        .offline-icon { font-size: 64px; margin-bottom: 20px; }
+                        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+                        button:hover { background: #0056b3; }
+                      </style>
+                    </head>
+                    <body>
+                      <div class="offline-container">
+                        <div class="offline-icon">📱</div>
+                        <h1>Modo Offline</h1>
+                        <p>Você está offline. Algumas funcionalidades podem estar limitadas.</p>
+                        <button onclick="window.location.reload()">Tentar Novamente</button>
+                      </div>
+                    </body>
+                  </html>`,
+                  {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'Content-Type': 'text/html' }
+                  }
+                );
+              });
             }
             
             // Para outros recursos, re-lança o erro
@@ -461,8 +521,24 @@ async function notifyClients(data) {
 self.addEventListener('message', (event) => {
   console.log('💬 Service Worker: Mensagem recebida:', event.data);
 
-    if (event.data && event.data.type === 'SKIP_WAITING') {
-      self.skipWaiting();
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+  
+  // Cachear assets dinamicamente quando solicitado
+  if (event.data && event.data.type === 'CACHE_ASSETS') {
+    const assets = event.data.assets || [];
+    if (assets.length > 0) {
+      caches.open(CACHE_NAME).then((cache) => {
+        return cache.addAll(assets);
+      }).then(() => {
+        console.log('✅ Assets adicionais cacheados:', assets.length);
+        event.ports[0].postMessage({ success: true });
+      }).catch((error) => {
+        console.error('❌ Erro ao cachear assets adicionais:', error);
+        event.ports[0].postMessage({ success: false, error: error.message });
+      });
+    }
   }
 });
 
@@ -480,5 +556,11 @@ self.addEventListener('unhandledrejection', (event) => {
     return;
   }
 });
+
+// Função para determinar se é um arquivo de asset
+function isAssetFile(url) {
+  const assetExtensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot'];
+  return assetExtensions.some(ext => url.includes(ext));
+}
 
 console.log('🚀 Service Worker: Carregado e pronto!');

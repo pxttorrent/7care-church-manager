@@ -46,8 +46,26 @@ self.addEventListener('activate', (event) => {
 
 // Interceptar requisições
 self.addEventListener('fetch', (event) => {
-  // Para PWA, não cachear requests de API
-  if (event.request.url.includes('/api/')) {
+  // Filtrar requisições que não devem ser cacheadas
+  const url = new URL(event.request.url);
+  
+  // Não cachear APIs, chrome-extensions, ou outros esquemas não suportados
+  if (
+    event.request.url.includes('/api/') ||
+    url.protocol === 'chrome-extension:' ||
+    url.protocol === 'chrome:' ||
+    url.protocol === 'moz-extension:' ||
+    url.protocol === 'edge-extension:' ||
+    url.protocol === 'safari-extension:' ||
+    url.protocol === 'data:' ||
+    url.protocol === 'blob:' ||
+    !url.protocol.startsWith('http')
+  ) {
+    return;
+  }
+
+  // Só interceptar requisições do mesmo domínio
+  if (url.origin !== self.location.origin) {
     return;
   }
 
@@ -62,18 +80,29 @@ self.addEventListener('fetch', (event) => {
         // Senão, faz a requisição
         return fetch(event.request)
           .then((fetchResponse) => {
-            // Verifica se a resposta é válida
-            if (!fetchResponse || fetchResponse.status !== 200 || fetchResponse.type !== 'basic') {
+            // Verifica se a resposta é válida e pode ser cacheada
+            if (!fetchResponse || 
+                fetchResponse.status !== 200 || 
+                fetchResponse.type !== 'basic' ||
+                !fetchResponse.headers.get('content-type')?.includes('text') ||
+                event.request.method !== 'GET') {
               return fetchResponse;
             }
 
             // Clona a resposta para cache
             const responseToCache = fetchResponse.clone();
 
-            // Adiciona ao cache para uso futuro
+            // Adiciona ao cache para uso futuro (com tratamento de erro)
             caches.open(CACHE_NAME)
               .then((cache) => {
-                cache.put(event.request, responseToCache);
+                try {
+                  cache.put(event.request, responseToCache);
+                } catch (error) {
+                  console.warn('⚠️ Service Worker: Erro ao salvar no cache:', error);
+                }
+              })
+              .catch((error) => {
+                console.warn('⚠️ Service Worker: Erro ao abrir cache:', error);
               });
 
             return fetchResponse;
@@ -434,6 +463,21 @@ self.addEventListener('message', (event) => {
 
     if (event.data && event.data.type === 'SKIP_WAITING') {
       self.skipWaiting();
+  }
+});
+
+// Suprimir erros de Chrome Extensions
+self.addEventListener('error', (event) => {
+  if (event.message && event.message.includes('chrome-extension')) {
+    event.preventDefault();
+    return;
+  }
+});
+
+self.addEventListener('unhandledrejection', (event) => {
+  if (event.reason && event.reason.message && event.reason.message.includes('chrome-extension')) {
+    event.preventDefault();
+    return;
   }
 });
 
