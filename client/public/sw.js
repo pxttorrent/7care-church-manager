@@ -58,11 +58,61 @@ self.addEventListener('fetch', (event) => {
         if (response) {
           return response;
         }
+        
         // Senão, faz a requisição
-        return fetch(event.request);
+        return fetch(event.request)
+          .then((fetchResponse) => {
+            // Verifica se a resposta é válida
+            if (!fetchResponse || fetchResponse.status !== 200 || fetchResponse.type !== 'basic') {
+              return fetchResponse;
+            }
+
+            // Clona a resposta para cache
+            const responseToCache = fetchResponse.clone();
+
+            // Adiciona ao cache para uso futuro
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                cache.put(event.request, responseToCache);
+              });
+
+            return fetchResponse;
+          })
+          .catch((error) => {
+            console.error('❌ Service Worker: Erro na requisição:', error);
+            
+            // Retorna uma resposta de erro personalizada para páginas
+            if (event.request.destination === 'document') {
+              return new Response(
+                `<!DOCTYPE html>
+                <html>
+                  <head>
+                    <title>Erro de Conexão - 7care</title>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                  </head>
+                  <body>
+                    <h1>Sem conexão</h1>
+                    <p>Verifique sua internet e tente novamente.</p>
+                    <button onclick="window.location.reload()">Tentar Novamente</button>
+                  </body>
+                </html>`,
+                {
+                  status: 200,
+                  statusText: 'OK',
+                  headers: { 'Content-Type': 'text/html' }
+                }
+              );
+            }
+            
+            // Para outros recursos, re-lança o erro
+            throw error;
+          });
       })
       .catch((error) => {
-        console.error('❌ Service Worker: Erro na requisição:', error);
+        console.error('❌ Service Worker: Erro geral na requisição:', error);
+        // Retorna erro para não quebrar a aplicação
+        return new Response('Erro de rede', { status: 408 });
       })
   );
 });
@@ -72,10 +122,10 @@ self.addEventListener('push', (event) => {
   console.log('📱 Service Worker: Push notification recebida');
   
   let data = {};
-    if (event.data) {
+  if (event.data) {
     try {
       data = event.data.json();
-      } catch (e) {
+    } catch (e) {
       data = { title: '7care', body: event.data.text() };
     }
   }
