@@ -4,13 +4,15 @@
  */
 
 import { useOffline } from '@/hooks/useOffline';
+import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Wifi, WifiOff, Database, RefreshCw, Trash2, Play, Clock, AlertTriangle, Settings, Battery, Activity, Zap, Cloud, Shield, ShieldOff } from 'lucide-react';
+import { Wifi, WifiOff, Database, RefreshCw, Trash2, Play, Clock, AlertTriangle, Settings, Battery, Activity, Zap, Cloud, Shield, ShieldOff, Crown } from 'lucide-react';
 import { useState } from 'react';
 
 export const OfflineStatus = () => {
+  const { user } = useAuth();
   const {
     isOnline,
     isInitialized,
@@ -43,6 +45,9 @@ export const OfflineStatus = () => {
   } = useOffline();
 
   const [testResult, setTestResult] = useState<string>('');
+
+  // Verificar se é admin
+  const isAdmin = user?.role === 'admin' || user?.role === 'administrator';
 
   // Função para testar o sistema offline
   const testOfflineSystem = async () => {
@@ -231,12 +236,44 @@ export const OfflineStatus = () => {
     return new Date(timestamp).toLocaleString('pt-BR');
   };
 
+  // Se não for admin, mostrar mensagem de restrição
+  if (!isAdmin) {
+    return (
+      <Card className="w-full max-w-2xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Crown className="h-5 w-5 text-yellow-500" />
+            Sistema Offline - Acesso Restrito
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <Crown className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-semibold mb-2">Funcionalidade Restrita</h3>
+            <p className="text-muted-foreground mb-4">
+              O sistema offline completo está disponível apenas para administradores.
+            </p>
+            <Badge variant="secondary">
+              Seu perfil: {user?.role || 'Não identificado'}
+            </Badge>
+            <p className="text-xs text-muted-foreground mt-4">
+              Apenas administradores têm acesso ao sistema offline com pré-cache automático.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-full max-w-2xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Database className="h-5 w-5" />
           Status do Sistema Offline
+          <Badge variant="default" className="ml-auto">
+            Admin
+          </Badge>
         </CardTitle>
       </CardHeader>
       

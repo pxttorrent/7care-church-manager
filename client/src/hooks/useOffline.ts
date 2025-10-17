@@ -9,6 +9,7 @@ import { offlineSync, SyncConfig, SyncStats, SyncEvent } from '@/lib/offlineSync
 import { backgroundSyncService, SyncRegistration } from '@/lib/backgroundSync';
 import { offlineInterceptor } from '@/lib/offlineInterceptor';
 import { precacheCriticalAssets, checkCacheStatus, getCacheStats } from '@/lib/precacheAssets';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface OfflineStatus {
   isOnline: boolean;
@@ -36,6 +37,7 @@ export interface OfflineStatus {
 }
 
 export const useOffline = () => {
+  const { user } = useAuth();
   const [status, setStatus] = useState<OfflineStatus>({
     isOnline: navigator.onLine,
     isInitialized: false,
@@ -87,9 +89,19 @@ export const useOffline = () => {
     }
   });
 
-  // Inicializar sistema offline
+  // Verificar se é admin
+  const isAdmin = user?.role === 'admin' || user?.role === 'administrator';
+
+  // Inicializar sistema offline apenas para admins
   useEffect(() => {
         const initializeOfflineSystem = async () => {
+          // Se não for admin, não inicializar sistema offline
+          if (!isAdmin) {
+            console.log('🚫 Sistema offline desabilitado: usuário não é admin');
+            setStatus(prev => ({ ...prev, isInitialized: true }));
+            return;
+          }
+
           try {
             await offlineDB.initialize();
             await offlineQueue.initialize();
@@ -131,7 +143,7 @@ export const useOffline = () => {
         };
 
     initializeOfflineSystem();
-  }, []);
+  }, [isAdmin]);
 
   // Detectar mudanças de conectividade
   useEffect(() => {

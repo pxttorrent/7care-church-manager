@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { OfflineStatus } from '@/components/offline/OfflineStatus';
+import { AdminOfflineStatus } from '@/components/offline/AdminOfflineStatus';
 import { 
   Settings as SettingsIcon, 
   User, 
@@ -2057,7 +2058,7 @@ export default function Settings() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <OfflineStatus />
+                <AdminOfflineStatus />
               </CardContent>
             </Card>
           </TabsContent>
