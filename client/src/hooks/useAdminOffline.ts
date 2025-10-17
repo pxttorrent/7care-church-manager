@@ -115,6 +115,9 @@ export const useAdminOffline = () => {
     try {
       setStatus(prev => ({ ...prev, isPrecaching: true, precacheProgress: 0 }));
 
+      console.log('🚀 Iniciando pré-cache automático para admin...');
+      console.log('ℹ️ Nota: Erros 404 são normais - sistema tenta diferentes endpoints até encontrar os válidos');
+
       // Etapa 1: Pré-cachear assets críticos (16%)
       console.log('📦 Etapa 1/6: Pré-cacheando assets críticos...');
       await precacheCriticalAssets();
@@ -178,10 +181,10 @@ export const useAdminOffline = () => {
             return;
           }
         } catch (e) {
-          // Continuar para próximo endpoint
+          // Continuar para próximo endpoint (erro esperado)
         }
       }
-      console.warn('⚠️ Nenhum endpoint de usuários encontrado');
+      console.log('ℹ️ Nenhum endpoint de usuários encontrado (normal)');
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados de usuários:', error);
     }
@@ -201,10 +204,10 @@ export const useAdminOffline = () => {
             return;
           }
         } catch (e) {
-          // Continuar para próximo endpoint
+          // Continuar para próximo endpoint (erro esperado)
         }
       }
-      console.warn('⚠️ Nenhum endpoint de calendário encontrado');
+      console.log('ℹ️ Nenhum endpoint de calendário encontrado (normal)');
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados de calendário:', error);
     }
@@ -224,10 +227,10 @@ export const useAdminOffline = () => {
             return;
           }
         } catch (e) {
-          // Continuar para próximo endpoint
+          // Continuar para próximo endpoint (erro esperado)
         }
       }
-      console.warn('⚠️ Nenhum endpoint de tarefas encontrado');
+      console.log('ℹ️ Nenhum endpoint de tarefas encontrado (normal)');
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados de tarefas:', error);
     }
@@ -253,10 +256,10 @@ export const useAdminOffline = () => {
             return;
           }
         } catch (e) {
-          // Continuar para próximo endpoint
+          // Continuar para próximo endpoint (erro esperado)
         }
       }
-      console.warn('⚠️ Nenhum endpoint de gamificação encontrado');
+      console.log('ℹ️ Nenhum endpoint de gamificação encontrado (normal)');
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados de gamificação:', error);
     }
@@ -281,10 +284,10 @@ export const useAdminOffline = () => {
             return;
           }
         } catch (e) {
-          // Continuar para próximo endpoint
+          // Continuar para próximo endpoint (erro esperado)
         }
       }
-      console.warn('⚠️ Nenhum endpoint do dashboard encontrado');
+      console.log('ℹ️ Nenhum endpoint do dashboard encontrado (normal)');
     } catch (error) {
       console.warn('⚠️ Erro ao cachear dados do dashboard:', error);
     }
