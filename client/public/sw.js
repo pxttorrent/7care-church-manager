@@ -1,5 +1,5 @@
 // Service Worker para notificações push
-const CACHE_NAME = '7care-v2';
+const CACHE_NAME = '7care-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -13,7 +13,7 @@ const STATIC_ASSETS = [
 ];
 
 // Assets dinâmicos que serão cacheados sob demanda
-const DYNAMIC_CACHE_NAME = '7care-dynamic-v2';
+const DYNAMIC_CACHE_NAME = '7care-dynamic-v3';
 const ROUTES_TO_CACHE = [
   '/dashboard',
   '/users',

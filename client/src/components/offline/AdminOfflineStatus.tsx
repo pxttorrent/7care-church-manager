@@ -23,7 +23,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useState } from 'react';
 
 export const AdminOfflineStatus = () => {
-  const { user } = useAuth();
+  const authData = useAuth();
+  const user = authData?.user;
+  
   const {
     isAdmin,
     isOfflineEnabled,
